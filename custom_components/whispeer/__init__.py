@@ -33,6 +33,21 @@ async def async_setup(hass: HomeAssistant, config: Config):
     return True
 
 
+def register_panel(hass):
+    import os
+    from homeassistant.components import frontend
+    panel_dir = os.path.join(os.path.dirname(__file__), "panel")
+    hass.http.register_static_path("/whispeer-panel", panel_dir, cache_headers=False)
+    hass.components.frontend.async_register_built_in_panel(
+        component_name="iframe",
+        sidebar_title="Whispeer",
+        sidebar_icon="mdi:remote",
+        frontend_url_path="whispeer-panel",
+        config={"url": "/whispeer-panel/index.html"},
+        require_admin=True,
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up this integration using UI."""
     if hass.data.get(DOMAIN) is None:
@@ -52,6 +67,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         raise ConfigEntryNotReady
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    register_panel(hass)
 
     for platform in PLATFORMS:
         if entry.options.get(platform, True):
