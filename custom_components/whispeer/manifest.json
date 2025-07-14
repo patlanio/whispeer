@@ -1,0 +1,10 @@
+{
+  "domain": "whispeer",
+  "name": "Whispeer",
+  "documentation": "https://github.com/patlanio/whispeer",
+  "issue_tracker": "https://github.com/patlanio/whispeer/issues",
+  "dependencies": [],
+  "config_flow": true,
+  "codeowners": ["@patlanio"],
+  "requirements": []
+}
