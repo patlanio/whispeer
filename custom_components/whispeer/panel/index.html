@@ -2,41 +2,687 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Whispeer Control Panel</title>
   <style>
-    body { font-family: sans-serif; margin: 2em; }
-    h1 { color: #2196f3; }
-    .device { border: 1px solid #ccc; padding: 1em; margin-bottom: 1em; }
-    label { display: block; margin-top: 0.5em; }
-    input, select { width: 100%; padding: 0.3em; }
-    button { margin-top: 1em; }
+    :root {
+      --primary-color: #03a9f4;
+      --primary-dark: #0288d1;
+      --secondary-color: #ff9800;
+      --background-color: #fafafa;
+      --surface-color: #ffffff;
+      --text-primary: #212121;
+      --text-secondary: #757575;
+      --border-color: #e0e0e0;
+      --shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: var(--background-color);
+      color: var(--text-primary);
+      line-height: 1.6;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+      color: white;
+      padding: 24px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 300;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 0.9rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: var(--secondary-color);
+    }
+
+    .btn-secondary:hover {
+      background: #f57c00;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      transition: border-color 0.3s ease;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    .devices-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .device-card {
+      background: var(--surface-color);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      transition: all 0.3s ease;
+      border: 1px solid var(--border-color);
+    }
+
+    .device-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .device-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .device-name {
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .device-status {
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-online {
+      background: #e8f5e8;
+      color: #2e7d32;
+    }
+
+    .status-offline {
+      background: #fce4ec;
+      color: #c62828;
+    }
+
+    .device-info {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+
+    .device-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-small {
+      padding: 8px 16px;
+      font-size: 0.8rem;
+      border-radius: 4px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    .loading::after {
+      content: '';
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border-color);
+      border-top: 3px solid var(--primary-color);
+      border-radius: 50%;
+      display: inline-block;
+      animation: spin 1s linear infinite;
+      margin-top: 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state h3 {
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+    }
+
+    .modal-content {
+      background: var(--surface-color);
+      margin: 5% auto;
+      padding: 24px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 1.5rem;
+      font-weight: 500;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .form-input, .form-select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      transition: border-color 0.3s ease;
+    }
+
+    .form-input:focus, .form-select:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    @media (max-width: 768px) {
+      .controls {
+        flex-direction: column;
+      }
+      
+      .search-bar {
+        flex-direction: column;
+      }
+      
+      .devices-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
-  <h1>Whispeer Devices</h1>
-  <div id="devices"></div>
-  <button onclick="addDevice()">Add Device</button>
+  <div class="container">
+    <div class="header">
+      <h1>🎤 Whispeer Control Panel</h1>
+      <p>Manage your Whispeer devices and configurations</p>
+    </div>
+
+    <div class="controls">
+      <button class="btn" onclick="refreshDevices()">
+        🔄 Refresh Devices
+      </button>
+      <button class="btn btn-secondary" onclick="openAddDeviceModal()">
+        ➕ Add Device
+      </button>
+      <button class="btn" onclick="openSettingsModal()">
+        ⚙️ Settings
+      </button>
+    </div>
+
+    <div class="search-bar">
+      <input type="text" class="search-input" placeholder="Search devices..." id="searchInput" onkeyup="filterDevices()">
+      <button class="btn btn-small" onclick="clearSearch()">Clear</button>
+    </div>
+
+    <div id="devicesContainer">
+      <div class="loading">Loading devices...</div>
+    </div>
+  </div>
+
+  <!-- Add Device Modal -->
+  <div id="addDeviceModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Add New Device</h2>
+        <button class="close-btn" onclick="closeModal('addDeviceModal')">&times;</button>
+      </div>
+      <form id="addDeviceForm">
+        <div class="form-group">
+          <label class="form-label" for="deviceName">Device Name</label>
+          <input type="text" id="deviceName" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="deviceType">Device Type</label>
+          <select id="deviceType" class="form-select" required>
+            <option value="">Select type...</option>
+            <option value="microphone">Microphone</option>
+            <option value="speaker">Speaker</option>
+            <option value="recorder">Recorder</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="deviceAddress">Device Address</label>
+          <input type="text" id="deviceAddress" class="form-input" placeholder="e.g., 192.168.1.100" required>
+        </div>
+        <div class="controls">
+          <button type="submit" class="btn">Add Device</button>
+          <button type="button" class="btn btn-secondary" onclick="closeModal('addDeviceModal')">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Settings</h2>
+        <button class="close-btn" onclick="closeModal('settingsModal')">&times;</button>
+      </div>
+      <form id="settingsForm">
+        <div class="form-group">
+          <label class="form-label" for="autoRefresh">Auto Refresh Interval (seconds)</label>
+          <input type="number" id="autoRefresh" class="form-input" value="30" min="5" max="300">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="maxDevices">Maximum Devices to Display</label>
+          <input type="number" id="maxDevices" class="form-input" value="50" min="1" max="100">
+        </div>
+        <div class="controls">
+          <button type="submit" class="btn">Save Settings</button>
+          <button type="button" class="btn btn-secondary" onclick="closeModal('settingsModal')">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
-    // Example: fetch devices from backend (to be implemented)
+    let devices = [];
+    let settings = {
+      autoRefresh: 30,
+      maxDevices: 50
+    };
+
+    // Initialize the panel
+    document.addEventListener('DOMContentLoaded', function() {
+      loadSettings();
+      fetchDevices();
+      startAutoRefresh();
+    });
+
+    // Fetch devices from Home Assistant
     async function fetchDevices() {
-      // Replace with real API call
-      return [];
+      try {
+        const response = await fetch('/api/whispeer/devices', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        devices = data.devices || [];
+        renderDevices(devices);
+      } catch (error) {
+        console.error('Error fetching devices:', error);
+        
+        // Fallback to mock data if API fails
+        const mockDevices = [
+          {
+            id: 1,
+            name: 'Living Room Microphone',
+            type: 'microphone',
+            status: 'online',
+            address: '192.168.1.100',
+            last_seen: new Date().toISOString()
+          },
+          {
+            id: 2,
+            name: 'Kitchen Speaker',
+            type: 'speaker',
+            status: 'offline',
+            address: '192.168.1.101',
+            last_seen: new Date(Date.now() - 300000).toISOString()
+          }
+        ];
+        
+        devices = mockDevices;
+        renderDevices(devices);
+        showError('Failed to load devices from server, showing mock data');
+      }
     }
-    function renderDevices(devices) {
-      const container = document.getElementById('devices');
-      container.innerHTML = '';
-      devices.forEach(device => {
-        const div = document.createElement('div');
-        div.className = 'device';
-        div.innerHTML = `<b>${device.name}</b> <br>Type: ${device.type}`;
-        container.appendChild(div);
-      });
+
+    // Render devices in the UI
+    function renderDevices(deviceList) {
+      const container = document.getElementById('devicesContainer');
+      
+      if (deviceList.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <h3>No devices found</h3>
+            <p>Add your first Whispeer device to get started</p>
+          </div>
+        `;
+        return;
+      }
+
+      const devicesHTML = deviceList.map(device => `
+        <div class="device-card" data-device-id="${device.id}">
+          <div class="device-header">
+            <div class="device-name">${device.name}</div>
+            <div class="device-status status-${device.status}">${device.status}</div>
+          </div>
+          <div class="device-info">
+            <div><strong>Type:</strong> ${device.type}</div>
+            <div><strong>Address:</strong> ${device.address}</div>
+            <div><strong>Last seen:</strong> ${formatDate(device.last_seen)}</div>
+          </div>
+          <div class="device-actions">
+            <button class="btn btn-small" onclick="configureDevice(${device.id})">Configure</button>
+            <button class="btn btn-small btn-secondary" onclick="testDevice(${device.id})">Test</button>
+            <button class="btn btn-small" onclick="removeDevice(${device.id})" style="background: #f44336;">Remove</button>
+          </div>
+        </div>
+      `).join('');
+
+      container.innerHTML = `<div class="devices-grid">${devicesHTML}</div>`;
     }
-    async function addDevice() {
-      alert('Add device form (to be implemented)');
+
+    // Filter devices based on search input
+    function filterDevices() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      const filteredDevices = devices.filter(device => 
+        device.name.toLowerCase().includes(searchTerm) ||
+        device.type.toLowerCase().includes(searchTerm) ||
+        device.address.toLowerCase().includes(searchTerm)
+      );
+      renderDevices(filteredDevices);
     }
-    // Initial load
-    fetchDevices().then(renderDevices);
+
+    // Clear search
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      renderDevices(devices);
+    }
+
+    // Refresh devices
+    function refreshDevices() {
+      document.getElementById('devicesContainer').innerHTML = '<div class="loading">Loading devices...</div>';
+      fetchDevices();
+    }
+
+    // Modal functions
+    function openAddDeviceModal() {
+      document.getElementById('addDeviceModal').style.display = 'block';
+    }
+
+    function openSettingsModal() {
+      document.getElementById('settingsModal').style.display = 'block';
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).style.display = 'none';
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+      }
+    }
+
+    // Add device form handler
+    document.getElementById('addDeviceForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const deviceData = {
+        name: document.getElementById('deviceName').value,
+        type: document.getElementById('deviceType').value,
+        address: document.getElementById('deviceAddress').value
+      };
+
+      try {
+        const response = await fetch('/api/whispeer/devices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(deviceData)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+          await fetchDevices(); // Refresh the device list
+          closeModal('addDeviceModal');
+          e.target.reset();
+          showSuccess('Device added successfully');
+        } else {
+          throw new Error(result.message || 'Failed to add device');
+        }
+      } catch (error) {
+        console.error('Error adding device:', error);
+        showError('Failed to add device: ' + error.message);
+      }
+    });
+
+    // Settings form handler
+    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      settings.autoRefresh = parseInt(document.getElementById('autoRefresh').value);
+      settings.maxDevices = parseInt(document.getElementById('maxDevices').value);
+      
+      saveSettings();
+      closeModal('settingsModal');
+      showSuccess('Settings saved successfully');
+      
+      // Restart auto refresh with new interval
+      startAutoRefresh();
+    });
+
+    // Device actions
+    function configureDevice(deviceId) {
+      const device = devices.find(d => d.id === deviceId);
+      if (device) {
+        alert(`Configure device: ${device.name}\n(Configuration UI to be implemented)`);
+      }
+    }
+
+    function testDevice(deviceId) {
+      const device = devices.find(d => d.id === deviceId);
+      if (device) {
+        // Call the test API
+        fetch(`/api/whispeer/device/${deviceId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        })
+        .then(response => response.json())
+        .then(result => {
+          if (result.status === 'success') {
+            showSuccess(`Test completed for ${device.name}: ${result.test_result}`);
+          } else {
+            showError(`Test failed for ${device.name}: ${result.message}`);
+          }
+        })
+        .catch(error => {
+          console.error('Error testing device:', error);
+          showError(`Failed to test device: ${error.message}`);
+        });
+      }
+    }
+
+    function removeDevice(deviceId) {
+      const device = devices.find(d => d.id === deviceId);
+      if (device && confirm(`Are you sure you want to remove ${device.name}?`)) {
+        // Call the remove API
+        fetch(`/api/whispeer/device/${deviceId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        })
+        .then(response => response.json())
+        .then(result => {
+          if (result.status === 'success') {
+            devices = devices.filter(d => d.id !== deviceId);
+            renderDevices(devices);
+            showSuccess('Device removed successfully');
+          } else {
+            showError(`Failed to remove device: ${result.message}`);
+          }
+        })
+        .catch(error => {
+          console.error('Error removing device:', error);
+          showError(`Failed to remove device: ${error.message}`);
+        });
+      }
+    }
+
+    // Auto refresh functionality
+    let autoRefreshInterval;
+    
+    function startAutoRefresh() {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+      }
+      
+      autoRefreshInterval = setInterval(() => {
+        fetchDevices();
+      }, settings.autoRefresh * 1000);
+    }
+
+    // Settings management
+    function loadSettings() {
+      const saved = localStorage.getItem('whispeerSettings');
+      if (saved) {
+        settings = {...settings, ...JSON.parse(saved)};
+        document.getElementById('autoRefresh').value = settings.autoRefresh;
+        document.getElementById('maxDevices').value = settings.maxDevices;
+      }
+    }
+
+    function saveSettings() {
+      localStorage.setItem('whispeerSettings', JSON.stringify(settings));
+    }
+
+    // Utility functions
+    function formatDate(dateString) {
+      const date = new Date(dateString);
+      return date.toLocaleString();
+    }
+
+    function showSuccess(message) {
+      // Simple alert for now - can be enhanced with proper notifications
+      alert('✅ ' + message);
+    }
+
+    function showError(message) {
+      // Simple alert for now - can be enhanced with proper notifications
+      alert('❌ ' + message);
+    }
   </script>
 </body>
 </html>

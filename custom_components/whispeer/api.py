@@ -33,6 +33,55 @@ class WhispeerApiClient:
         url = "https://jsonplaceholder.typicode.com/posts/1"
         await self.api_wrapper("patch", url, data={"title": value}, headers=HEADERS)
 
+    async def async_get_devices(self) -> list:
+        """Get list of Whispeer devices."""
+        # For now, return mock data - implement actual device discovery
+        return [
+            {
+                "id": 1,
+                "name": "Living Room Microphone",
+                "type": "microphone",
+                "status": "online",
+                "address": "192.168.1.100",
+                "last_seen": "2025-01-14T12:00:00Z",
+            },
+            {
+                "id": 2,
+                "name": "Kitchen Speaker",
+                "type": "speaker",
+                "status": "offline",
+                "address": "192.168.1.101",
+                "last_seen": "2025-01-14T11:55:00Z",
+            },
+        ]
+
+    async def async_add_device(self, device_data: dict) -> dict:
+        """Add a new Whispeer device."""
+        # Implement actual device addition logic
+        return {
+            "id": len(await self.async_get_devices()) + 1,
+            "status": "success",
+            "message": "Device added successfully",
+            **device_data,
+        }
+
+    async def async_remove_device(self, device_id: int) -> dict:
+        """Remove a Whispeer device."""
+        # Implement actual device removal logic
+        return {
+            "status": "success",
+            "message": f"Device {device_id} removed successfully",
+        }
+
+    async def async_test_device(self, device_id: int) -> dict:
+        """Test a Whispeer device."""
+        # Implement device testing logic
+        return {
+            "status": "success",
+            "message": f"Device {device_id} test completed",
+            "test_result": "passed",
+        }
+
     async def api_wrapper(
         self, method: str, url: str, data: dict = {}, headers: dict = {}
     ) -> dict:
