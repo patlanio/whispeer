@@ -17,6 +17,21 @@
       --shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
+    /* Dark theme - follows system preference automatically */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --primary-color: #4fc3f7;
+        --primary-dark: #29b6f6;
+        --secondary-color: #ffb74d;
+        --background-color: #121212;
+        --surface-color: #1e1e1e;
+        --text-primary: #ffffff;
+        --text-secondary: #b0b0b0;
+        --border-color: #333333;
+        --shadow: 0 2px 4px rgba(0,0,0,0.3);
+      }
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -37,30 +52,32 @@
     }
 
     .header {
-      background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-      color: white;
-      padding: 24px;
+      background: var(--surface-color);
+      border: 1px solid var(--border-color);
+      padding: 16px 24px;
       border-radius: 8px;
       margin-bottom: 24px;
       box-shadow: var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
     .header h1 {
-      font-size: 2rem;
-      font-weight: 300;
-      margin-bottom: 8px;
+      font-size: 1.8rem;
+      font-weight: 400;
+      margin: 0;
+      color: var(--text-primary);
     }
 
-    .header p {
-      opacity: 0.9;
-      font-size: 0.9rem;
+    .header-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
     }
 
     .controls {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
+      display: none; /* Hide the old controls section */
     }
 
     .btn {
@@ -95,24 +112,38 @@
       background: #f57c00;
     }
 
-    .search-bar {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 24px;
+    .btn-small {
+      padding: 8px 16px;
+      font-size: 0.8rem;
+      border-radius: 4px;
     }
 
-    .search-input {
-      flex: 1;
-      padding: 12px 16px;
-      border: 2px solid var(--border-color);
-      border-radius: 6px;
-      font-size: 0.9rem;
-      transition: border-color 0.3s ease;
+    .btn-outlined {
+      background: transparent;
+      color: var(--primary-color);
+      border: 2px solid var(--primary-color);
+      box-shadow: none;
+      font-weight: 500;
+      transition: all 0.3s ease;
     }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
+    .btn-outlined:hover {
+      background: var(--primary-color);
+      color: white;
+    }
+
+    #languageSelector {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    #languageSelector:hover {
+      background: var(--primary-dark);
     }
 
     .devices-grid {
@@ -127,13 +158,59 @@
       border-radius: 8px;
       padding: 20px;
       box-shadow: var(--shadow);
-      transition: all 0.3s ease;
       border: 1px solid var(--border-color);
     }
 
-    .device-card:hover {
+    .add-device-card {
+      background: var(--surface-color);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      transition: all 0.3s ease;
+      border: 2px dashed var(--border-color);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
+    .add-device-card:hover {
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      border-color: var(--primary-color);
+      background: var(--background-color);
+    }
+
+    /* Dark mode specific hover effect */
+    @media (prefers-color-scheme: dark) {
+      .add-device-card:hover {
+        background: #2a2a2a;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      }
+    }
+
+    .add-device-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+      color: var(--primary-color);
+    }
+
+    .device-commands {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .device-commands .btn {
+      flex: 1;
+      min-width: fit-content;
+      text-align: center;
+      white-space: nowrap;
     }
 
     .device-header {
@@ -143,29 +220,42 @@
       margin-bottom: 16px;
     }
 
+    .device-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
     .device-name {
       font-size: 1.2rem;
       font-weight: 500;
       color: var(--text-primary);
     }
 
-    .device-status {
+    .device-type-badge {
+      display: inline-block;
       padding: 4px 12px;
-      border-radius: 16px;
-      font-size: 0.8rem;
+      border-radius: 12px;
+      font-size: 0.7rem;
       font-weight: 500;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
 
-    .status-online {
-      background: #e8f5e8;
-      color: #2e7d32;
+    .type-ble {
+      background: #e3f2fd;
+      color: #1976d2;
     }
 
-    .status-offline {
-      background: #fce4ec;
-      color: #c62828;
+    .type-rf {
+      background: #f3e5f5;
+      color: #7b1fa2;
+    }
+
+    .type-ir {
+      background: #fff3e0;
+      color: #f57c00;
     }
 
     .device-info {
@@ -177,12 +267,6 @@
     .device-actions {
       display: flex;
       gap: 8px;
-    }
-
-    .btn-small {
-      padding: 8px 16px;
-      font-size: 0.8rem;
-      border-radius: 4px;
     }
 
     .loading {
@@ -233,12 +317,13 @@
 
     .modal-content {
       background: var(--surface-color);
-      margin: 5% auto;
+      margin: 2% auto;
       padding: 24px;
       border-radius: 8px;
       width: 90%;
-      max-width: 500px;
-      max-height: 80vh;
+      max-width: 90vw;
+      min-width: 300px;
+      height: 90vh;
       overflow-y: auto;
     }
 
@@ -273,18 +358,149 @@
       color: var(--text-primary);
     }
 
-    .form-input, .form-select {
+    /* Unify all modal input styles, including command add/edit fields */
+    .form-input, .form-select, .command-name, .command-code {
       width: 100%;
       padding: 12px;
       border: 2px solid var(--border-color);
       border-radius: 6px;
       font-size: 0.9rem;
       transition: border-color 0.3s ease;
+      background: var(--surface-color);
+      color: var(--text-primary);
+      box-sizing: border-box;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
-
-    .form-input:focus, .form-select:focus {
+    .form-input:focus, .form-select:focus, .command-name:focus, .command-code:focus {
       outline: none;
       border-color: var(--primary-color);
+    }
+    .command-name {
+      min-width: 120px;
+      max-width: 150px;
+      font-weight: 500;
+      border-radius: 6px;
+      background: var(--surface-color);
+      font-size: 0.9rem;
+    }
+    /* Add command form inputs */
+    #addCommandForm input[type="text"] {
+      border-radius: 6px;
+      background: var(--surface-color);
+      font-size: 0.9rem;
+      color: var(--text-primary);
+      border: 2px solid var(--border-color);
+      padding: 12px;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #addCommandForm input[type="text"]:focus {
+      border-color: var(--primary-color);
+      outline: none;
+    }
+
+    .commands-section {
+      margin-top: 20px;
+      padding: 20px;
+      background: var(--background-color);
+      border-radius: 8px;
+    }
+
+    .commands-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .commands-list {
+      /* max-height: 40vh; */
+      overflow-y: auto;
+    }
+
+    .command-item {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--surface-color);
+      border-radius: 4px;
+      margin-bottom: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .command-name {
+      font-weight: 500;
+      min-width: 120px;
+    }
+
+    .command-code {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      flex: 1;
+      /* padding: 4px 8px; */
+      border-radius: 3px;
+      word-break: break-all;
+    }
+
+    .command-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .btn-tiny {
+      padding: 4px 8px;
+      font-size: 0.7rem;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-edit {
+      background: var(--secondary-color);
+      color: white;
+    }
+
+    .btn-delete {
+      background: #f44336;
+      color: white;
+    }
+
+    .btn-test {
+      background: var(--primary-color);
+      color: white;
+    }
+
+    .command-form {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .command-form input {
+      flex: 1;
+    }
+
+    .command-form input:first-child {
+      max-width: 150px;
+    }
+
+    .pill-edit {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 4px 16px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-left: 8px;
+      cursor: pointer;
+      transition: background 0.3s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+    .pill-edit:hover {
+      background: var(--primary-dark);
     }
 
     @media (max-width: 768px) {
@@ -292,12 +508,51 @@
         flex-direction: column;
       }
       
-      .search-bar {
-        flex-direction: column;
-      }
-      
       .devices-grid {
         grid-template-columns: 1fr;
+      }
+    }
+
+    /* Dark mode specific adjustments */
+    @media (prefers-color-scheme: dark) {
+      /* Improve scrollbar appearance in dark mode */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: var(--surface-color);
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-secondary);
+      }
+
+      /* Make badges more visible in dark mode */
+      .type-ble {
+        background: #1a237e;
+        color: #7986cb;
+      }
+
+      .type-rf {
+        background: #4a148c;
+        color: #ba68c8;
+      }
+
+      .type-ir {
+        background: #e65100;
+        color: #ffb74d;
+      }
+
+      /* Improve notification visibility in dark mode */
+      .modal {
+        background: rgba(0,0,0,0.7);
       }
     }
   </style>
@@ -305,25 +560,28 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>🎤 Whispeer Control Panel</h1>
-      <p>Manage your Whispeer devices and configurations</p>
+      <h1>🎤 Whispeer</h1>
+      <div class="header-controls">
+        <button class="btn" onclick="openSettingsModal()">
+          ⚙️ Settings
+        </button>
+        <select id="languageSelector" class="btn" style="padding: 10px;" onchange="changeLanguage(this.value)">
+          <option value="en">🇺🇸 English</option>
+          <option value="es">🇲🇽 Español</option>
+          <option value="fr">🇫🇷 Français</option>
+        </select>
+      </div>
     </div>
 
     <div class="controls">
-      <button class="btn" onclick="refreshDevices()">
-        🔄 Refresh Devices
-      </button>
-      <button class="btn btn-secondary" onclick="openAddDeviceModal()">
-        ➕ Add Device
-      </button>
       <button class="btn" onclick="openSettingsModal()">
         ⚙️ Settings
       </button>
-    </div>
-
-    <div class="search-bar">
-      <input type="text" class="search-input" placeholder="Search devices..." id="searchInput" onkeyup="filterDevices()">
-      <button class="btn btn-small" onclick="clearSearch()">Clear</button>
+      <select id="languageSelector" class="btn" style="padding: 10px; margin-left: 8px;" onchange="changeLanguage(this.value)">
+        <option value="en">🇺🇸 English</option>
+        <option value="es">🇪🇸 Español</option>
+        <option value="fr">🇫🇷 Français</option>
+      </select>
     </div>
 
     <div id="devicesContainer">
@@ -331,34 +589,40 @@
     </div>
   </div>
 
-  <!-- Add Device Modal -->
-  <div id="addDeviceModal" class="modal">
-    <div class="modal-content">
+  <!-- Device Modal (Add/Edit) -->
+  <div id="deviceModal" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
       <div class="modal-header">
-        <h2 class="modal-title">Add New Device</h2>
-        <button class="close-btn" onclick="closeModal('addDeviceModal')">&times;</button>
+        <h2 class="modal-title" id="deviceModalTitle">Configurar Dispositivo</h2>
+        <button class="close-btn" onclick="closeModal('deviceModal')">&times;</button>
       </div>
-      <form id="addDeviceForm">
+      <form id="deviceForm">
         <div class="form-group">
-          <label class="form-label" for="deviceName">Device Name</label>
-          <input type="text" id="deviceName" class="form-input" required>
+          <label class="form-label">Device Name</label>
+          <input type="text" id="modalDeviceName" class="form-input" required>
         </div>
         <div class="form-group">
-          <label class="form-label" for="deviceType">Device Type</label>
-          <select id="deviceType" class="form-select" required>
-            <option value="">Select type...</option>
-            <option value="microphone">Microphone</option>
-            <option value="speaker">Speaker</option>
-            <option value="recorder">Recorder</option>
+          <label class="form-label">Device Type</label>
+          <select id="modalDeviceType" class="form-select" required>
+            <option value="ble">BLE (Bluetooth Low Energy)</option>
+            <option value="rf">RF (Radio Frequency)</option>
+            <option value="ir">IR (Infrared)</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label" for="deviceAddress">Device Address</label>
-          <input type="text" id="deviceAddress" class="form-input" placeholder="e.g., 192.168.1.100" required>
+        <div class="commands-section" id="modalCommandsSection">
+          <div class="commands-header">
+            <h3>Commands</h3>
+          </div>
+          <div class="commands-list" id="commandsList"></div>
+          <div id="addCommandForm" class="command-form" style="display: flex; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+            <input type="text" id="commandName" placeholder="Command name (e.g., light_on)" required>
+            <input type="text" id="commandCode" placeholder="Command code (hex)" required>
+            <button class="btn btn-small" type="button" onclick="addCommand()">Add</button>
+          </div>
         </div>
-        <div class="controls">
-          <button type="submit" class="btn">Add Device</button>
-          <button type="button" class="btn btn-secondary" onclick="closeModal('addDeviceModal')">Cancel</button>
+        <div class="controls" style="justify-content: flex-end;">
+          <button class="btn" type="submit" id="deviceModalSaveBtn">Guardar</button>
+          <button class="btn" id="deviceModalDeleteBtn" style="background: #f44336; color: white; display:none;" type="button">Eliminar</button>
         </div>
       </form>
     </div>
@@ -389,129 +653,482 @@
   </div>
 
   <script>
-    let devices = [];
+    let devices = {};
+    let currentDevice = null;
+    let tempCommands = {};
     let settings = {
       autoRefresh: 30,
       maxDevices: 50
     };
 
+    // Translation system
+    const translations = {
+      en: {
+        title: "Whispeer",
+        buttons: {
+          addDevice: "Add Device",
+          settings: "Settings",
+          save: "Save",
+          cancel: "Cancel",
+          delete: "Delete",
+          edit: "Edit",
+          add: "Add",
+          test: "Test"
+        },
+        labels: {
+          deviceName: "Device Name",
+          deviceType: "Device Type",
+          commands: "Commands",
+          autoRefresh: "Auto Refresh Interval (seconds)",
+          maxDevices: "Maximum Devices to Display"
+        },
+        placeholders: {
+          commandName: "Command name (e.g., light_on)",
+          commandCode: "Command code (hex)"
+        },
+        messages: {
+          loadingDevices: "Loading devices...",
+          noCommandsConfigured: "No commands configured",
+          noCommands: "No commands"
+        },
+        modals: {
+          configureDevice: "Configure Device",
+          addNewDevice: "Add New Device",
+          editDevice: "Edit Device",
+          settings: "Settings"
+        },
+        deviceTypes: {
+          ble: "BLE (Bluetooth Low Energy)",
+          rf: "RF (Radio Frequency)",
+          ir: "IR (Infrared)"
+        }
+      },
+      es: {
+        title: "Whispeer",
+        buttons: {
+          addDevice: "Agregar Dispositivo",
+          settings: "Configuración",
+          save: "Guardar",
+          cancel: "Cancelar",
+          delete: "Eliminar",
+          edit: "Editar",
+          add: "Agregar",
+          test: "Probar"
+        },
+        labels: {
+          deviceName: "Nombre del Dispositivo",
+          deviceType: "Tipo de Dispositivo",
+          commands: "Comandos",
+          autoRefresh: "Intervalo de Actualización Automática (segundos)",
+          maxDevices: "Máximo de Dispositivos a Mostrar"
+        },
+        placeholders: {
+          commandName: "Nombre del comando (ej. encender_luz)",
+          commandCode: "Código del comando (hex)"
+        },
+        messages: {
+          loadingDevices: "Cargando dispositivos...",
+          noCommandsConfigured: "No hay comandos configurados",
+          noCommands: "Sin comandos"
+        },
+        modals: {
+          configureDevice: "Configurar Dispositivo",
+          addNewDevice: "Agregar Nuevo Dispositivo",
+          editDevice: "Editar Dispositivo",
+          settings: "Configuración"
+        },
+        deviceTypes: {
+          ble: "BLE (Bluetooth de Baja Energía)",
+          rf: "RF (Radiofrecuencia)",
+          ir: "IR (Infrarrojo)"
+        }
+      },
+      fr: {
+        title: "Whispeer",
+        buttons: {
+          addDevice: "Ajouter un Appareil",
+          settings: "Paramètres",
+          save: "Sauvegarder",
+          cancel: "Annuler",
+          delete: "Supprimer",
+          edit: "Modifier",
+          add: "Ajouter",
+          test: "Tester"
+        },
+        labels: {
+          deviceName: "Nom de l'Appareil",
+          deviceType: "Type d'Appareil",
+          commands: "Commandes",
+          autoRefresh: "Intervalle de Rafraîchissement Automatique (secondes)",
+          maxDevices: "Nombre Maximum d'Appareils à Afficher"
+        },
+        placeholders: {
+          commandName: "Nom de la commande (ex. allumer_lumiere)",
+          commandCode: "Code de la commande (hex)"
+        },
+        messages: {
+          loadingDevices: "Chargement des appareils...",
+          noCommandsConfigured: "Aucune commande configurée",
+          noCommands: "Aucune commande"
+        },
+        modals: {
+          configureDevice: "Configurer l'Appareil",
+          addNewDevice: "Ajouter un Nouvel Appareil",
+          editDevice: "Modifier l'Appareil",
+          settings: "Paramètres"
+        },
+        deviceTypes: {
+          ble: "BLE (Bluetooth Basse Consommation)",
+          rf: "RF (Radiofréquence)",
+          ir: "IR (Infrarouge)"
+        }
+      }
+    };
+
+    let currentLanguage = 'en';
+
+    // Translation function
+    function t(key) {
+      const keys = key.split('.');
+      let value = translations[currentLanguage];
+      for (const k of keys) {
+        value = value?.[k];
+      }
+      return value || key;
+    }
+
+    // Change language function
+    function changeLanguage(lang) {
+      if (translations[lang]) {
+        currentLanguage = lang;
+        localStorage.setItem('whispeerLanguage', lang);
+        updateUILanguage();
+      }
+    }
+
+    // Update UI with current language
+    function updateUILanguage() {
+      // Update header
+      document.querySelector('.header h1').textContent = `🎤 ${t('title')}`;
+      
+      // Update settings button in header
+      document.querySelector('.header-controls button[onclick="openSettingsModal()"]').innerHTML = `⚙️ ${t('buttons.settings')}`;
+      
+      // Update modal elements
+      updateModalLanguage();
+      
+      // Re-render devices to update text
+      renderDevices();
+    }
+
+    function updateModalLanguage() {
+      // Device modal labels
+      const deviceNameLabel = document.querySelector('label[for="modalDeviceName"], .form-label');
+      if (deviceNameLabel) deviceNameLabel.textContent = t('labels.deviceName');
+      
+      // Settings modal
+      const autoRefreshLabel = document.querySelector('label[for="autoRefresh"]');
+      if (autoRefreshLabel) autoRefreshLabel.textContent = t('labels.autoRefresh');
+      
+      const maxDevicesLabel = document.querySelector('label[for="maxDevices"]');
+      if (maxDevicesLabel) maxDevicesLabel.textContent = t('labels.maxDevices');
+      
+      // Modal buttons
+      const saveBtn = document.getElementById('deviceModalSaveBtn');
+      if (saveBtn) saveBtn.textContent = t('buttons.save');
+      
+      const deleteBtn = document.getElementById('deviceModalDeleteBtn');
+      if (deleteBtn) deleteBtn.textContent = t('buttons.delete');
+      
+      // Form placeholders
+      const commandNameInput = document.getElementById('commandName');
+      if (commandNameInput) commandNameInput.placeholder = t('placeholders.commandName');
+      
+      const commandCodeInput = document.getElementById('commandCode');
+      if (commandCodeInput) commandCodeInput.placeholder = t('placeholders.commandCode');
+      
+      // Settings form buttons
+      const settingsSaveBtn = document.querySelector('#settingsForm button[type="submit"]');
+      if (settingsSaveBtn) settingsSaveBtn.textContent = t('buttons.save');
+      
+      const settingsCancelBtn = document.querySelector('button[onclick="closeModal(\'settingsModal\')"]');
+      if (settingsCancelBtn) settingsCancelBtn.textContent = t('buttons.cancel');
+    }
+
     // Initialize the panel
     document.addEventListener('DOMContentLoaded', function() {
+      // Load saved language
+      const savedLanguage = localStorage.getItem('whispeerLanguage');
+      if (savedLanguage && translations[savedLanguage]) {
+        currentLanguage = savedLanguage;
+        document.getElementById('languageSelector').value = savedLanguage;
+      }
+      
       loadSettings();
-      fetchDevices();
+      loadDevices();
       startAutoRefresh();
+      updateUILanguage(); // Apply translations
+      
+      document.getElementById('deviceForm').addEventListener('submit', handleDeviceFormSubmit);
+      document.getElementById('deviceModalDeleteBtn').onclick = function() {
+        if (currentDevice) removeDevice(currentDevice);
+      };
     });
 
-    // Fetch devices from Home Assistant
-    async function fetchDevices() {
-      try {
-        const response = await fetch('/api/whispeer/devices', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        devices = data.devices || [];
-        renderDevices(devices);
-      } catch (error) {
-        console.error('Error fetching devices:', error);
-        
-        // Fallback to mock data if API fails
-        const mockDevices = [
-          {
-            id: 1,
-            name: 'Living Room Microphone',
-            type: 'microphone',
-            status: 'online',
-            address: '192.168.1.100',
-            last_seen: new Date().toISOString()
+    // Load devices from localStorage (persistent storage)
+    function loadDevices() {
+      const saved = localStorage.getItem('whispeerDevices');
+      if (saved) {
+        devices = JSON.parse(saved);
+      } else {
+        // Initialize with example data
+        devices = {
+          "office_fan": {
+            "type": "ble",
+            "description": "Office Fan Controller",
+            "commands": {
+              "all_off": "100064657252c1ae0e825bba46d94451c3b01264434804f3",
+              "light_on": "100005c701c70fcd3c404b93b840d19185c8d1457459a1eb",
+              "light_off": "1000b472121f5168eb450d72d6c6cf073c769715f0c404d4",
+              "fan_off": "100004fc1232a1ce6ee23b8426b90431a34b3904230b0953",
+              "fan_on": "1000b12ae2ac40590d68a2a861f090a7248768405588ee07",
+              "fan_speed_0": "100004fc1232a1ce6ee23b8426b90431a34b3904230b0953",
+              "fan_speed_1": "1000eaae7164256dc97ef250fe6356e5863624d66477db67",
+              "fan_speed_2": "100006519504412f212394b58d455e8417ddfac3b2bb8eb9"
+            }
           },
-          {
-            id: 2,
-            name: 'Kitchen Speaker',
-            type: 'speaker',
-            status: 'offline',
-            address: '192.168.1.101',
-            last_seen: new Date(Date.now() - 300000).toISOString()
+          "living_room_tv": {
+            "type": "ir",
+            "description": "Living Room TV Remote",
+            "commands": {
+              "power_on": "NEC:0x20DF10EF",
+              "power_off": "NEC:0x20DF10EF",
+              "volume_up": "NEC:0x20DF40BF",
+              "volume_down": "NEC:0x20DFC03F",
+              "channel_up": "NEC:0x20DF00FF",
+              "channel_down": "NEC:0x20DF807F"
+            }
+          },
+          "garage_door": {
+            "type": "rf",
+            "description": "Garage Door Remote",
+            "commands": {
+              "open": "0x123456",
+              "close": "0x123457",
+              "stop": "0x123458"
+            }
           }
-        ];
-        
-        devices = mockDevices;
-        renderDevices(devices);
-        showError('Failed to load devices from server, showing mock data');
+        };
+        saveDevices();
       }
+      renderDevices();
+    }
+
+    // Save devices to localStorage
+    function saveDevices() {
+      localStorage.setItem('whispeerDevices', JSON.stringify(devices));
     }
 
     // Render devices in the UI
-    function renderDevices(deviceList) {
+    function renderDevices() {
       const container = document.getElementById('devicesContainer');
+      const deviceList = Object.entries(devices);
+      
+      // Create add device card
+      const addDeviceCard = `
+        <div class="add-device-card" onclick="openAddDeviceModal()">
+          <div class="add-device-icon">➕</div>
+          <div class="add-device-text">${t('buttons.addDevice')}</div>
+        </div>
+      `;
       
       if (deviceList.length === 0) {
-        container.innerHTML = `
-          <div class="empty-state">
-            <h3>No devices found</h3>
-            <p>Add your first Whispeer device to get started</p>
-          </div>
-        `;
+        container.innerHTML = `<div class="devices-grid">${addDeviceCard}</div>`;
         return;
       }
 
-      const devicesHTML = deviceList.map(device => `
-        <div class="device-card" data-device-id="${device.id}">
-          <div class="device-header">
-            <div class="device-name">${device.name}</div>
-            <div class="device-status status-${device.status}">${device.status}</div>
+      const devicesHTML = deviceList.map(([deviceId, device]) => {
+        const commands = Object.entries(device.commands || {});
+        const commandsHTML = commands.length > 0
+          ? `<div class="device-commands">
+              ${commands.map(([cmdName, cmdCode]) => `
+                <button class="btn btn-small btn-outlined" onclick="sendCommandToast('${deviceId}', '${cmdName}')">${cmdName}</button>
+              `).join('')}
+            </div>`
+          : `<div style="margin-top:12px;color:var(--text-secondary);font-size:0.9rem;">${t('messages.noCommands')}</div>`;
+        return `
+          <div class="device-card" data-device-id="${deviceId}">
+            <div class="device-header">
+              <div class="device-name">${deviceId}</div>
+              <div class="device-header-right">
+                <span class="device-type-badge type-${device.type}">${device.type.toUpperCase()}</span>
+                <button class="pill-edit" onclick="configureDevice('${deviceId}')">${t('buttons.edit')}</button>
+              </div>
+            </div>
+            ${commandsHTML}
           </div>
-          <div class="device-info">
-            <div><strong>Type:</strong> ${device.type}</div>
-            <div><strong>Address:</strong> ${device.address}</div>
-            <div><strong>Last seen:</strong> ${formatDate(device.last_seen)}</div>
-          </div>
-          <div class="device-actions">
-            <button class="btn btn-small" onclick="configureDevice(${device.id})">Configure</button>
-            <button class="btn btn-small btn-secondary" onclick="testDevice(${device.id})">Test</button>
-            <button class="btn btn-small" onclick="removeDevice(${device.id})" style="background: #f44336;">Remove</button>
+        `;
+      }).join('');
+
+      container.innerHTML = `<div class="devices-grid">${addDeviceCard}${devicesHTML}</div>`;
+    }
+
+    // Device configuration functions
+    function configureDevice(deviceId) {
+      currentDevice = deviceId;
+      const device = devices[deviceId];
+      document.getElementById('deviceModalTitle').textContent = t('modals.editDevice');
+      document.getElementById('modalDeviceName').value = deviceId;
+      document.getElementById('modalDeviceName').readOnly = true;
+      document.getElementById('modalDeviceType').value = device.type;
+      document.getElementById('modalCommandsSection').style.display = 'block';
+      document.getElementById('deviceModalDeleteBtn').style.display = 'inline-block';
+      renderCommands(device.commands || {});
+      updateModalLanguage(); // Update modal language
+      document.getElementById('deviceModal').style.display = 'block';
+    }
+
+    function renderCommands(commands) {
+      const container = document.getElementById('commandsList');
+      const commandEntries = Object.entries(commands);
+      if (commandEntries.length === 0) {
+        container.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">${t('messages.noCommandsConfigured')}</p>`;
+        return;
+      }
+      const commandsHTML = commandEntries.map(([name, code]) => `
+        <div class="command-item">
+          <input class="command-name form-input" value="${name}" onchange="updateCommandName(this, '${name}')" style="min-width:120px;max-width:150px;">
+          <input class="command-code form-input" value="${code}" onchange="updateCommandCode('${name}', this.value)" style="flex:1;">
+          <div class="command-actions">
+            <button class="btn-tiny btn-test" onclick="testCommand('${name}', document.querySelector('[value=\'${code}\']').value)">${t('buttons.test')}</button>
+            <button class="btn-tiny btn-delete" onclick="deleteCommand('${name}')">${t('buttons.delete')}</button>
           </div>
         </div>
       `).join('');
-
-      container.innerHTML = `<div class="devices-grid">${devicesHTML}</div>`;
+      container.innerHTML = commandsHTML;
     }
 
-    // Filter devices based on search input
-    function filterDevices() {
-      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-      const filteredDevices = devices.filter(device => 
-        device.name.toLowerCase().includes(searchTerm) ||
-        device.type.toLowerCase().includes(searchTerm) ||
-        device.address.toLowerCase().includes(searchTerm)
-      );
-      renderDevices(filteredDevices);
+    function updateCommandName(input, oldName) {
+      const newName = input.value.trim();
+      if (!newName || newName === oldName) return;
+      let commands = currentDevice ? devices[currentDevice].commands : tempCommands;
+      if (commands[newName]) {
+        showError(`Command name "${newName}" already exists.`);
+        input.value = oldName;
+        return;
+      }
+      commands[newName] = commands[oldName];
+      delete commands[oldName];
+      saveDevices();
+      renderCommands(commands);
     }
 
-    // Clear search
-    function clearSearch() {
-      document.getElementById('searchInput').value = '';
-      renderDevices(devices);
+    function updateCommandCode(name, newCode) {
+      let commands = currentDevice ? devices[currentDevice].commands : tempCommands;
+      commands[name] = newCode;
+      saveDevices();
     }
 
-    // Refresh devices
-    function refreshDevices() {
-      document.getElementById('devicesContainer').innerHTML = '<div class="loading">Loading devices...</div>';
-      fetchDevices();
+    function addCommand() {
+      const name = document.getElementById('commandName').value.trim();
+      const code = document.getElementById('commandCode').value.trim();
+      if (!name || !code) {
+        showError('Please provide both command name and code');
+        return;
+      }
+      if (currentDevice) {
+        if (devices[currentDevice].commands[name]) {
+          if (!confirm(`Command "${name}" already exists. Do you want to overwrite it?`)) {
+            return;
+          }
+        }
+        devices[currentDevice].commands[name] = code;
+        saveDevices();
+        renderCommands(devices[currentDevice].commands);
+      } else {
+        if (tempCommands[name]) {
+          if (!confirm(`Command "${name}" already exists. Do you want to overwrite it?`)) {
+            return;
+          }
+        }
+        tempCommands[name] = code;
+        renderCommands(tempCommands);
+      }
+      // Clear the form fields
+      document.getElementById('commandName').value = '';
+      document.getElementById('commandCode').value = '';
+      showSuccess(`Command "${name}" added successfully`);
     }
+
+    function deleteCommand(name) {
+      if (confirm(`Are you sure you want to delete the command "${name}"?`)) {
+        if (currentDevice) {
+          delete devices[currentDevice].commands[name];
+          saveDevices();
+          renderCommands(devices[currentDevice].commands);
+        } else {
+          delete tempCommands[name];
+          renderCommands(tempCommands);
+        }
+        showSuccess(`Command "${name}" deleted successfully`);
+      }
+    }
+
+    function testCommand(name, code) {
+      showSuccess(`Testing command "${name}": ${code}`);
+      // In a real implementation, this would send the command to the device
+      console.log(`Testing command: ${name} -> ${code}`);
+    }
+
+    function openAddDeviceModal() {
+      currentDevice = null;
+      tempCommands = {};
+      document.getElementById('deviceModalTitle').textContent = t('modals.addNewDevice');
+      document.getElementById('modalDeviceName').value = '';
+      document.getElementById('modalDeviceName').readOnly = false;
+      document.getElementById('modalDeviceType').value = 'ble';
+      document.getElementById('modalCommandsSection').style.display = 'block';
+      document.getElementById('deviceModalDeleteBtn').style.display = 'none';
+      renderCommands(tempCommands);
+      updateModalLanguage(); // Update modal language
+      document.getElementById('deviceModal').style.display = 'block';
+    }
+
+    // Unifica el handler de guardado
+    function handleDeviceFormSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('modalDeviceName').value.trim();
+      const type = document.getElementById('modalDeviceType').value;
+      if (!name || !type) {
+        showError('Please provide device name and type');
+        return;
+      }
+      if (!currentDevice) {
+        // Nuevo
+        if (devices[name]) {
+          showError(`Device "${name}" already exists`);
+          return;
+        }
+        devices[name] = { type, commands: {...tempCommands} };
+        saveDevices();
+        renderDevices();
+        closeModal('deviceModal');
+        showSuccess(`Device "${name}" added successfully`);
+      } else {
+        // Editar
+        devices[name].type = type;
+        saveDevices();
+        renderDevices();
+        closeModal('deviceModal');
+        showSuccess('Device configuration saved successfully');
+      }
+    }
+    document.getElementById('deviceForm').addEventListener('submit', handleDeviceFormSubmit);
+    document.getElementById('deviceModalDeleteBtn').onclick = function() {
+      if (currentDevice) removeDevice(currentDevice);
+    };
 
     // Modal functions
-    function openAddDeviceModal() {
-      document.getElementById('addDeviceModal').style.display = 'block';
-    }
-
     function openSettingsModal() {
       document.getElementById('settingsModal').style.display = 'block';
     }
@@ -526,45 +1143,6 @@
         event.target.style.display = 'none';
       }
     }
-
-    // Add device form handler
-    document.getElementById('addDeviceForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      
-      const deviceData = {
-        name: document.getElementById('deviceName').value,
-        type: document.getElementById('deviceType').value,
-        address: document.getElementById('deviceAddress').value
-      };
-
-      try {
-        const response = await fetch('/api/whispeer/devices', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(deviceData)
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-          await fetchDevices(); // Refresh the device list
-          closeModal('addDeviceModal');
-          e.target.reset();
-          showSuccess('Device added successfully');
-        } else {
-          throw new Error(result.message || 'Failed to add device');
-        }
-      } catch (error) {
-        console.error('Error adding device:', error);
-        showError('Failed to add device: ' + error.message);
-      }
-    });
 
     // Settings form handler
     document.getElementById('settingsForm').addEventListener('submit', function(e) {
@@ -581,66 +1159,6 @@
       startAutoRefresh();
     });
 
-    // Device actions
-    function configureDevice(deviceId) {
-      const device = devices.find(d => d.id === deviceId);
-      if (device) {
-        alert(`Configure device: ${device.name}\n(Configuration UI to be implemented)`);
-      }
-    }
-
-    function testDevice(deviceId) {
-      const device = devices.find(d => d.id === deviceId);
-      if (device) {
-        // Call the test API
-        fetch(`/api/whispeer/device/${deviceId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-        .then(response => response.json())
-        .then(result => {
-          if (result.status === 'success') {
-            showSuccess(`Test completed for ${device.name}: ${result.test_result}`);
-          } else {
-            showError(`Test failed for ${device.name}: ${result.message}`);
-          }
-        })
-        .catch(error => {
-          console.error('Error testing device:', error);
-          showError(`Failed to test device: ${error.message}`);
-        });
-      }
-    }
-
-    function removeDevice(deviceId) {
-      const device = devices.find(d => d.id === deviceId);
-      if (device && confirm(`Are you sure you want to remove ${device.name}?`)) {
-        // Call the remove API
-        fetch(`/api/whispeer/device/${deviceId}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-        .then(response => response.json())
-        .then(result => {
-          if (result.status === 'success') {
-            devices = devices.filter(d => d.id !== deviceId);
-            renderDevices(devices);
-            showSuccess('Device removed successfully');
-          } else {
-            showError(`Failed to remove device: ${result.message}`);
-          }
-        })
-        .catch(error => {
-          console.error('Error removing device:', error);
-          showError(`Failed to remove device: ${error.message}`);
-        });
-      }
-    }
-
     // Auto refresh functionality
     let autoRefreshInterval;
     
@@ -650,7 +1168,7 @@
       }
       
       autoRefreshInterval = setInterval(() => {
-        fetchDevices();
+        renderDevices();
       }, settings.autoRefresh * 1000);
     }
 
@@ -658,7 +1176,7 @@
     function loadSettings() {
       const saved = localStorage.getItem('whispeerSettings');
       if (saved) {
-        settings = {...settings, ...JSON.parse(saved)};
+        settings = JSON.parse(saved);
         document.getElementById('autoRefresh').value = settings.autoRefresh;
         document.getElementById('maxDevices').value = settings.maxDevices;
       }
@@ -669,19 +1187,53 @@
     }
 
     // Utility functions
-    function formatDate(dateString) {
-      const date = new Date(dateString);
-      return date.toLocaleString();
-    }
-
     function showSuccess(message) {
-      // Simple alert for now - can be enhanced with proper notifications
-      alert('✅ ' + message);
+      // Simple notification - can be enhanced with proper notifications
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #4caf50;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 4px;
+        z-index: 10000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      `;
+      notification.textContent = '✅ ' + message;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 3000);
     }
 
     function showError(message) {
-      // Simple alert for now - can be enhanced with proper notifications
-      alert('❌ ' + message);
+      // Simple notification - can be enhanced with proper notifications
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #f44336;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 4px;
+        z-index: 10000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      `;
+      notification.textContent = '❌ ' + message;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 3000);
+    }
+
+    // Add this function to handle the toast
+    function sendCommandToast(deviceId, cmdName) {
+      showSuccess(`Command \"${cmdName}\" sent to \"${deviceId}\"`);
     }
   </script>
 </body>
