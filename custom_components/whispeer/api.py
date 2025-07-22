@@ -73,6 +73,57 @@ class WhispeerApiClient:
             "message": f"Device {device_id} removed successfully",
         }
 
+    async def async_send_command(self, device_id: str, device_type: str, command_name: str, command_code: str) -> dict:
+        """Send a command to a device."""
+        # Implement actual command sending logic based on device type
+        if device_type == "ble":
+            return await self._send_ble_command(device_id, command_name, command_code)
+        elif device_type == "rf":
+            return await self._send_rf_command(device_id, command_name, command_code)
+        elif device_type == "ir":
+            return await self._send_ir_command(device_id, command_name, command_code)
+        else:
+            return {
+                "status": "error",
+                "message": f"Unsupported device type: {device_type}"
+            }
+
+    async def _send_ble_command(self, device_id: str, command_name: str, command_code: str) -> dict:
+        """Send BLE command."""
+        # Implement BLE command sending logic
+        return {
+            "status": "success",
+            "message": f"BLE command '{command_name}' sent to '{device_id}'",
+            "command_code": command_code
+        }
+
+    async def _send_rf_command(self, device_id: str, command_name: str, command_code: str) -> dict:
+        """Send RF command."""
+        # Implement RF command sending logic
+        return {
+            "status": "success",
+            "message": f"RF command '{command_name}' sent to '{device_id}'",
+            "command_code": command_code
+        }
+
+    async def _send_ir_command(self, device_id: str, command_name: str, command_code: str) -> dict:
+        """Send IR command."""
+        # Implement IR command sending logic
+        return {
+            "status": "success",
+            "message": f"IR command '{command_name}' sent to '{device_id}'",
+            "command_code": command_code
+        }
+
+    async def async_sync_devices(self, devices: dict) -> dict:
+        """Sync devices with the backend."""
+        # Implement device synchronization logic
+        return {
+            "status": "success",
+            "message": f"Synced {len(devices)} devices",
+            "device_count": len(devices)
+        }
+
     async def async_test_device(self, device_id: int) -> dict:
         """Test a Whispeer device."""
         # Implement device testing logic

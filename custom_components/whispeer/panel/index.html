@@ -857,6 +857,15 @@
 
     // Initialize the panel
     document.addEventListener('DOMContentLoaded', function() {
+      // Debug token information
+      console.log('Panel initialization - Token debug:', {
+        url: window.location.href,
+        hasWindowToken: !!window.homeAssistantToken,
+        windowTokenLength: window.homeAssistantToken ? window.homeAssistantToken.length : 0,
+        localStorageToken: localStorage.getItem('ha_access_token'),
+        urlParams: new URLSearchParams(window.location.search).get('access_token')
+      });
+      
       // Load saved language
       const savedLanguage = localStorage.getItem('whispeerLanguage');
       if (savedLanguage && translations[savedLanguage]) {
@@ -868,6 +877,32 @@
       loadDevices();
       startAutoRefresh();
       updateUILanguage(); // Apply translations
+      
+      // Test token after a short delay to allow injection
+      setTimeout(async () => {
+        let token = getHomeAssistantToken();
+        
+        // If no token found, try the async method
+        if (!token) {
+          console.log('Trying async token retrieval...');
+          token = await getTokenFromHomeAssistant();
+        }
+        
+        if (token) {
+          console.log('✅ Token available:', token.substring(0, 20) + '...');
+          showSuccess('Connected to Home Assistant');
+        } else {
+          console.warn('❌ No token found after all attempts');
+          showError('No authentication token found. You may need to manually copy your Long-Lived Access Token from Home Assistant Profile.');
+          
+          // Show instructions to user
+          console.log('To get your token:');
+          console.log('1. Go to Home Assistant Profile (click your name in bottom left)');
+          console.log('2. Scroll to "Long-Lived Access Tokens"');
+          console.log('3. Create a new token');
+          console.log('4. Store it in browser storage with: localStorage.setItem("ha_access_token", "your_token_here")');
+        }
+      }, 1000);
       
       document.getElementById('deviceForm').addEventListener('submit', handleDeviceFormSubmit);
       document.getElementById('deviceModalDeleteBtn').onclick = function() {
@@ -921,12 +956,48 @@
         };
         saveDevices();
       }
+      
+      // Sync with backend if available
+      syncWithBackend();
       renderDevices();
     }
 
-    // Save devices to localStorage
+    // Sync devices with Home Assistant backend
+    async function syncWithBackend() {
+      try {
+        const token = getHomeAssistantToken();
+        if (!token) return; // Skip sync if no token
+        
+        const response = await fetch('/api/services/whispeer/sync_devices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            devices: devices
+          })
+        });
+        
+        if (response.ok) {
+          console.log('Devices synced with backend successfully');
+        } else {
+          console.warn('Failed to sync with backend:', response.statusText);
+        }
+      } catch (error) {
+        console.warn('Backend sync failed:', error);
+        // Don't show error to user as this is optional
+      }
+    }
+
+    // Save devices to localStorage and sync with backend
     function saveDevices() {
       localStorage.setItem('whispeerDevices', JSON.stringify(devices));
+      
+      // Sync with backend in background
+      syncWithBackend().catch(error => {
+        console.warn('Background sync failed:', error);
+      });
     }
 
     // Render devices in the UI
@@ -1075,9 +1146,13 @@
     }
 
     function testCommand(name, code) {
-      showSuccess(`Testing command "${name}": ${code}`);
-      // In a real implementation, this would send the command to the device
-      console.log(`Testing command: ${name} -> ${code}`);
+      if (!currentDevice) {
+        showError('No device selected for testing');
+        return;
+      }
+      
+      // Use the same backend call as the main command buttons
+      sendCommandToast(currentDevice, name);
     }
 
     function openAddDeviceModal() {
@@ -1231,9 +1306,253 @@
       }, 3000);
     }
 
-    // Add this function to handle the toast
-    function sendCommandToast(deviceId, cmdName) {
-      showSuccess(`Command \"${cmdName}\" sent to \"${deviceId}\"`);
+    // Send command to backend
+    async function sendCommandToast(deviceId, cmdName) {
+      const device = devices[deviceId];
+      const commandCode = device.commands[cmdName];
+      
+      if (!commandCode) {
+        showError(`Command "${cmdName}" not found for device "${deviceId}"`);
+        return;
+      }
+
+      const token = getHomeAssistantToken();
+      
+      if (!token) {
+        showError('No Home Assistant access token found. Panel may not be opened from Home Assistant sidebar.');
+        console.error('Token debug info:', {
+          url: window.location.href,
+          localStorage: localStorage.getItem('ha_access_token'),
+          windowToken: window.homeAssistantToken
+        });
+        return;
+      }
+
+      try {
+        // Show loading state
+        showInfo(`Sending "${cmdName}" to "${deviceId}"...`);
+        
+        // Make the API call to Home Assistant
+        const response = await fetch('/api/services/whispeer/send_command', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            device_id: deviceId,
+            device_type: device.type,
+            command_name: cmdName,
+            command_code: commandCode
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          showSuccess(`Command "${cmdName}" sent successfully to "${deviceId}"`);
+          console.log('Command sent successfully:', result);
+        } else if (response.status === 401) {
+          // Handle unauthorized specifically
+          showError(`Unauthorized (401): Token may be expired or invalid. Please refresh the page from Home Assistant.`);
+          console.error('Authorization failed. Token info:', {
+            tokenLength: token ? token.length : 0,
+            tokenStart: token ? token.substring(0, 10) + '...' : 'null',
+            responseStatus: response.status
+          });
+          // Clear invalid token
+          localStorage.removeItem('ha_access_token');
+        } else {
+          const errorData = await response.json();
+          showError(`Failed to send command (${response.status}): ${errorData.message || response.statusText}`);
+          console.error('Command failed:', errorData);
+        }
+      } catch (error) {
+        console.error('Error sending command:', error);
+        showError(`Network error: ${error.message}`);
+      }
+    }
+
+    // Remove device function
+    async function removeDevice(deviceId) {
+      if (!confirm(`Are you sure you want to delete device "${deviceId}"?`)) {
+        return;
+      }
+      
+      try {
+        // Remove from local storage first
+        delete devices[deviceId];
+        saveDevices();
+        
+        const token = getHomeAssistantToken();
+        
+        // Try to notify backend (optional - backend might not need this)
+        if (token) {
+          try {
+            await fetch('/api/services/whispeer/remove_device', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                device_id: deviceId
+              })
+            });
+          } catch (backendError) {
+            console.warn('Failed to notify backend of device removal:', backendError);
+            // Don't show error to user as local removal succeeded
+          }
+        }
+        
+        renderDevices();
+        closeModal('deviceModal');
+        showSuccess(`Device "${deviceId}" removed successfully`);
+        
+      } catch (error) {
+        console.error('Error removing device:', error);
+        showError(`Failed to remove device: ${error.message}`);
+      }
+    }
+
+    // Get Home Assistant token from multiple sources
+    function getHomeAssistantToken() {
+      // First check if we have the injected function from backend
+      if (window.getHomeAssistantToken && window.getHomeAssistantToken !== getHomeAssistantToken) {
+        const backendToken = window.getHomeAssistantToken();
+        if (backendToken) {
+          return backendToken;
+        }
+      }
+      
+      // Try to get token from URL parameters first (when opened from HA)
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenFromUrl = urlParams.get('access_token');
+      
+      if (tokenFromUrl) {
+        localStorage.setItem('ha_access_token', tokenFromUrl);
+        return tokenFromUrl;
+      }
+      
+      // Try from global variable set by backend
+      if (window.homeAssistantToken && window.homeAssistantToken !== '') {
+        localStorage.setItem('ha_access_token', window.homeAssistantToken);
+        return window.homeAssistantToken;
+      }
+      
+      // Fallback to stored token
+      const storedToken = localStorage.getItem('ha_access_token');
+      if (storedToken && storedToken !== 'undefined' && storedToken !== '') {
+        return storedToken;
+      }
+      
+      // Try to get from parent window (if in iframe)
+      try {
+        if (window.parent && window.parent !== window) {
+          // Try to access parent window's Home Assistant context
+          const parentHA = window.parent.document?.querySelector('home-assistant');
+          if (parentHA && parentHA.hass && parentHA.hass.auth) {
+            const token = parentHA.hass.auth.accessToken;
+            if (token) {
+              localStorage.setItem('ha_access_token', token);
+              return token;
+            }
+          }
+        }
+      } catch (e) {
+        console.debug('Cannot access parent window Home Assistant context:', e);
+      }
+      
+      // Last resort: try to create a dummy request to get auth headers
+      try {
+        // This approach works when the panel is loaded within Home Assistant's context
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/api/', false); // Synchronous request
+        xhr.send();
+        const authHeader = xhr.getResponseHeader('Authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          localStorage.setItem('ha_access_token', token);
+          return token;
+        }
+      } catch (e) {
+        console.debug('Cannot extract token from API headers:', e);
+      }
+      
+      // No token available
+      console.error('No Home Assistant access token found');
+      return null;
+    }
+
+    // Add info notification function
+    function showInfo(message) {
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--primary-color);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 4px;
+        z-index: 10000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      `;
+      notification.textContent = 'ℹ️ ' + message;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 2000);
+    }
+    async function getTokenFromHomeAssistant() {
+      try {
+        // Try to make a simple request to get the current user's token info
+        const response = await fetch('/api/auth/current_user', {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          const userData = await response.json();
+          console.log('Current user data:', userData);
+          // The actual token will be in the session/cookies, not the response
+          // But this confirms we're authenticated
+          
+          // Try to get the token from the session storage or other location
+          const sessionToken = sessionStorage.getItem('hassTokens') || localStorage.getItem('hassTokens');
+          if (sessionToken) {
+            const tokens = JSON.parse(sessionToken);
+            if (tokens.access_token) {
+              localStorage.setItem('ha_access_token', tokens.access_token);
+              return tokens.access_token;
+            }
+          }
+        }
+      } catch (error) {
+        console.debug('Cannot get token from Home Assistant API:', error);
+      }
+      
+      return null;
+    }
+    function showInfo(message) {
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--primary-color);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 4px;
+        z-index: 10000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      `;
+      notification.textContent = 'ℹ️ ' + message;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 2000);
     }
   </script>
 </body>
