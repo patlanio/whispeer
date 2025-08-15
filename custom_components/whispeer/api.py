@@ -237,23 +237,31 @@ class WhispeerApiClient:
             return _create_error_response(f"BLE signal execution failed: {str(e)}")
 
     async def _send_ble_command(self, device_id: str, command_name: str, command_code: str) -> dict:
-        """Send BLE command using the new whispeer_ble.py script."""
-        result = _execute_ble_script(["emit_command", device_id, command_name])
+        """Send BLE command using emit_signal mode with the hex data."""
+        if not command_code:
+            return _create_error_response(
+                f"No command code provided for command '{command_name}' on device '{device_id}'"
+            )
+        
+        # Use emit_signal mode directly with the hex data
+        result = _execute_ble_script(["emit_signal", command_code])
         
         if not result["success"]:
             return _create_error_response(
                 result["message"],
                 command_code=command_code,
                 device_id=device_id,
+                command_name=command_name,
                 script_output=result.get("stdout"),
                 script_error=result.get("stderr"),
                 return_code=result.get("return_code")
             )
         
         return _create_success_response(
-            f"BLE command '{command_name}' processed for '{device_id}'",
+            f"BLE command '{command_name}' sent successfully for device '{device_id}'",
             command_code=command_code,
             device_id=device_id,
+            command_name=command_name,
             script_output=result["stdout"],
             return_code=result["return_code"]
         )
