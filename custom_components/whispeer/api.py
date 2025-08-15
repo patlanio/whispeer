@@ -89,8 +89,44 @@ class WhispeerApiClient:
             }
 
     async def async_send_ble_signal(self, data_hex: str, interface: str = None) -> dict:
-        """Send a raw BLE signal."""
-        return await self._send_ble_signal(data_hex, interface)
+        """Send a raw BLE signal using whispeer_ble module functions."""
+        try:
+            # Import the whispeer_ble module to use its functions
+            from . import whispeer_ble
+            
+            _LOGGER.info(f"Sending BLE signal - Data: {data_hex}, Interface: {interface}")
+            
+            # Use the emit_signal function from whispeer_ble module
+            success = whispeer_ble.emit_signal(data_hex, interface)
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"BLE signal sent successfully - Data: {data_hex}",
+                    "data_hex": data_hex,
+                    "interface": interface,
+                    "mode": "hardware" if whispeer_ble.check_bluetooth_availability()["available"] else "simulation"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Failed to send BLE signal - Data: {data_hex}",
+                    "data_hex": data_hex,
+                    "interface": interface
+                }
+                
+        except ImportError as e:
+            _LOGGER.error(f"Could not import whispeer_ble module: {e}")
+            return {
+                "status": "error",
+                "message": f"Could not import BLE module: {e}"
+            }
+        except Exception as e:
+            _LOGGER.error(f"Error sending BLE signal: {e}")
+            return {
+                "status": "error",
+                "message": f"BLE signal execution failed: {str(e)}"
+            }
 
     async def _send_ble_command(self, device_id: str, command_name: str, command_code: str) -> dict:
         """Send BLE command using the new whispeer_ble.py script."""
@@ -271,55 +307,24 @@ class WhispeerApiClient:
             }
 
     async def async_get_ble_interfaces(self) -> dict:
-        """Get available Bluetooth interfaces."""
+        """Get available Bluetooth interfaces using whispeer_ble module."""
         try:
-            import subprocess
-            import os
+            # Import the whispeer_ble module to use its functions
+            from . import whispeer_ble
             
-            # Get the path to the whispeer_ble.py script
-            current_dir = os.path.dirname(__file__)
-            script_path = os.path.join(current_dir, "whispeer_ble.py")
+            interfaces = whispeer_ble.get_available_interfaces()
+            return {
+                "status": "success",
+                "interfaces": interfaces,
+                "message": f"Found {len(interfaces)} Bluetooth interface(s)"
+            }
             
-            # Check if script exists
-            if not os.path.exists(script_path):
-                _LOGGER.error(f"BLE script not found at {script_path}")
-                return {
-                    "status": "error",
-                    "message": f"BLE script not found at {script_path}"
-                }
-            
-            cmd = ["python3", script_path, "get_available_interfaces"]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if result.returncode == 0:
-                try:
-                    import json
-                    interfaces = json.loads(result.stdout)
-                    return {
-                        "status": "success",
-                        "interfaces": interfaces,
-                        "message": f"Found {len(interfaces)} Bluetooth interface(s)"
-                    }
-                except json.JSONDecodeError as e:
-                    _LOGGER.error(f"Failed to parse interfaces JSON: {e}")
-                    return {
-                        "status": "error",
-                        "message": f"Failed to parse interfaces output: {e}",
-                        "raw_output": result.stdout
-                    }
-            else:
-                return {
-                    "status": "error",
-                    "message": f"Failed to get interfaces: {result.stderr}",
-                    "return_code": result.returncode
-                }
-            
+        except ImportError as e:
+            _LOGGER.error(f"Could not import whispeer_ble module: {e}")
+            return {
+                "status": "error",
+                "message": f"Could not import BLE module: {e}"
+            }
         except Exception as e:
             _LOGGER.error(f"Error getting BLE interfaces: {e}")
             return {
