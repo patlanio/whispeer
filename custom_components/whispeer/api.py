@@ -8,6 +8,8 @@ from typing import Dict, Any, List, Optional
 
 import aiohttp
 import async_timeout
+from aiohttp import web
+from homeassistant.components.http import HomeAssistantView
 
 TIMEOUT = 10
 
@@ -424,3 +426,74 @@ class WhispeerApiClient:
             )
         except Exception as exception:  # pylint: disable=broad-except
             _LOGGER.error("Something really wrong happened! - %s", exception)
+
+
+class WhispeerInterfacesView(HomeAssistantView):
+    """View to handle interface retrieval."""
+
+    url = "/api/services/whispeer/get_interfaces"
+    name = "api:whispeer:get_interfaces"
+    requires_auth = True
+
+    async def post(self, request):
+        """Get available interfaces for a device type."""
+        try:
+            data = await request.json()
+            device_type = data.get('type', '').lower()
+            
+            if not device_type:
+                return web.json_response({
+                    "error": "Missing required field: type"
+                }, status=400)
+            
+            if device_type not in ['ble', 'rf', 'ir']:
+                return web.json_response({
+                    "error": f"Unsupported device type: {device_type}"
+                }, status=400)
+            
+            _LOGGER.info(f"Getting interfaces for device type: {device_type}")
+            
+            hass = request.app["hass"]
+            domain_data = hass.data.get("whispeer", {})
+            
+            # Get the first coordinator entry to access the API client
+            coordinator = None
+            for entry_data in domain_data.values():
+                if hasattr(entry_data, 'api'):
+                    coordinator = entry_data
+                    break
+            
+            if not coordinator:
+                return web.json_response({
+                    "error": "Whispeer coordinator not available"
+                }, status=500)
+            
+            # Get interfaces based on device type using the API client
+            if device_type == 'ble':
+                result = await coordinator.api.async_get_ble_interfaces()
+            elif device_type == 'rf':
+                # For now, return mock RF interfaces - implement actual logic later
+                result = {
+                    "status": "success",
+                    "message": "RF interfaces retrieved",
+                    "interfaces": [
+                        {"id": "rf0", "name": "RF Transceiver 0", "description": "433MHz RF module"},
+                        {"id": "rf1", "name": "RF Transceiver 1", "description": "868MHz RF module"}
+                    ]
+                }
+            elif device_type == 'ir':
+                # For now, return mock IR interfaces - implement actual logic later
+                result = {
+                    "status": "success", 
+                    "message": "IR interfaces retrieved",
+                    "interfaces": [
+                        {"id": "ir0", "name": "IR Blaster 0", "description": "Built-in IR transmitter"},
+                        {"id": "ir1", "name": "IR Blaster 1", "description": "External IR transmitter"}
+                    ]
+                }
+            
+            return web.json_response(result)
+            
+        except Exception as e:
+            _LOGGER.error(f"Error getting interfaces: {e}")
+            return web.json_response({"error": str(e)}, status=500)

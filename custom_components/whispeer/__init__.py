@@ -22,6 +22,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import HomeAssistantView
 
 from .api import WhispeerApiClient
+from .api import WhispeerInterfacesView
 from .const import CONF_PASSWORD
 from .const import CONF_USERNAME
 from .const import DOMAIN
@@ -383,6 +384,7 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerCommandView())
         hass.http.register_view(WhispeerSyncView())
         hass.http.register_view(WhispeerRemoveDeviceView())
+        hass.http.register_view(WhispeerInterfacesView())
         
         # Register the panel using the frontend component
         frontend.async_register_built_in_panel(
