@@ -561,11 +561,7 @@
         <button class="btn" onclick="openSettingsModal()">
           ⚙️ Settings
         </button>
-        <select id="languageSelector" class="btn" style="padding: 10px;" onchange="changeLanguage(this.value)">
-          <option value="en">🇺🇸 English</option>
-          <option value="es">🇲🇽 Español</option>
-          <option value="fr">🇫🇷 Français</option>
-        </select>
+
       </div>
     </div>
 
@@ -578,7 +574,7 @@
   <div id="deviceModal" class="modal">
     <div class="modal-content" style="max-width: 800px;">
       <div class="modal-header">
-        <h2 class="modal-title" id="deviceModalTitle">Configurar Dispositivo</h2>
+        <h2 class="modal-title" id="deviceModalTitle">Configure Device</h2>
         <button class="close-btn" onclick="closeModal('deviceModal')">&times;</button>
       </div>
       <form id="deviceForm">
@@ -659,226 +655,7 @@
       maxDevices: 50
     };
 
-    // Translation system
-    const translations = {
-      en: {
-        title: "Whispeer",
-        buttons: {
-          addDevice: "Add Device",
-          settings: "Settings",
-          save: "Save",
-          cancel: "Cancel",
-          delete: "Delete",
-          edit: "Edit",
-          add: "Add",
-          test: "Test",
-          saveCommands: "Save Commands",
-          discardChanges: "Discard Changes",
-          saveDevice: "Save Device",
-          deleteDevice: "Delete Device",
-          saveAll: "Save All"
-        },
-        labels: {
-          deviceName: "Device Name",
-          deviceType: "Device Type",
-          interface: "Interface",
-          commands: "Commands",
-          autoRefresh: "Auto Refresh Interval (seconds)",
-          maxDevices: "Maximum Devices to Display"
-        },
-        placeholders: {
-          commandName: "Command name (e.g., light_on)",
-          commandCode: "Command code (hex)"
-        },
-        messages: {
-          loadingDevices: "Loading devices...",
-          noCommandsConfigured: "No commands configured",
-          noCommands: "No commands"
-        },
-        modals: {
-          configureDevice: "Configure Device",
-          addNewDevice: "Add New Device",
-          editDevice: "Edit Device",
-          settings: "Settings"
-        },
-        deviceTypes: {
-          ble: "BLE (Bluetooth Low Energy)",
-          rf: "RF (Radio Frequency)",
-          ir: "IR (Infrared)"
-        }
-      },
-      es: {
-        title: "Whispeer",
-        buttons: {
-          addDevice: "Agregar Dispositivo",
-          settings: "Configuración",
-          save: "Guardar",
-          cancel: "Cancelar",
-          delete: "Eliminar",
-          edit: "Editar",
-          add: "Agregar",
-          test: "Probar",
-          saveCommands: "Guardar Comandos",
-          discardChanges: "Descartar Cambios",
-          saveDevice: "Guardar Dispositivo",
-          deleteDevice: "Eliminar Dispositivo",
-          saveAll: "Guardar Todo"
-        },
-        labels: {
-          deviceName: "Nombre del Dispositivo",
-          deviceType: "Tipo de Dispositivo",
-          interface: "Interfaz",
-          commands: "Comandos",
-          autoRefresh: "Intervalo de Actualización Automática (segundos)",
-          maxDevices: "Máximo de Dispositivos a Mostrar"
-        },
-        placeholders: {
-          commandName: "Nombre del comando (ej. encender_luz)",
-          commandCode: "Código del comando (hex)"
-        },
-        messages: {
-          loadingDevices: "Cargando dispositivos...",
-          noCommandsConfigured: "No hay comandos configurados",
-          noCommands: "Sin comandos"
-        },
-        modals: {
-          configureDevice: "Configurar Dispositivo",
-          addNewDevice: "Agregar Nuevo Dispositivo",
-          editDevice: "Editar Dispositivo",
-          settings: "Configuración"
-        },
-        deviceTypes: {
-          ble: "BLE (Bluetooth de Baja Energía)",
-          rf: "RF (Radiofrecuencia)",
-          ir: "IR (Infrarrojo)"
-        }
-      },
-      fr: {
-        title: "Whispeer",
-        buttons: {
-          addDevice: "Ajouter un Appareil",
-          settings: "Paramètres",
-          save: "Sauvegarder",
-          cancel: "Annuler",
-          delete: "Supprimer",
-          edit: "Modifier",
-          add: "Ajouter",
-          test: "Tester",
-          saveCommands: "Sauvegarder les Commandes",
-          discardChanges: "Annuler les Modifications",
-          saveDevice: "Sauvegarder l'Appareil",
-          deleteDevice: "Supprimer l'Appareil",
-          saveAll: "Tout Sauvegarder"
-        },
-        labels: {
-          deviceName: "Nom de l'Appareil",
-          deviceType: "Type d'Appareil",
-          interface: "Interface",
-          commands: "Commandes",
-          autoRefresh: "Intervalle de Rafraîchissement Automatique (secondes)",
-          maxDevices: "Nombre Maximum d'Appareils à Afficher"
-        },
-        placeholders: {
-          commandName: "Nom de la commande (ex. allumer_lumiere)",
-          commandCode: "Code de la commande (hex)"
-        },
-        messages: {
-          loadingDevices: "Chargement des appareils...",
-          noCommandsConfigured: "Aucune commande configurée",
-          noCommands: "Aucune commande"
-        },
-        modals: {
-          configureDevice: "Configurer l'Appareil",
-          addNewDevice: "Ajouter un Nouvel Appareil",
-          editDevice: "Modifier l'Appareil",
-          settings: "Paramètres"
-        },
-        deviceTypes: {
-          ble: "BLE (Bluetooth Basse Consommation)",
-          rf: "RF (Radiofréquence)",
-          ir: "IR (Infrarouge)"
-        }
-      }
-    };
-
-    let currentLanguage = 'en';
-
-    // Translation function
-    function t(key) {
-      const keys = key.split('.');
-      let value = translations[currentLanguage];
-      for (const k of keys) {
-        value = value?.[k];
-      }
-      return value || key;
-    }
-
-    // Change language function
-    function changeLanguage(lang) {
-      if (translations[lang]) {
-        currentLanguage = lang;
-        localStorage.setItem('whispeerLanguage', lang);
-        updateUILanguage();
-      }
-    }
-
-    // Update UI with current language
-    function updateUILanguage() {
-      // Update header
-      document.querySelector('.header h1').textContent = `🎤 ${t('title')}`;
-      
-      // Update settings button in header
-      document.querySelector('.header-controls button[onclick="openSettingsModal()"]').innerHTML = `⚙️ ${t('buttons.settings')}`;
-      
-      // Update modal elements
-      updateModalLanguage();
-      
-      // Re-render devices to update text
-      renderDevices();
-    }
-
-    function updateModalLanguage() {
-      // Device modal labels
-      const deviceNameLabel = document.querySelector('label[for="modalDeviceName"], .form-label');
-      if (deviceNameLabel) deviceNameLabel.textContent = t('labels.deviceName');
-      
-      const deviceTypeLabel = document.querySelectorAll('.form-label')[1];
-      if (deviceTypeLabel) deviceTypeLabel.textContent = t('labels.deviceType');
-      
-      const interfaceLabel = document.querySelectorAll('.form-label')[2];
-      if (interfaceLabel) interfaceLabel.textContent = t('labels.interface');
-      
-      // Settings modal
-      const autoRefreshLabel = document.querySelector('label[for="autoRefresh"]');
-      if (autoRefreshLabel) autoRefreshLabel.textContent = t('labels.autoRefresh');
-      
-      const maxDevicesLabel = document.querySelector('label[for="maxDevices"]');
-      if (maxDevicesLabel) maxDevicesLabel.textContent = t('labels.maxDevices');
-      
-      // Modal buttons - New command buttons
-      const discardChangesBtn = document.querySelector('button[onclick="discardCommandChanges()"]');
-      if (discardChangesBtn) discardChangesBtn.textContent = t('buttons.discardChanges');
-      
-      const saveDeviceBtn = document.getElementById('deviceModalSaveBtn');
-      if (saveDeviceBtn) saveDeviceBtn.textContent = t('buttons.saveAll');
-      
-      const deleteDeviceBtn = document.getElementById('deviceModalDeleteBtn');
-      if (deleteDeviceBtn) deleteDeviceBtn.textContent = t('buttons.deleteDevice');
-      
-      // Form placeholders
-      const commandNameInput = document.getElementById('commandName');
-      if (commandNameInput) commandNameInput.placeholder = t('placeholders.commandName');
-      
-      const commandCodeInput = document.getElementById('commandCode');
-      if (commandCodeInput) commandCodeInput.placeholder = t('placeholders.commandCode');
-      
-      // Settings form buttons
-      const settingsSaveBtn = document.querySelector('#settingsForm button[type="submit"]');
-      if (settingsSaveBtn) settingsSaveBtn.textContent = t('buttons.save');
-      
-      const settingsCancelBtn = document.querySelector('button[onclick="closeModal(\'settingsModal\')"]');
-      if (settingsCancelBtn) settingsCancelBtn.textContent = t('buttons.cancel');
-    }
+    // Translation system removed - using hardcoded English text
 
     // Initialize the panel
     document.addEventListener('DOMContentLoaded', function() {
@@ -891,17 +668,9 @@
         urlParams: new URLSearchParams(window.location.search).get('access_token')
       });
       
-      // Load saved language
-      const savedLanguage = localStorage.getItem('whispeerLanguage');
-      if (savedLanguage && translations[savedLanguage]) {
-        currentLanguage = savedLanguage;
-        document.getElementById('languageSelector').value = savedLanguage;
-      }
-      
       loadSettings();
       loadDevices();
       startAutoRefresh();
-      updateUILanguage(); // Apply translations
       
       // Test token after a short delay to allow injection
       setTimeout(async () => {
@@ -1067,7 +836,7 @@
       const addDeviceCard = `
         <div class="add-device-card" onclick="openAddDeviceModal()">
           <div class="add-device-icon">➕</div>
-          <div class="add-device-text">${t('buttons.addDevice')}</div>
+          <div class="add-device-text">Add Device</div>
         </div>
       `;
       
@@ -1084,14 +853,14 @@
                 <button class="btn btn-small btn-outlined" onclick="sendCommandToast('${deviceId}', '${cmdName}')">${cmdName}</button>
               `).join('')}
             </div>`
-          : `<div style="margin-top:12px;color:var(--text-secondary);font-size:0.9rem;">${t('messages.noCommands')}</div>`;
+          : `<div style="margin-top:12px;color:var(--text-secondary);font-size:0.9rem;">No commands</div>`;
         return `
           <div class="device-card" data-device-id="${deviceId}">
             <div class="device-header">
               <div class="device-name">${deviceId}</div>
               <div class="device-header-right">
                 <span class="device-type-badge type-${device.type}">${device.type.toUpperCase()}</span>
-                <button class="pill-edit" onclick="configureDevice('${deviceId}')">${t('buttons.edit')}</button>
+                <button class="pill-edit" onclick="configureDevice('${deviceId}')">Edit</button>
               </div>
             </div>
             ${commandsHTML}
@@ -1186,7 +955,7 @@
     function configureDevice(deviceId) {
       currentDevice = deviceId;
       const device = devices[deviceId];
-      document.getElementById('deviceModalTitle').textContent = t('modals.editDevice');
+      document.getElementById('deviceModalTitle').textContent = 'Edit Device';
       document.getElementById('modalDeviceName').value = deviceId;
       document.getElementById('modalDeviceName').readOnly = true;
       document.getElementById('modalDeviceType').value = device.type;
@@ -1197,7 +966,6 @@
       loadInterfaces(device.type);
       
       renderCommands(device.commands || {});
-      updateModalLanguage(); // Update modal language
       document.getElementById('deviceModal').style.display = 'block';
     }
 
@@ -1205,7 +973,7 @@
       const container = document.getElementById('commandsList');
       const commandEntries = Object.entries(commands);
       if (commandEntries.length === 0) {
-        container.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">${t('messages.noCommandsConfigured')}</p>`;
+        container.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">No commands configured</p>`;
         return;
       }
       const commandsHTML = commandEntries.map(([name, code]) => `
@@ -1213,8 +981,8 @@
           <input class="command-name form-input" value="${name}" onchange="updateCommandName(this, '${name}')" style="min-width:120px;max-width:150px;">
           <input class="command-code form-input" value="${code}" onchange="updateCommandCode('${name}', this.value)" style="flex:1;">
           <div class="command-actions">
-            <button type="button" class="btn-tiny btn-test" onclick="event.preventDefault(); event.stopPropagation(); testCommandFromButton(this); return false;">${t('buttons.test')}</button>
-            <button type="button" class="btn-tiny btn-delete" onclick="event.preventDefault(); event.stopPropagation(); deleteCommand('${name}'); return false;">${t('buttons.delete')}</button>
+            <button type="button" class="btn-tiny btn-test" onclick="event.preventDefault(); event.stopPropagation(); testCommandFromButton(this); return false;">Test</button>
+            <button type="button" class="btn-tiny btn-delete" onclick="event.preventDefault(); event.stopPropagation(); deleteCommand('${name}'); return false;">Delete</button>
           </div>
         </div>
       `).join('');
@@ -1275,8 +1043,8 @@
           <input class="command-name form-input" value="${name}" onchange="updateCommandName(this, '${name}')" style="min-width:120px;max-width:150px;">
           <input class="command-code form-input" value="${code}" onchange="updateCommandCode('${name}', this.value)" style="flex:1;">
           <div class="command-actions">
-            <button type="button" class="btn-tiny btn-test" onclick="event.preventDefault(); event.stopPropagation(); testCommandFromButton(this); return false;">${t('buttons.test')}</button>
-            <button type="button" class="btn-tiny btn-delete" onclick="event.preventDefault(); event.stopPropagation(); deleteCommand('${name}'); return false;">${t('buttons.delete')}</button>
+            <button type="button" class="btn-tiny btn-test" onclick="event.preventDefault(); event.stopPropagation(); testCommandFromButton(this); return false;">Test</button>
+            <button type="button" class="btn-tiny btn-delete" onclick="event.preventDefault(); event.stopPropagation(); deleteCommand('${name}'); return false;">Delete</button>
           </div>
         </div>
       `;
@@ -1312,7 +1080,7 @@
         const commandsList = document.getElementById('commandsList');
         const remainingCommands = commandsList.querySelectorAll('.command-item');
         if (remainingCommands.length === 0) {
-          commandsList.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">${t('messages.noCommandsConfigured')}</p>`;
+          commandsList.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">No commands configured</p>`;
         }
         
         showSuccess(`Command "${name}" deleted successfully`);
@@ -1368,7 +1136,7 @@
     function openAddDeviceModal() {
       currentDevice = null;
       tempCommands = {};
-      document.getElementById('deviceModalTitle').textContent = t('modals.addNewDevice');
+      document.getElementById('deviceModalTitle').textContent = 'Add New Device';
       document.getElementById('modalDeviceName').value = '';
       document.getElementById('modalDeviceName').readOnly = false;
       document.getElementById('modalDeviceType').value = 'ble';
@@ -1380,7 +1148,6 @@
       loadInterfaces('ble');
       
       renderCommands(tempCommands);
-      updateModalLanguage(); // Update modal language
       document.getElementById('deviceModal').style.display = 'block';
     }
 
