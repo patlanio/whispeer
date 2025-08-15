@@ -1,17 +1,142 @@
 """Sample API Client."""
 import asyncio
 import logging
+import os
 import socket
+import subprocess
+from typing import Dict, Any, List, Optional
 
 import aiohttp
 import async_timeout
 
 TIMEOUT = 10
 
-
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
 HEADERS = {"Content-type": "application/json; charset=UTF-8"}
+
+
+def _create_success_response(message: str, **kwargs) -> Dict[str, Any]:
+    """Create a standardized success response."""
+    return {
+        "status": "success",
+        "message": message,
+        **kwargs
+    }
+
+
+def _create_error_response(message: str, **kwargs) -> Dict[str, Any]:
+    """Create a standardized error response."""
+    return {
+        "status": "error",
+        "message": message,
+        **kwargs
+    }
+
+
+def _get_script_path(script_name: str) -> str:
+    """Get the absolute path to a script in the same directory."""
+    current_dir = os.path.dirname(__file__)
+    return os.path.join(current_dir, script_name)
+
+
+def _import_whispeer_ble():
+    """Import the whispeer_ble module with error handling."""
+    try:
+        from . import whispeer_ble
+        return whispeer_ble, None
+    except ImportError as e:
+        error_msg = f"Could not import whispeer_ble module: {e}"
+        _LOGGER.error(error_msg)
+        return None, error_msg
+
+
+def _run_subprocess(cmd: List[str], timeout: int = 30) -> Dict[str, Any]:
+    """Run a subprocess command with standardized error handling."""
+    try:
+        _LOGGER.info(f"Executing command: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        
+        _LOGGER.info(f"Command output: {result.stdout}")
+        if result.stderr:
+            _LOGGER.warning(f"Command stderr: {result.stderr}")
+        
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "return_code": result.returncode,
+                "stdout": result.stdout.strip() if result.stdout else None,
+                "stderr": result.stderr.strip() if result.stderr else None
+            }
+        else:
+            # Command failed with non-zero exit code
+            error_details = []
+            if result.stdout:
+                error_details.append(f"stdout: {result.stdout.strip()}")
+            if result.stderr:
+                error_details.append(f"stderr: {result.stderr.strip()}")
+            
+            error_msg = f"Command failed with exit code {result.returncode}"
+            if error_details:
+                error_msg += f". Details: {'; '.join(error_details)}"
+            
+            return {
+                "success": False,
+                "message": error_msg,
+                "return_code": result.returncode,
+                "stdout": result.stdout.strip() if result.stdout else None,
+                "stderr": result.stderr.strip() if result.stderr else None
+            }
+        
+    except subprocess.TimeoutExpired:
+        error_msg = f"Command execution timed out after {timeout} seconds"
+        _LOGGER.error(error_msg)
+        return {
+            "success": False,
+            "message": error_msg,
+            "error_type": "timeout"
+        }
+        
+    except FileNotFoundError:
+        error_msg = f"Command not found: {' '.join(cmd)}"
+        _LOGGER.error(error_msg)
+        return {
+            "success": False,
+            "message": error_msg,
+            "error_type": "file_not_found"
+        }
+        
+    except Exception as e:
+        error_msg = f"Command execution failed: {str(e)}"
+        _LOGGER.error(error_msg)
+        return {
+            "success": False,
+            "message": error_msg,
+            "error_type": "execution_error"
+        }
+
+
+def _execute_ble_script(script_args: List[str], timeout: int = 30) -> Dict[str, Any]:
+    """Execute whispeer_ble.py script with standardized error handling."""
+    script_path = _get_script_path("whispeer_ble.py")
+    
+    # Check if script exists
+    if not os.path.exists(script_path):
+        return {
+            "success": False,
+            "message": f"BLE script not found at {script_path}"
+        }
+    
+    # Build complete command
+    cmd = ["python3", script_path] + script_args
+    
+    return _run_subprocess(cmd, timeout)
 
 
 class WhispeerApiClient:
@@ -58,20 +183,17 @@ class WhispeerApiClient:
     async def async_add_device(self, device_data: dict) -> dict:
         """Add a new Whispeer device."""
         # Implement actual device addition logic
-        return {
-            "id": len(await self.async_get_devices()) + 1,
-            "status": "success",
-            "message": "Device added successfully",
-            **device_data,
-        }
+        device_id = len(await self.async_get_devices()) + 1
+        return _create_success_response(
+            "Device added successfully",
+            id=device_id,
+            **device_data
+        )
 
     async def async_remove_device(self, device_id: int) -> dict:
         """Remove a Whispeer device."""
         # Implement actual device removal logic
-        return {
-            "status": "success",
-            "message": f"Device {device_id} removed successfully",
-        }
+        return _create_success_response(f"Device {device_id} removed successfully")
 
     async def async_send_command(self, device_id: str, device_type: str, command_name: str, command_code: str) -> dict:
         """Send a command to a device."""
@@ -83,275 +205,119 @@ class WhispeerApiClient:
         elif device_type == "ir":
             return await self._send_ir_command(device_id, command_name, command_code)
         else:
-            return {
-                "status": "error",
-                "message": f"Unsupported device type: {device_type}"
-            }
+            return _create_error_response(f"Unsupported device type: {device_type}")
 
     async def async_send_ble_signal(self, data_hex: str, interface: str = None) -> dict:
         """Send a raw BLE signal using whispeer_ble module functions."""
+        whispeer_ble, error_msg = _import_whispeer_ble()
+        if not whispeer_ble:
+            return _create_error_response(error_msg)
+        
         try:
-            # Import the whispeer_ble module to use its functions
-            from . import whispeer_ble
-            
             _LOGGER.info(f"Sending BLE signal - Data: {data_hex}, Interface: {interface}")
             
-            # Use the emit_signal function from whispeer_ble module
             success = whispeer_ble.emit_signal(data_hex, interface)
             
             if success:
-                return {
-                    "status": "success",
-                    "message": f"BLE signal sent successfully - Data: {data_hex}",
-                    "data_hex": data_hex,
-                    "interface": interface,
-                    "mode": "hardware" if whispeer_ble.check_bluetooth_availability()["available"] else "simulation"
-                }
+                return _create_success_response(
+                    f"BLE signal sent successfully - Data: {data_hex}",
+                    data_hex=data_hex,
+                    interface=interface,
+                    mode="hardware" if whispeer_ble.check_bluetooth_availability()["available"] else "simulation"
+                )
             else:
-                return {
-                    "status": "error",
-                    "message": f"Failed to send BLE signal - Data: {data_hex}",
-                    "data_hex": data_hex,
-                    "interface": interface
-                }
+                return _create_error_response(
+                    f"Failed to send BLE signal - Data: {data_hex}",
+                    data_hex=data_hex,
+                    interface=interface
+                )
                 
-        except ImportError as e:
-            _LOGGER.error(f"Could not import whispeer_ble module: {e}")
-            return {
-                "status": "error",
-                "message": f"Could not import BLE module: {e}"
-            }
         except Exception as e:
             _LOGGER.error(f"Error sending BLE signal: {e}")
-            return {
-                "status": "error",
-                "message": f"BLE signal execution failed: {str(e)}"
-            }
+            return _create_error_response(f"BLE signal execution failed: {str(e)}")
 
     async def _send_ble_command(self, device_id: str, command_name: str, command_code: str) -> dict:
         """Send BLE command using the new whispeer_ble.py script."""
-        try:
-            import subprocess
-            import os
-            
-            # Get the path to the whispeer_ble.py script
-            current_dir = os.path.dirname(__file__)
-            script_path = os.path.join(current_dir, "whispeer_ble.py")
-            
-            _LOGGER.info(f"Calling BLE script: python3 {script_path} emit_command {device_id} {command_name}")
-            
-            # Check if script exists
-            if not os.path.exists(script_path):
-                _LOGGER.error(f"BLE script not found at {script_path}")
-                return {
-                    "status": "error",
-                    "message": f"BLE script not found at {script_path}"
-                }
-            
-            # Execute the BLE script with new format
-            # Format: python3 whispeer_ble.py emit_command <device_name> <command_name>
-            cmd = ["python3", script_path, "emit_command", device_id, command_name]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30  # 30 second timeout
+        result = _execute_ble_script(["emit_command", device_id, command_name])
+        
+        if not result["success"]:
+            return _create_error_response(
+                result["message"],
+                command_code=command_code,
+                device_id=device_id,
+                script_output=result.get("stdout"),
+                script_error=result.get("stderr"),
+                return_code=result.get("return_code")
             )
-            
-            _LOGGER.info(f"BLE script output: {result.stdout}")
-            if result.stderr:
-                _LOGGER.warning(f"BLE script stderr: {result.stderr}")
-            
-            # Check return code (new script returns 0 on success, even in simulation mode)
-            if result.returncode == 0:
-                return {
-                    "status": "success",
-                    "message": f"BLE command '{command_name}' processed for '{device_id}'",
-                    "command_code": command_code,
-                    "device_id": device_id,
-                    "script_output": result.stdout.strip(),
-                    "return_code": result.returncode
-                }
-            else:
-                # Command failed
-                error_details = []
-                if result.stdout:
-                    error_details.append(f"stdout: {result.stdout}")
-                if result.stderr:
-                    error_details.append(f"stderr: {result.stderr}")
-                
-                error_msg = f"BLE script failed with exit code {result.returncode}"
-                if error_details:
-                    error_msg += f". Details: {'; '.join(error_details)}"
-                
-                _LOGGER.error(error_msg)
-                return {
-                    "status": "error",
-                    "message": error_msg,
-                    "command_code": command_code,
-                    "device_id": device_id,
-                    "script_output": result.stdout.strip() if result.stdout else None,
-                    "script_error": result.stderr.strip() if result.stderr else None,
-                    "return_code": result.returncode
-                }
-            
-        except subprocess.TimeoutExpired:
-            _LOGGER.error("BLE script execution timed out")
-            return {
-                "status": "error",
-                "message": "BLE script execution timed out after 30 seconds"
-            }
-            
-        except FileNotFoundError:
-            _LOGGER.error(f"Python3 or BLE script not found. Command: {' '.join(cmd)}")
-            return {
-                "status": "error",
-                "message": f"Python3 or BLE script not found. Command attempted: {' '.join(cmd)}"
-            }
-            
-        except Exception as e:
-            _LOGGER.error(f"Error executing BLE script: {e}")
-            return {
-                "status": "error",
-                "message": f"BLE script execution failed: {str(e)}"
-            }
+        
+        return _create_success_response(
+            f"BLE command '{command_name}' processed for '{device_id}'",
+            command_code=command_code,
+            device_id=device_id,
+            script_output=result["stdout"],
+            return_code=result["return_code"]
+        )
 
     async def _send_ble_signal(self, data_hex: str, interface: str = None) -> dict:
         """Send a raw BLE signal using emit_signal mode."""
-        try:
-            import subprocess
-            import os
-            
-            # Get the path to the whispeer_ble.py script
-            current_dir = os.path.dirname(__file__)
-            script_path = os.path.join(current_dir, "whispeer_ble.py")
-            
-            # Build command (UUID is now hardcoded in the script)
-            cmd = ["python3", script_path, "emit_signal", data_hex]
-            if interface:
-                cmd.extend(["--interface", interface])
-            
-            _LOGGER.info(f"Calling BLE script: {' '.join(cmd)}")
-            
-            # Check if script exists
-            if not os.path.exists(script_path):
-                _LOGGER.error(f"BLE script not found at {script_path}")
-                return {
-                    "status": "error",
-                    "message": f"BLE script not found at {script_path}"
-                }
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30  # 30 second timeout
+        # Build script arguments
+        script_args = ["emit_signal", data_hex]
+        if interface:
+            script_args.extend(["--interface", interface])
+        
+        result = _execute_ble_script(script_args)
+        
+        if not result["success"]:
+            return _create_error_response(
+                result["message"],
+                data_hex=data_hex,
+                script_output=result.get("stdout"),
+                script_error=result.get("stderr"),
+                return_code=result.get("return_code")
             )
-            
-            _LOGGER.info(f"BLE script output: {result.stdout}")
-            if result.stderr:
-                _LOGGER.warning(f"BLE script stderr: {result.stderr}")
-            
-            # Check return code
-            if result.returncode == 0:
-                return {
-                    "status": "success",
-                    "message": f"BLE signal sent - Data: {data_hex}",
-                    "data_hex": data_hex,
-                    "interface": interface,
-                    "script_output": result.stdout.strip(),
-                    "return_code": result.returncode
-                }
-            else:
-                # Command failed
-                error_details = []
-                if result.stdout:
-                    error_details.append(f"stdout: {result.stdout}")
-                if result.stderr:
-                    error_details.append(f"stderr: {result.stderr}")
-                
-                error_msg = f"BLE signal script failed with exit code {result.returncode}"
-                if error_details:
-                    error_msg += f". Details: {'; '.join(error_details)}"
-                
-                _LOGGER.error(error_msg)
-                return {
-                    "status": "error",
-                    "message": error_msg,
-                    "data_hex": data_hex,
-                    "script_output": result.stdout.strip() if result.stdout else None,
-                    "script_error": result.stderr.strip() if result.stderr else None,
-                    "return_code": result.returncode
-                }
-            
-        except subprocess.TimeoutExpired:
-            _LOGGER.error("BLE signal script execution timed out")
-            return {
-                "status": "error",
-                "message": "BLE signal script execution timed out after 30 seconds"
-            }
-            
-        except FileNotFoundError:
-            _LOGGER.error(f"Python3 or BLE script not found. Command: {' '.join(cmd)}")
-            return {
-                "status": "error",
-                "message": f"Python3 or BLE script not found. Command attempted: {' '.join(cmd)}"
-            }
-            
-        except Exception as e:
-            _LOGGER.error(f"Error executing BLE signal script: {e}")
-            return {
-                "status": "error",
-                "message": f"BLE signal script execution failed: {str(e)}"
-            }
+        
+        return _create_success_response(
+            f"BLE signal sent - Data: {data_hex}",
+            data_hex=data_hex,
+            interface=interface,
+            script_output=result["stdout"],
+            return_code=result["return_code"]
+        )
 
     async def async_get_ble_interfaces(self) -> dict:
         """Get available Bluetooth interfaces using whispeer_ble module."""
+        whispeer_ble, error_msg = _import_whispeer_ble()
+        if not whispeer_ble:
+            return _create_error_response(error_msg)
+        
         try:
-            # Import the whispeer_ble module to use its functions
-            from . import whispeer_ble
-            
             interfaces = whispeer_ble.get_available_interfaces()
-            return {
-                "status": "success",
-                "interfaces": interfaces,
-                "message": f"Found {len(interfaces)} Bluetooth interface(s)"
-            }
+            return _create_success_response(
+                f"Found {len(interfaces)} Bluetooth interface(s)",
+                interfaces=interfaces
+            )
             
-        except ImportError as e:
-            _LOGGER.error(f"Could not import whispeer_ble module: {e}")
-            return {
-                "status": "error",
-                "message": f"Could not import BLE module: {e}"
-            }
         except Exception as e:
             _LOGGER.error(f"Error getting BLE interfaces: {e}")
-            return {
-                "status": "error",
-                "message": f"Error getting BLE interfaces: {str(e)}"
-            }
+            return _create_error_response(f"Error getting BLE interfaces: {str(e)}")
 
     async def _send_ble_command_via_ha(self, device_id: str, command_name: str, command_code: str) -> dict:
         """Send BLE command using Home Assistant's Bluetooth integration."""
+        whispeer_ble, error_msg = _import_whispeer_ble()
+        if not whispeer_ble:
+            return _create_error_response(error_msg)
+        
         try:
-            # Import whispeer_ble to get device data
-            from . import whispeer_ble
-            
             if device_id not in whispeer_ble.DEVICES:
-                return {
-                    "status": "error",
-                    "message": f"Device '{device_id}' not found in device registry"
-                }
+                return _create_error_response(f"Device '{device_id}' not found in device registry")
             
             device = whispeer_ble.DEVICES[device_id]
             
             if command_name not in device["commands"]:
-                return {
-                    "status": "error",
-                    "message": f"Command '{command_name}' not found for device '{device_id}'",
-                    "available_commands": list(device["commands"].keys())
-                }
+                return _create_error_response(
+                    f"Command '{command_name}' not found for device '{device_id}'",
+                    available_commands=list(device["commands"].keys())
+                )
             
             # Get command data and build payload
             data = device["commands"][command_name]
@@ -365,65 +331,50 @@ class WhispeerApiClient:
             _LOGGER.info(f"  Payload: {' '.join(payload)}")
             
             # TODO: Integrate with Home Assistant's Bluetooth component
-            # This would require accessing the hass object and using the bluetooth integration
             
-            return {
-                "status": "success",
-                "message": f"BLE command '{command_name}' prepared for '{device_id}'",
-                "command_code": command_code,
-                "device_id": device_id,
-                "payload": payload,
-                "note": "Command prepared - Bluetooth integration needed for actual transmission"
-            }
+            return _create_success_response(
+                f"BLE command '{command_name}' prepared for '{device_id}'",
+                command_code=command_code,
+                device_id=device_id,
+                payload=payload,
+                note="Command prepared - Bluetooth integration needed for actual transmission"
+            )
             
-        except ImportError as e:
-            _LOGGER.error(f"Could not import whispeer_ble module: {e}")
-            return {
-                "status": "error",
-                "message": f"Could not import BLE module: {e}"
-            }
         except Exception as e:
             _LOGGER.error(f"Error preparing BLE command: {e}")
-            return {
-                "status": "error",
-                "message": f"BLE command preparation failed: {str(e)}"
-            }
+            return _create_error_response(f"BLE command preparation failed: {str(e)}")
 
     async def _send_rf_command(self, device_id: str, command_name: str, command_code: str) -> dict:
         """Send RF command."""
         # Implement RF command sending logic
-        return {
-            "status": "success",
-            "message": f"RF command '{command_name}' sent to '{device_id}'",
-            "command_code": command_code
-        }
+        return _create_success_response(
+            f"RF command '{command_name}' sent to '{device_id}'",
+            command_code=command_code
+        )
 
     async def _send_ir_command(self, device_id: str, command_name: str, command_code: str) -> dict:
         """Send IR command."""
         # Implement IR command sending logic
-        return {
-            "status": "success",
-            "message": f"IR command '{command_name}' sent to '{device_id}'",
-            "command_code": command_code
-        }
+        return _create_success_response(
+            f"IR command '{command_name}' sent to '{device_id}'",
+            command_code=command_code
+        )
 
     async def async_sync_devices(self, devices: dict) -> dict:
         """Sync devices with the backend."""
         # Implement device synchronization logic
-        return {
-            "status": "success",
-            "message": f"Synced {len(devices)} devices",
-            "device_count": len(devices)
-        }
+        return _create_success_response(
+            f"Synced {len(devices)} devices",
+            device_count=len(devices)
+        )
 
     async def async_test_device(self, device_id: int) -> dict:
         """Test a Whispeer device."""
         # Implement device testing logic
-        return {
-            "status": "success",
-            "message": f"Device {device_id} test completed",
-            "test_result": "passed",
-        }
+        return _create_success_response(
+            f"Device {device_id} test completed",
+            test_result="passed"
+        )
 
     async def api_wrapper(
         self, method: str, url: str, data: dict = {}, headers: dict = {}
