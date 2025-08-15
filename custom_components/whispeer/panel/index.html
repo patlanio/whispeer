@@ -76,10 +76,6 @@
       align-items: center;
     }
 
-    .controls {
-      display: none; /* Hide the old controls section */
-    }
-
     .btn {
       background: var(--primary-color);
       color: white;
@@ -573,17 +569,6 @@
       </div>
     </div>
 
-    <div class="controls">
-      <button class="btn" onclick="openSettingsModal()">
-        ⚙️ Settings
-      </button>
-      <select id="languageSelector" class="btn" style="padding: 10px; margin-left: 8px;" onchange="changeLanguage(this.value)">
-        <option value="en">🇺🇸 English</option>
-        <option value="es">🇪🇸 Español</option>
-        <option value="fr">🇫🇷 Français</option>
-      </select>
-    </div>
-
     <div id="devicesContainer">
       <div class="loading">Loading devices...</div>
     </div>
@@ -601,13 +586,21 @@
           <label class="form-label">Device Name</label>
           <input type="text" id="modalDeviceName" class="form-input" required>
         </div>
-        <div class="form-group">
-          <label class="form-label">Device Type</label>
-          <select id="modalDeviceType" class="form-select" required>
-            <option value="ble">BLE (Bluetooth Low Energy)</option>
-            <option value="rf">RF (Radio Frequency)</option>
-            <option value="ir">IR (Infrared)</option>
-          </select>
+        <div class="form-group" style="display: flex; gap: 16px;">
+          <div style="flex: 1;">
+            <label class="form-label">Device Type</label>
+            <select id="modalDeviceType" class="form-select" required onchange="onDeviceTypeChange()">
+              <option value="ble">BLE (Bluetooth Low Energy)</option>
+              <option value="rf">RF (Radio Frequency)</option>
+              <option value="ir">IR (Infrared)</option>
+            </select>
+          </div>
+          <div style="flex: 1;" id="interfaceGroup">
+            <label class="form-label">Interface</label>
+            <select id="modalDeviceInterface" class="form-select">
+              <option value="">Loading interfaces...</option>
+            </select>
+          </div>
         </div>
         <div class="commands-section" id="modalCommandsSection">
           <div class="commands-header">
@@ -615,14 +608,19 @@
           </div>
           <div class="commands-list" id="commandsList"></div>
           <div id="addCommandForm" class="command-form" style="display: flex; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-            <input type="text" id="commandName" placeholder="Command name (e.g., light_on)" required>
-            <input type="text" id="commandCode" placeholder="Command code (hex)" required>
+            <input type="text" id="commandName" placeholder="Command name (e.g., light_on)">
+            <input type="text" id="commandCode" placeholder="Command code (hex)">
             <button class="btn btn-small" type="button" onclick="addCommand()">Add</button>
           </div>
         </div>
-        <div class="controls" style="justify-content: flex-end;">
-          <button class="btn" type="submit" id="deviceModalSaveBtn">Guardar</button>
-          <button class="btn" id="deviceModalDeleteBtn" style="background: #f44336; color: white; display:none;" type="button">Eliminar</button>
+        <div class="modal-controls" style="display: flex; justify-content: space-between; margin-top: 20px;">
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outlined" type="button" onclick="discardCommandChanges()">Discard Changes</button>
+            <button class="btn" id="deviceModalDeleteBtn" style="background: #f44336; color: white; display:none;" type="button">Delete Device</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn" type="submit" id="deviceModalSaveBtn">Save All</button>
+          </div>
         </div>
       </form>
     </div>
@@ -673,11 +671,17 @@
           delete: "Delete",
           edit: "Edit",
           add: "Add",
-          test: "Test"
+          test: "Test",
+          saveCommands: "Save Commands",
+          discardChanges: "Discard Changes",
+          saveDevice: "Save Device",
+          deleteDevice: "Delete Device",
+          saveAll: "Save All"
         },
         labels: {
           deviceName: "Device Name",
           deviceType: "Device Type",
+          interface: "Interface",
           commands: "Commands",
           autoRefresh: "Auto Refresh Interval (seconds)",
           maxDevices: "Maximum Devices to Display"
@@ -713,11 +717,17 @@
           delete: "Eliminar",
           edit: "Editar",
           add: "Agregar",
-          test: "Probar"
+          test: "Probar",
+          saveCommands: "Guardar Comandos",
+          discardChanges: "Descartar Cambios",
+          saveDevice: "Guardar Dispositivo",
+          deleteDevice: "Eliminar Dispositivo",
+          saveAll: "Guardar Todo"
         },
         labels: {
           deviceName: "Nombre del Dispositivo",
           deviceType: "Tipo de Dispositivo",
+          interface: "Interfaz",
           commands: "Comandos",
           autoRefresh: "Intervalo de Actualización Automática (segundos)",
           maxDevices: "Máximo de Dispositivos a Mostrar"
@@ -753,11 +763,17 @@
           delete: "Supprimer",
           edit: "Modifier",
           add: "Ajouter",
-          test: "Tester"
+          test: "Tester",
+          saveCommands: "Sauvegarder les Commandes",
+          discardChanges: "Annuler les Modifications",
+          saveDevice: "Sauvegarder l'Appareil",
+          deleteDevice: "Supprimer l'Appareil",
+          saveAll: "Tout Sauvegarder"
         },
         labels: {
           deviceName: "Nom de l'Appareil",
           deviceType: "Type d'Appareil",
+          interface: "Interface",
           commands: "Commandes",
           autoRefresh: "Intervalle de Rafraîchissement Automatique (secondes)",
           maxDevices: "Nombre Maximum d'Appareils à Afficher"
@@ -826,6 +842,12 @@
       const deviceNameLabel = document.querySelector('label[for="modalDeviceName"], .form-label');
       if (deviceNameLabel) deviceNameLabel.textContent = t('labels.deviceName');
       
+      const deviceTypeLabel = document.querySelectorAll('.form-label')[1];
+      if (deviceTypeLabel) deviceTypeLabel.textContent = t('labels.deviceType');
+      
+      const interfaceLabel = document.querySelectorAll('.form-label')[2];
+      if (interfaceLabel) interfaceLabel.textContent = t('labels.interface');
+      
       // Settings modal
       const autoRefreshLabel = document.querySelector('label[for="autoRefresh"]');
       if (autoRefreshLabel) autoRefreshLabel.textContent = t('labels.autoRefresh');
@@ -833,12 +855,15 @@
       const maxDevicesLabel = document.querySelector('label[for="maxDevices"]');
       if (maxDevicesLabel) maxDevicesLabel.textContent = t('labels.maxDevices');
       
-      // Modal buttons
-      const saveBtn = document.getElementById('deviceModalSaveBtn');
-      if (saveBtn) saveBtn.textContent = t('buttons.save');
+      // Modal buttons - New command buttons
+      const discardChangesBtn = document.querySelector('button[onclick="discardCommandChanges()"]');
+      if (discardChangesBtn) discardChangesBtn.textContent = t('buttons.discardChanges');
       
-      const deleteBtn = document.getElementById('deviceModalDeleteBtn');
-      if (deleteBtn) deleteBtn.textContent = t('buttons.delete');
+      const saveDeviceBtn = document.getElementById('deviceModalSaveBtn');
+      if (saveDeviceBtn) saveDeviceBtn.textContent = t('buttons.saveAll');
+      
+      const deleteDeviceBtn = document.getElementById('deviceModalDeleteBtn');
+      if (deleteDeviceBtn) deleteDeviceBtn.textContent = t('buttons.deleteDevice');
       
       // Form placeholders
       const commandNameInput = document.getElementById('commandName');
@@ -908,6 +933,39 @@
       document.getElementById('deviceModalDeleteBtn').onclick = function() {
         if (currentDevice) removeDevice(currentDevice);
       };
+      
+      // Prevent Enter key from submitting the form in any input field
+      document.getElementById('deviceForm').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          const target = e.target;
+          
+          // If Enter is pressed in command form inputs (add new command section), add the command
+          if (target.id === 'commandName' || target.id === 'commandCode') {
+            e.preventDefault();
+            addCommand();
+            return;
+          }
+          
+          // If Enter is pressed in existing command inputs, test the command
+          if (target.classList.contains('command-name') || target.classList.contains('command-code')) {
+            e.preventDefault();
+            const commandItem = target.closest('.command-item');
+            if (commandItem) {
+              const testButton = commandItem.querySelector('.btn-test');
+              if (testButton) {
+                testCommandFromButton(testButton);
+              }
+            }
+            return;
+          }
+          
+          // For all other inputs, prevent form submission
+          if (target.tagName === 'INPUT' || target.tagName === 'SELECT') {
+            e.preventDefault();
+            return;
+          }
+        }
+      });
     });
 
     // Load devices from localStorage (persistent storage)
@@ -1044,6 +1102,86 @@
       container.innerHTML = `<div class="devices-grid">${addDeviceCard}${devicesHTML}</div>`;
     }
 
+    // Interface management functions
+    async function loadInterfaces(deviceType) {
+      const interfaceSelect = document.getElementById('modalDeviceInterface');
+      const interfaceGroup = document.getElementById('interfaceGroup');
+      
+      // Show loading state
+      interfaceSelect.innerHTML = '<option value="">Loading interfaces...</option>';
+      interfaceSelect.disabled = true;
+      
+      try {
+        const token = getHomeAssistantToken();
+        if (!token) {
+          interfaceSelect.innerHTML = '<option value="">No token available</option>';
+          return;
+        }
+        
+        const endpoint = '/api/services/whispeer/get_interfaces';
+        
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            type: deviceType
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          const interfaces = result.interfaces || [];
+          
+          // Clear loading state
+          interfaceSelect.innerHTML = '';
+          
+          // Add default option
+          const defaultOption = document.createElement('option');
+          defaultOption.value = '';
+          defaultOption.textContent = 'Auto-detect';
+          interfaceSelect.appendChild(defaultOption);
+          
+          // Add available interfaces
+          interfaces.forEach(interface => {
+            const option = document.createElement('option');
+            option.value = interface.id || interface.name || interface;
+            option.textContent = interface.name || interface.description || interface;
+            interfaceSelect.appendChild(option);
+          });
+          
+          if (interfaces.length === 0) {
+            const noInterfaceOption = document.createElement('option');
+            noInterfaceOption.value = '';
+            noInterfaceOption.textContent = 'No interfaces available';
+            interfaceSelect.appendChild(noInterfaceOption);
+          }
+          
+          // Restore previously selected interface if editing existing device
+          if (currentDevice && devices[currentDevice].interface) {
+            interfaceSelect.value = devices[currentDevice].interface;
+          }
+          
+        } else {
+          console.warn('Failed to load interfaces:', response.statusText);
+          interfaceSelect.innerHTML = '<option value="">Failed to load interfaces</option>';
+        }
+        
+      } catch (error) {
+        console.error('Error loading interfaces:', error);
+        interfaceSelect.innerHTML = '<option value="">Error loading interfaces</option>';
+      } finally {
+        interfaceSelect.disabled = false;
+      }
+    }
+    
+    function onDeviceTypeChange() {
+      const deviceType = document.getElementById('modalDeviceType').value;
+      loadInterfaces(deviceType);
+    }
+
     // Device configuration functions
     function configureDevice(deviceId) {
       currentDevice = deviceId;
@@ -1054,6 +1192,10 @@
       document.getElementById('modalDeviceType').value = device.type;
       document.getElementById('modalCommandsSection').style.display = 'block';
       document.getElementById('deviceModalDeleteBtn').style.display = 'inline-block';
+      
+      // Load interfaces for current device type (this will also set the interface value)
+      loadInterfaces(device.type);
+      
       renderCommands(device.commands || {});
       updateModalLanguage(); // Update modal language
       document.getElementById('deviceModal').style.display = 'block';
@@ -1067,12 +1209,12 @@
         return;
       }
       const commandsHTML = commandEntries.map(([name, code]) => `
-        <div class="command-item">
+        <div class="command-item" data-command-name="${name}">
           <input class="command-name form-input" value="${name}" onchange="updateCommandName(this, '${name}')" style="min-width:120px;max-width:150px;">
           <input class="command-code form-input" value="${code}" onchange="updateCommandCode('${name}', this.value)" style="flex:1;">
           <div class="command-actions">
-            <button class="btn-tiny btn-test" onclick="testCommand('${name}', document.querySelector('[value=\'${code}\']').value)">${t('buttons.test')}</button>
-            <button class="btn-tiny btn-delete" onclick="deleteCommand('${name}')">${t('buttons.delete')}</button>
+            <button type="button" class="btn-tiny btn-test" onclick="event.preventDefault(); event.stopPropagation(); testCommandFromButton(this); return false;">${t('buttons.test')}</button>
+            <button type="button" class="btn-tiny btn-delete" onclick="event.preventDefault(); event.stopPropagation(); deleteCommand('${name}'); return false;">${t('buttons.delete')}</button>
           </div>
         </div>
       `).join('');
@@ -1082,22 +1224,25 @@
     function updateCommandName(input, oldName) {
       const newName = input.value.trim();
       if (!newName || newName === oldName) return;
-      let commands = currentDevice ? devices[currentDevice].commands : tempCommands;
-      if (commands[newName]) {
+      
+      // Check if new name already exists in the UI
+      const allCommandNames = Array.from(document.querySelectorAll('.command-name'))
+        .map(inp => inp.value.trim())
+        .filter(name => name !== oldName);
+      
+      if (allCommandNames.includes(newName)) {
         showError(`Command name "${newName}" already exists.`);
         input.value = oldName;
         return;
       }
-      commands[newName] = commands[oldName];
-      delete commands[oldName];
-      saveDevices();
-      renderCommands(commands);
+      
+      // The name change is handled directly in the UI
+      // It will be collected when saving the device
     }
 
     function updateCommandCode(name, newCode) {
-      let commands = currentDevice ? devices[currentDevice].commands : tempCommands;
-      commands[name] = newCode;
-      saveDevices();
+      // Commands are now updated directly in the UI
+      // They will be collected when saving the device
     }
 
     function addCommand() {
@@ -1107,24 +1252,42 @@
         showError('Please provide both command name and code');
         return;
       }
-      if (currentDevice) {
-        if (devices[currentDevice].commands[name]) {
-          if (!confirm(`Command "${name}" already exists. Do you want to overwrite it?`)) {
-            return;
-          }
+      
+      // Check if command name already exists in the UI
+      const existingNames = Array.from(document.querySelectorAll('.command-name'))
+        .map(inp => inp.value.trim());
+      
+      if (existingNames.includes(name)) {
+        if (!confirm(`Command "${name}" already exists. Do you want to overwrite it?`)) {
+          return;
         }
-        devices[currentDevice].commands[name] = code;
-        saveDevices();
-        renderCommands(devices[currentDevice].commands);
-      } else {
-        if (tempCommands[name]) {
-          if (!confirm(`Command "${name}" already exists. Do you want to overwrite it?`)) {
-            return;
-          }
+        // Remove existing command from UI
+        const existingItem = document.querySelector(`[data-command-name="${name}"]`);
+        if (existingItem) {
+          existingItem.remove();
         }
-        tempCommands[name] = code;
-        renderCommands(tempCommands);
       }
+      
+      // Add the new command to the UI
+      const container = document.getElementById('commandsList');
+      const commandHTML = `
+        <div class="command-item" data-command-name="${name}">
+          <input class="command-name form-input" value="${name}" onchange="updateCommandName(this, '${name}')" style="min-width:120px;max-width:150px;">
+          <input class="command-code form-input" value="${code}" onchange="updateCommandCode('${name}', this.value)" style="flex:1;">
+          <div class="command-actions">
+            <button type="button" class="btn-tiny btn-test" onclick="event.preventDefault(); event.stopPropagation(); testCommandFromButton(this); return false;">${t('buttons.test')}</button>
+            <button type="button" class="btn-tiny btn-delete" onclick="event.preventDefault(); event.stopPropagation(); deleteCommand('${name}'); return false;">${t('buttons.delete')}</button>
+          </div>
+        </div>
+      `;
+      
+      // If container only has the "no commands" message, replace it
+      if (container.innerHTML.includes('No commands configured') || container.innerHTML.includes('noCommandsConfigured')) {
+        container.innerHTML = commandHTML;
+      } else {
+        container.insertAdjacentHTML('beforeend', commandHTML);
+      }
+      
       // Clear the form fields
       document.getElementById('commandName').value = '';
       document.getElementById('commandCode').value = '';
@@ -1132,27 +1295,74 @@
     }
 
     function deleteCommand(name) {
+      // Prevent any form submission or default behavior
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      
       if (confirm(`Are you sure you want to delete the command "${name}"?`)) {
-        if (currentDevice) {
-          delete devices[currentDevice].commands[name];
-          saveDevices();
-          renderCommands(devices[currentDevice].commands);
-        } else {
-          delete tempCommands[name];
-          renderCommands(tempCommands);
+        // Remove the command item from the UI
+        const commandItem = document.querySelector(`[data-command-name="${name}"]`);
+        if (commandItem) {
+          commandItem.remove();
         }
+        
+        // Check if no commands left, show message
+        const commandsList = document.getElementById('commandsList');
+        const remainingCommands = commandsList.querySelectorAll('.command-item');
+        if (remainingCommands.length === 0) {
+          commandsList.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">${t('messages.noCommandsConfigured')}</p>`;
+        }
+        
         showSuccess(`Command "${name}" deleted successfully`);
       }
+      return false;
     }
 
     function testCommand(name, code) {
       if (!currentDevice) {
-        showError('No device selected for testing');
+        showError('Cannot test command: No device selected. Please save the device first.');
         return;
       }
       
       // Use the same backend call as the main command buttons
       sendCommandToast(currentDevice, name);
+    }
+
+    // New function to handle test button clicks with proper code retrieval
+    function testCommandFromButton(button) {
+      const commandItem = button.closest('.command-item');
+      const nameInput = commandItem.querySelector('.command-name');
+      const codeInput = commandItem.querySelector('.command-code');
+      
+      const name = nameInput.value.trim();
+      const code = codeInput.value.trim();
+      
+      if (!name || !code) {
+        showError('Please provide both command name and code before testing');
+        return false;
+      }
+      
+      if (!currentDevice) {
+        showError('Cannot test command: No device selected. Please save the device first.');
+        return false;
+      }
+      
+      // Create a temporary command object to test
+      const tempTestCommands = {[name]: code};
+      
+      // Temporarily add the command to the device to test it
+      const originalCommands = {...devices[currentDevice].commands};
+      devices[currentDevice].commands[name] = code;
+      
+      // Test the command
+      sendCommandToast(currentDevice, name);
+      
+      // Restore original commands
+      devices[currentDevice].commands = originalCommands;
+      
+      return false;
     }
 
     function openAddDeviceModal() {
@@ -1162,11 +1372,32 @@
       document.getElementById('modalDeviceName').value = '';
       document.getElementById('modalDeviceName').readOnly = false;
       document.getElementById('modalDeviceType').value = 'ble';
+      document.getElementById('modalDeviceInterface').value = '';
       document.getElementById('modalCommandsSection').style.display = 'block';
       document.getElementById('deviceModalDeleteBtn').style.display = 'none';
+      
+      // Load interfaces for default device type (BLE)
+      loadInterfaces('ble');
+      
       renderCommands(tempCommands);
       updateModalLanguage(); // Update modal language
       document.getElementById('deviceModal').style.display = 'block';
+    }
+
+    // New functions for command management
+    function discardCommandChanges() {
+      if (confirm('Are you sure you want to discard all command changes?')) {
+        if (currentDevice) {
+          // Reload commands from saved data
+          const device = devices[currentDevice];
+          renderCommands(device.commands || {});
+        } else {
+          // Clear temporary commands for new devices
+          tempCommands = {};
+          renderCommands(tempCommands);
+        }
+        showSuccess('Command changes discarded');
+      }
     }
 
     // Unifica el handler de guardado
@@ -1174,28 +1405,46 @@
       e.preventDefault();
       const name = document.getElementById('modalDeviceName').value.trim();
       const type = document.getElementById('modalDeviceType').value;
+      const interface = document.getElementById('modalDeviceInterface').value;
       if (!name || !type) {
         showError('Please provide device name and type');
         return;
       }
+      
+      // Get all commands from the UI (including any changes made)
+      const allCommands = getCurrentCommandsFromUI();
+      
       if (!currentDevice) {
-        // Nuevo
+        // Nuevo dispositivo
         if (devices[name]) {
           showError(`Device "${name}" already exists`);
           return;
         }
-        devices[name] = { type, commands: {...tempCommands} };
+        devices[name] = { type, interface, commands: allCommands };
         saveDevices();
         renderDevices();
         closeModal('deviceModal');
-        showSuccess(`Device "${name}" added successfully`);
+        showSuccess(`Device "${name}" added successfully with ${Object.keys(allCommands).length} commands`);
       } else {
-        // Editar
-        devices[name].type = type;
+        // Editar dispositivo existente
+        devices[currentDevice].type = type;
+        devices[currentDevice].interface = interface;
+        devices[currentDevice].commands = allCommands;
+        
+        // Si el nombre cambió, actualizar
+        if (name !== currentDevice) {
+          if (devices[name]) {
+            showError(`Device "${name}" already exists`);
+            return;
+          }
+          devices[name] = devices[currentDevice];
+          delete devices[currentDevice];
+        }
+        
         saveDevices();
         renderDevices();
         closeModal('deviceModal');
-        showSuccess('Device configuration saved successfully');
+        showSuccess(`Device "${name}" saved successfully with ${Object.keys(allCommands).length} commands`);
       }
     }
     document.getElementById('deviceForm').addEventListener('submit', handleDeviceFormSubmit);
@@ -1209,14 +1458,93 @@
     }
 
     function closeModal(modalId) {
+      if (modalId === 'deviceModal') {
+        // Check if there are unsaved changes
+        if (hasUnsavedChanges()) {
+          if (!confirm('You have unsaved changes. Are you sure you want to close without saving?')) {
+            return;
+          }
+        }
+        // Reset temporary commands when closing
+        if (!currentDevice) {
+          tempCommands = {};
+        }
+      }
       document.getElementById(modalId).style.display = 'none';
+    }
+
+    // Function to check if there are unsaved command changes
+    function hasUnsavedCommandChanges() {
+      if (currentDevice) {
+        // For existing devices, check if current commands differ from saved commands
+        const savedCommands = devices[currentDevice].commands || {};
+        const currentCommands = getCurrentCommandsFromUI();
+        return JSON.stringify(savedCommands) !== JSON.stringify(currentCommands);
+      } else {
+        // For new devices, check if there are any temporary commands
+        return Object.keys(tempCommands).length > 0;
+      }
+    }
+
+    // Function to get current commands from the UI
+    function getCurrentCommandsFromUI() {
+      const commandItems = document.querySelectorAll('.command-item');
+      const commands = {};
+      
+      commandItems.forEach(item => {
+        const nameInput = item.querySelector('.command-name');
+        const codeInput = item.querySelector('.command-code');
+        if (nameInput && codeInput && nameInput.value.trim() && codeInput.value.trim()) {
+          commands[nameInput.value.trim()] = codeInput.value.trim();
+        }
+      });
+      
+      return commands;
     }
 
     // Close modal when clicking outside
     window.onclick = function(event) {
       if (event.target.classList.contains('modal')) {
+        // Check if it's the device modal and has unsaved changes
+        if (event.target.id === 'deviceModal') {
+          if (hasUnsavedChanges()) {
+            if (!confirm('You have unsaved changes. Are you sure you want to close without saving?')) {
+              return; // Don't close the modal
+            }
+            // Reset temporary commands when closing without saving
+            if (!currentDevice) {
+              tempCommands = {};
+            }
+          }
+        }
         event.target.style.display = 'none';
       }
+    }
+
+    // Function to check if there are unsaved changes in the device modal
+    function hasUnsavedChanges() {
+      // Check if device name, type, or interface has changed
+      const currentName = document.getElementById('modalDeviceName').value.trim();
+      const currentType = document.getElementById('modalDeviceType').value;
+      const currentInterface = document.getElementById('modalDeviceInterface').value;
+      
+      if (currentDevice) {
+        // For existing devices, check if basic info changed
+        const savedInterface = devices[currentDevice].interface || '';
+        if (currentName !== currentDevice || 
+            devices[currentDevice].type !== currentType ||
+            savedInterface !== currentInterface) {
+          return true;
+        }
+      } else {
+        // For new devices, check if any basic info is entered
+        if (currentName || currentType !== 'ble' || currentInterface) {
+          return true;
+        }
+      }
+      
+      // Check if there are unsaved command changes
+      return hasUnsavedCommandChanges();
     }
 
     // Settings form handler
@@ -1342,6 +1670,7 @@
           body: JSON.stringify({
             device_id: deviceId,
             device_type: device.type,
+            device_interface: device.interface || '',
             command_name: cmdName,
             command_code: commandCode
           })
