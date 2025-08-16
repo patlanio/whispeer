@@ -1,0 +1,913 @@
+class DeviceManager extends Component {
+  constructor(selector) {
+    super(selector);
+    this.currentDevice = null;
+    this.tempCommands = {};
+    this.deviceModal = null;
+    this.commandModal = null;
+  }
+
+  init() {
+    this.setupTemplates();
+    this.bindEvents();
+    this.loadDevices();
+  }
+
+  setupTemplates() {
+    this.templates = {
+      deviceCard: `
+        <div class="device-card" data-device-id="{{id}}">
+          <div class="device-header">
+            <div class="device-name">{{name}}</div>
+            <div class="device-header-right">
+              <span class="device-type-badge {{badgeClass}}">{{type}}</span>
+              <button class="pill-edit" onclick="deviceManager.configureDevice('{{id}}')">⚙️</button>
+            </div>
+          </div>
+          <div class="device-info">{{interface}} • {{commandCount}} commands</div>
+          <div class="device-commands">{{commands}}</div>
+        </div>
+      `,
+      
+      addDeviceCard: `
+        <div class="add-device-card" onclick="deviceManager.openAddDeviceModal()">
+          <div class="add-device-icon">➕</div>
+          <div>Add New Device</div>
+        </div>
+      `,
+
+      deviceForm: `
+        <form id="deviceForm">
+          {{formFields}}
+          <div class="commands-section">
+            <div class="commands-header">
+              <h4>Commands</h4>
+              <button type="button" class="btn btn-small" onclick="deviceManager.addInlineCommand()">+ Add Command</button>
+            </div>
+            <div class="commands-list" id="commandsList">{{commandsList}}</div>
+          </div>
+          <div class="modal-controls" style="display: flex; justify-content: space-between; margin-top: 20px;">
+            <button type="button" class="btn btn-outlined" onclick="deviceManager.closeDeviceModal()">Cancel</button>
+            <div>
+              {{deleteButton}}
+              <button type="submit" class="btn">{{saveButtonText}}</button>
+            </div>
+          </div>
+        </form>
+      `,
+
+      commandButton: `
+        <button class="btn btn-small command-btn" 
+                onclick="deviceManager.executeCommand('{{deviceId}}', '{{commandName}}')"
+                style="{{buttonStyle}}">
+          {{buttonContent}}
+        </button>
+      `,
+
+      commandToggle: `
+        <div class="command-toggle-container">
+          <span>{{name}}</span>
+          <div class="command-toggle {{state}}" 
+               onclick="deviceManager.toggleCommand('{{deviceId}}', '{{commandName}}', '{{type}}')">
+          </div>
+        </div>
+      `
+    };
+  }
+
+  bindEvents() {
+    Utils.events.on('deviceUpdated', () => this.renderDevices());
+    Utils.events.on('deviceDeleted', () => this.renderDevices());
+    Utils.events.on('commandExecuted', (e) => this.handleCommandResult(e.detail));
+  }
+
+  loadDevices() {
+    DataManager.loadDevices();
+    this.renderDevices();
+  }
+
+  renderDevices() {
+    if (!this.element) return;
+
+    const devices = DataManager.getAllDevices();
+    
+    if (devices.length === 0) {
+      this.element.innerHTML = `
+        <div class="empty-state">
+          <h3>No devices found</h3>
+          <p>Add your first device to get started</p>
+        </div>
+        <div class="devices-grid">
+          ${this.template('addDeviceCard')}
+        </div>
+      `;
+      return;
+    }
+
+    const devicesHTML = devices.map(device => this.renderDeviceCard(device)).join('');
+    
+    this.element.innerHTML = `
+      <div class="devices-grid">
+        ${devicesHTML}
+        ${this.template('addDeviceCard')}
+      </div>
+    `;
+  }
+
+  renderDeviceCard(device) {
+    const { id, name, type, interface: deviceInterface, commands = {} } = device;
+    const commandCount = Object.keys(commands).length;
+    const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[type] || { label: type, badge: 'type-ble' };
+    
+    const commandsHTML = this.renderDeviceCommands(device);
+
+    return this.template('deviceCard', {
+      id,
+      name,
+      type: deviceTypeConfig.label,
+      badgeClass: deviceTypeConfig.badge,
+      interface: deviceInterface || 'Unknown',
+      commandCount,
+      commands: commandsHTML
+    });
+  }
+
+  renderDeviceCommands(device) {
+    const { commands = {}, id } = device;
+    const commandsByType = CommandManager.getCommandsByType(commands);
+    
+    let html = '';
+    
+    Object.entries(commandsByType).forEach(([type, typeCommands]) => {
+      Object.entries(typeCommands).forEach(([name, command]) => {
+        html += this.renderCommandControl(id, name, command);
+      });
+    });
+
+    return html;
+  }
+
+  renderCommandControl(deviceId, commandName, command) {
+    const { type, props = {} } = command;
+
+    switch (type) {
+      case 'button':
+        return this.renderButtonCommand(deviceId, commandName, command);
+      case 'light':
+      case 'switch':
+        return this.renderToggleCommand(deviceId, commandName, command);
+      case 'numeric':
+        return this.renderNumericCommand(deviceId, commandName, command);
+      case 'group':
+        return this.renderGroupCommand(deviceId, commandName, command);
+      default:
+        return this.renderButtonCommand(deviceId, commandName, command);
+    }
+  }
+
+  renderButtonCommand(deviceId, commandName, command) {
+    const { props = {} } = command;
+    const color = props.color || '#03a9f4';
+    const icon = props.icon || '💡';
+    const display = props.display || 'both';
+    
+    let buttonContent = '';
+    if (display === 'icon') {
+      buttonContent = icon;
+    } else if (display === 'text') {
+      buttonContent = commandName;
+    } else {
+      buttonContent = `${icon} ${commandName}`;
+    }
+
+    return this.template('commandButton', {
+      deviceId,
+      commandName,
+      buttonStyle: `background-color: ${color}`,
+      buttonContent
+    });
+  }
+
+  renderToggleCommand(deviceId, commandName, command) {
+    return this.template('commandToggle', {
+      deviceId,
+      commandName,
+      name: commandName,
+      type: command.type,
+      state: 'off'
+    });
+  }
+
+  renderNumericCommand(deviceId, commandName, command) {
+    const { options = {} } = command;
+    const optionButtons = Object.entries(options).map(([key, value]) => 
+      this.template('commandButton', {
+        deviceId,
+        commandName: `${commandName}:${key}`,
+        buttonStyle: '',
+        buttonContent: key
+      })
+    ).join('');
+
+    return `<div class="command-group-inline">${optionButtons}</div>`;
+  }
+
+  renderGroupCommand(deviceId, commandName, command) {
+    return this.renderNumericCommand(deviceId, commandName, command);
+  }
+
+  async executeCommand(deviceId, commandName) {
+    try {
+      const [cmd, subCmd] = commandName.split(':');
+      await DataManager.sendCommand(deviceId, cmd, subCmd);
+      Notification.success(`Command "${commandName}" executed successfully`);
+      Utils.events.emit('commandExecuted', { deviceId, commandName, success: true });
+    } catch (error) {
+      Notification.error(`Failed to execute command: ${error.message}`);
+      Utils.events.emit('commandExecuted', { deviceId, commandName, success: false, error });
+    }
+  }
+
+  async toggleCommand(deviceId, commandName, type) {
+    const toggleElement = event.target;
+    const currentState = toggleElement.classList.contains('on') ? 'off' : 'on';
+    const subCommand = currentState;
+
+    try {
+      await DataManager.sendCommand(deviceId, commandName, subCommand);
+      toggleElement.classList.toggle('on');
+      Notification.success(`${commandName} turned ${currentState}`);
+    } catch (error) {
+      Notification.error(`Failed to toggle ${commandName}: ${error.message}`);
+    }
+  }
+
+  createSampleCommands() {
+    return {
+      'sample_button': {
+        type: 'button',
+        values: {
+          code: ''
+        },
+        props: {
+          shape: 'rounded',
+          color: '#03a9f4'
+        }
+      },
+      // 'sample_switch': {
+      //   type: 'switch',
+      //   values: {
+      //     on: '',
+      //     off: ''
+      //   },
+      //   props: {
+      //     shape: 'square',
+      //     color: '#4caf50'
+      //   }
+      // },
+      'sample_light': {
+        type: 'light',
+        values: {
+          on: '',
+          off: ''
+        },
+        props: {
+          shape: 'circle',
+          color: '#ffeb3b'
+        }
+      },
+      'sample_numeric': {
+        type: 'numeric',
+        values: {
+          '0': '',
+          '1': '',
+          '2': '',
+          '3': ''
+        },
+        props: {
+          shape: 'rounded',
+          color: '#ff9800'
+        }
+      },
+      // 'sample_group': {
+      //   type: 'group',
+      //   values: {
+      //     'option_a': '',
+      //     'option_b': '',
+      //     'option_c': ''
+      //   },
+      //   props: {
+      //     shape: 'rounded',
+      //     color: '#9c27b0'
+      //   }
+      // }
+    };
+  }
+
+  openAddDeviceModal() {
+    this.currentDevice = null;
+    this.tempCommands = this.createSampleCommands();
+    this.showDeviceModal('Add Device', {});
+  }
+
+  configureDevice(deviceId) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device) {
+      Notification.error('Device not found');
+      return;
+    }
+
+    this.currentDevice = device;
+    this.tempCommands = Utils.deepClone(device.commands || {});
+    this.showDeviceModal('Edit Device', device);
+  }
+
+  showDeviceModal(title, device = {}) {
+    const isEdit = !!device.id;
+    const formFields = this.buildDeviceForm(device);
+    const commandsList = this.renderCommandsList(this.tempCommands);
+    
+    const deleteButton = isEdit ? 
+      '<button type="button" class="btn btn-delete" onclick="deviceManager.deleteDevice()">Delete Device</button>' : '';
+
+    const modalContent = this.template('deviceForm', {
+      title,
+      formFields,
+      commandsList,
+      deleteButton,
+      saveButtonText: isEdit ? 'Save Changes' : 'Save'
+    });
+
+    if (!this.deviceModal) {
+      this.deviceModal = new Modal({
+        title,
+        content: modalContent,
+        className: 'device-modal'
+      });
+    } else {
+      this.deviceModal.setTitle(title);
+      this.deviceModal.setContent(modalContent);
+    }
+
+    this.deviceModal.open();
+    this.bindDeviceModalEvents();
+  }
+
+  buildDeviceForm(device = {}) {
+    const form = FormBuilder.create()
+      .input('name', {
+        label: 'Device Name',
+        value: device.name || '',
+        required: true,
+        placeholder: 'Enter device name'
+      })
+      .row([
+        { 
+          type: 'select', 
+          options: { 
+            name: 'type',
+            label: 'Device Type',
+            value: device.type || 'ble',
+            options: [
+              { value: 'ble', label: 'Bluetooth LE' },
+              { value: 'rf', label: 'Radio Frequency' },
+              { value: 'ir', label: 'Infrared' }
+            ]
+          }
+        },
+        { 
+          type: 'select', 
+          options: { 
+            name: 'interface',
+            label: 'Interface',
+            value: device.interface || '',
+            options: []
+          }
+        }
+      ])
+      .hidden('id', device.id || '');
+
+    return form.build().innerHTML;
+  }
+
+  renderCommandsList(commands) {
+    if (Utils.isEmpty(commands)) {
+      commands = this.createSampleCommands();
+    }
+
+    let html = '';
+    
+    Object.entries(commands).forEach(([name, command]) => {
+      const commandWithName = { ...command, name };
+      html += this.createInlineCommandForm(commandWithName, true);
+    });
+
+    return html;
+  }
+
+  renderCommandGroupContent(type, commands) {
+    let html = '';
+    
+    Object.entries(commands).forEach(([name, command]) => {
+      const commandWithName = { ...command, name };
+      html += this.createInlineCommandForm(commandWithName, true);
+    });
+
+    return html;
+  }
+
+  addInlineCommand() {
+    const commandsList = Utils.$('#commandsList');
+    if (!commandsList) return;
+
+    const form = this.createInlineCommandForm();
+    commandsList.insertAdjacentHTML('beforeend', form);
+  }
+
+  createInlineCommandForm(command = null, isExisting = false) {
+    const name = command?.name || '';
+    const type = command?.type || 'button';
+    const values = command?.values || {};
+    const props = command?.props || {};
+    
+    const id = Utils.generateId();
+    const buttonText = isExisting ? 'Save' : 'Add';
+    const deleteButton = isExisting ? 
+      `<button type="button" class="command-inline-btn delete" onclick="deviceManager.deleteCommand('${name}')">Delete</button>` : '';
+
+    let codeField = '';
+    if (type === 'button') {
+      codeField = `
+        <input type="text" class="command-inline-input code" 
+               placeholder="code" value="${values.code || ''}" 
+               data-field="code">
+        <button type="button" class="command-inline-btn test" 
+                onclick="deviceManager.testInlineCommand(this)">Test</button>
+      `;
+    }
+
+    const config = APP_CONFIG.COMMAND_TYPES[type];
+    
+    let optionsSection = '';
+    if (config && config.hasOptions) {
+      const options = values || {};
+      let optionsHtml = '';
+      
+      if (type === 'light' || type === 'switch') {
+        optionsHtml += `
+          <div class="option-field">
+            <input type="text" value="on" readonly class="command-inline-input">
+            <input type="text" placeholder="On command code" value="${options.on || ''}" class="command-inline-input" data-option="on">
+            <button type="button" class="command-inline-btn test" 
+                    onclick="deviceManager.testOptionCommand(this, 'on')">Test</button>
+          </div>
+          <div class="option-field">
+            <input type="text" value="off" readonly class="command-inline-input">
+            <input type="text" placeholder="Off command code" value="${options.off || ''}" class="command-inline-input" data-option="off">
+            <button type="button" class="command-inline-btn test" 
+                    onclick="deviceManager.testOptionCommand(this, 'off')">Test</button>
+          </div>
+        `;
+      } else if (type === 'numeric' || type === 'group') {
+        const filteredOptions = Object.entries(options).filter(([key, value]) => 
+          key !== 'type' && key !== 'props' && key !== 'name'
+        );
+        
+        filteredOptions.forEach(([key, value]) => {
+          optionsHtml += `
+            <div class="option-field">
+              <input type="${type === 'numeric' ? 'number' : 'text'}" 
+                     placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
+                     value="${key}" class="command-inline-input" data-option-key>
+              <input type="text" placeholder="Command code" value="${value}" class="command-inline-input" data-option-value>
+              <button type="button" class="command-inline-btn test" 
+                      onclick="deviceManager.testOptionCommand(this, '${key}')">Test</button>
+              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
+            </div>
+          `;
+        });
+        
+        if (filteredOptions.length === 0) {
+          optionsHtml += `
+            <div class="option-field">
+              <input type="${type === 'numeric' ? 'number' : 'text'}" 
+                     placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
+                     value="" class="command-inline-input" data-option-key>
+              <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
+              <button type="button" class="command-inline-btn test" 
+                      onclick="deviceManager.testOptionCommand(this)">Test</button>
+              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
+            </div>
+          `;
+        }
+      }
+      
+      optionsSection = `
+        <div class="command-options-section" data-type="${type}">
+          <div class="options-list">
+            ${optionsHtml}
+          </div>
+          ${(type === 'numeric' || type === 'group') ? 
+            `<button type="button" class="btn btn-small" onclick="deviceManager.addOptionField(this, '${type}')">+ Add Option</button>` : ''}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="command-container" data-command-id="${id}">
+        <div class="command-inline-form">
+          <select class="command-inline-select" onchange="deviceManager.onInlineTypeChange(this)">
+            ${Object.entries(APP_CONFIG.COMMAND_TYPES).map(([key, config]) => 
+              `<option value="${key}" ${key === type ? 'selected' : ''}>${config.title}</option>`
+            ).join('')}
+          </select>
+          <input type="text" class="command-inline-input name" 
+                 placeholder="Command name" value="${name}">
+          ${codeField}
+          <button type="button" class="command-inline-btn save" 
+                  onclick="deviceManager.saveInlineCommand(this)">${buttonText}</button>
+          ${deleteButton}
+        </div>
+        ${optionsSection}
+      </div>
+    `;
+  }
+
+  bindDeviceModalEvents() {
+    const deviceForm = Utils.$('#deviceForm');
+    if (!deviceForm) return;
+
+    deviceForm.addEventListener('submit', (e) => this.handleDeviceFormSubmit(e));
+    
+    const typeSelect = deviceForm.querySelector('select[name="type"]');
+    if (typeSelect) {
+      typeSelect.addEventListener('change', () => this.onDeviceTypeChange());
+      this.onDeviceTypeChange();
+    }
+  }
+
+  async onDeviceTypeChange() {
+    const typeSelect = Utils.$('#deviceForm select[name="type"]');
+    const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
+    
+    if (!typeSelect || !interfaceSelect) return;
+
+    const deviceType = typeSelect.value;
+    
+    try {
+      const interfaces = await DataManager.loadInterfaces(deviceType);
+      interfaceSelect.innerHTML = interfaces.map(iface => 
+        `<option value="${iface}">${iface}</option>`
+      ).join('');
+    } catch (error) {
+      console.error('Failed to load interfaces:', error);
+      Notification.error('Failed to load interfaces');
+    }
+  }
+
+  handleDeviceFormSubmit(e) {
+    e.preventDefault();
+    
+    this.saveAllInlineCommands();
+    
+    const formData = new FormData(e.target);
+    const deviceData = Object.fromEntries(formData.entries());
+    deviceData.commands = this.tempCommands;
+
+    if (this.currentDevice) {
+      DataManager.updateDevice(this.currentDevice.id, deviceData);
+      Notification.success('Device updated successfully');
+    } else {
+      DataManager.addDevice(deviceData);
+      Notification.success('Device added successfully');
+    }
+
+    this.closeDeviceModal();
+    this.renderDevices();
+    Utils.events.emit('deviceUpdated');
+  }
+
+  saveAllInlineCommands() {
+    const commandContainers = document.querySelectorAll('#commandsList .command-container');
+    
+    commandContainers.forEach(container => {
+      const saveButton = container.querySelector('.command-inline-btn.save');
+      if (saveButton) {
+        this.saveInlineCommandSilent(saveButton);
+      }
+    });
+  }
+
+  saveInlineCommandSilent(button) {
+    const container = button.closest('.command-container');
+    const form = container.querySelector('.command-inline-form');
+    
+    const typeSelect = form.querySelector('.command-inline-select');
+    const nameInput = form.querySelector('.command-inline-input.name');
+    const codeInputs = form.querySelectorAll('[data-field]');
+
+    const name = nameInput.value.trim();
+    const type = typeSelect.value;
+
+    if (!name) {
+      return;
+    }
+
+    const values = {};
+    
+    codeInputs.forEach(input => {
+      values[input.dataset.field] = input.value.trim();
+    });
+
+    const optionsSection = container.querySelector('.command-options-section');
+    if (optionsSection) {
+      const optionFields = optionsSection.querySelectorAll('.option-field');
+      
+      optionFields.forEach(field => {
+        if (type === 'light' || type === 'switch') {
+          const optionInput = field.querySelector('[data-option]');
+          if (optionInput) {
+            const key = optionInput.dataset.option;
+            const value = optionInput.value.trim();
+            if (key && value) {
+              values[key] = value;
+            }
+          }
+        } else {
+          const keyInput = field.querySelector('[data-option-key]');
+          const valueInput = field.querySelector('[data-option-value]');
+          
+          if (keyInput && valueInput) {
+            const key = keyInput.value.trim();
+            const value = valueInput.value.trim();
+            
+            if (key && value) {
+              values[key] = value;
+            }
+          }
+        }
+      });
+    }
+
+    if (type === 'button' && !values.code) {
+      return;
+    }
+
+    if ((type === 'light' || type === 'switch') && (!values.on || !values.off)) {
+      return;
+    }
+
+    try {
+      const command = CommandManager.createCommand(type, { name, values });
+      const validation = CommandManager.validateCommand(command);
+
+      if (validation.valid) {
+        this.tempCommands[name] = command;
+      }
+    } catch (error) {
+      console.warn('Auto-save failed for command:', name, error);
+    }
+  }
+
+  saveInlineCommand(button) {
+    const container = button.closest('.command-container');
+    const form = container.querySelector('.command-inline-form');
+    
+    const typeSelect = form.querySelector('.command-inline-select');
+    const nameInput = form.querySelector('.command-inline-input.name');
+    const codeInputs = form.querySelectorAll('[data-field]');
+
+    const name = nameInput.value.trim();
+    const type = typeSelect.value;
+
+    if (!name) {
+      Notification.error('Command name is required');
+      return;
+    }
+
+    const values = {};
+    codeInputs.forEach(input => {
+      values[input.dataset.field] = input.value.trim();
+    });
+
+    const optionsSection = container.querySelector('.command-options-section');
+    if (optionsSection) {
+      const optionFields = optionsSection.querySelectorAll('.option-field');
+      
+      optionFields.forEach(field => {
+        if (type === 'light' || type === 'switch') {
+          const optionInput = field.querySelector('[data-option]');
+          if (optionInput) {
+            const key = optionInput.dataset.option;
+            const value = optionInput.value.trim();
+            if (key && value) {
+              values[key] = value;
+            }
+          }
+        } else {
+          const keyInput = field.querySelector('[data-option-key]');
+          const valueInput = field.querySelector('[data-option-value]');
+          
+          if (keyInput && valueInput) {
+            const key = keyInput.value.trim();
+            const value = valueInput.value.trim();
+            
+            if (key && value) {
+              values[key] = value;
+            }
+          }
+        }
+      });
+    }
+
+    const config = APP_CONFIG.COMMAND_TYPES[type];
+    if (config && config.hasOptions && Object.keys(values).length === 0) {
+      Notification.error(`Please add at least one option for ${type} command`);
+      return;
+    }
+
+    if (type === 'button' && !values.code) {
+      Notification.error('Button commands require a code');
+      return;
+    }
+
+    if ((type === 'light' || type === 'switch') && (!values.on || !values.off)) {
+      Notification.error('Light/Switch commands require both "on" and "off" options');
+      return;
+    }
+
+    const command = CommandManager.createCommand(type, { name, values });
+    const validation = CommandManager.validateCommand(command);
+
+    if (!validation.valid) {
+      Notification.error(validation.errors.join(', '));
+      return;
+    }
+
+    this.tempCommands[name] = command;
+    Notification.success(`Command "${name}" saved`);
+    
+    this.refreshCommandsList();
+  }
+
+  deleteCommand(commandName) {
+    if (this.tempCommands[commandName]) {
+      delete this.tempCommands[commandName];
+      Notification.success(`Command "${commandName}" deleted`);
+      this.refreshCommandsList();
+    }
+  }
+
+  async testInlineCommand(button) {
+    if (!this.currentDevice) {
+      Notification.warning('Save the device first to test commands');
+      return;
+    }
+
+    const container = button.closest('.command-container');
+    const form = container.querySelector('.command-inline-form');
+    const nameInput = form.querySelector('.command-inline-input.name');
+    const codeInput = form.querySelector('[data-field="code"]');
+
+    const name = nameInput.value.trim();
+    const code = codeInput?.value.trim();
+
+    if (!name) {
+      Notification.error('Command name is required');
+      return;
+    }
+
+    try {
+      await DataManager.sendCommand(this.currentDevice.id, name);
+      Notification.success(`Test command "${name}" sent successfully`);
+    } catch (error) {
+      Notification.error(`Test failed: ${error.message}`);
+    }
+  }
+
+  async testOptionCommand(button, optionKey = null) {
+    if (!this.currentDevice) {
+      Notification.warning('Save the device first to test commands');
+      return;
+    }
+
+    const container = button.closest('.command-container');
+    const form = container.querySelector('.command-inline-form');
+    const nameInput = form.querySelector('.command-inline-input.name');
+    const optionField = button.closest('.option-field');
+    
+    const commandName = nameInput.value.trim();
+    
+    let finalOptionKey = optionKey;
+    if (!finalOptionKey) {
+      const keyInput = optionField.querySelector('[data-option-key]');
+      finalOptionKey = keyInput?.value.trim();
+    }
+    
+    if (!commandName) {
+      Notification.error('Command name is required');
+      return;
+    }
+    
+    if (!finalOptionKey) {
+      Notification.error('Option key is required');
+      return;
+    }
+
+    try {
+      const fullCommandName = `${commandName}.${finalOptionKey}`;
+      await DataManager.sendCommand(this.currentDevice.id, fullCommandName);
+      Notification.success(`Test command "${fullCommandName}" sent successfully`);
+    } catch (error) {
+      Notification.error(`Test failed: ${error.message}`);
+    }
+  }
+
+  toggleCommandGroup(type) {
+    const group = Utils.$(`.command-group[data-type="${type}"]`);
+    if (group) {
+      group.classList.toggle('collapsed');
+    }
+  }
+
+  onInlineTypeChange(select) {
+    const container = select.closest('.command-container');
+    const form = container.querySelector('.command-inline-form');
+    const type = select.value;
+    const config = APP_CONFIG.COMMAND_TYPES[type];
+    
+    const nameInput = form.querySelector('.command-inline-input.name');
+    const name = nameInput.value;
+    
+    let commandData = { name, type };
+    if (name && this.tempCommands[name]) {
+      commandData = { ...this.tempCommands[name], name, type };
+    }
+    
+    const newForm = this.createInlineCommandForm(commandData, !!this.tempCommands[name]);
+    container.outerHTML = newForm;
+  }
+
+  addOptionField(button, type) {
+    const optionsList = button.closest('.command-options-section').querySelector('.options-list');
+    const newField = `
+      <div class="option-field">
+        <input type="${type === 'numeric' ? 'number' : 'text'}" 
+               placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
+               value="" class="command-inline-input" data-option-key>
+        <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
+        <button type="button" class="command-inline-btn test" 
+                onclick="deviceManager.testOptionCommand(this)">Test</button>
+        <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
+      </div>
+    `;
+    optionsList.insertAdjacentHTML('beforeend', newField);
+  }
+
+  removeOptionField(button) {
+    const optionField = button.closest('.option-field');
+    optionField.remove();
+  }
+
+  refreshCommandsList() {
+    const commandsList = Utils.$('#commandsList');
+    if (commandsList) {
+      commandsList.innerHTML = this.renderCommandsList(this.tempCommands);
+    }
+  }
+
+  deleteDevice() {
+    if (!this.currentDevice) return;
+
+    if (confirm(`Are you sure you want to delete "${this.currentDevice.name}"?`)) {
+      DataManager.deleteDevice(this.currentDevice.id);
+      Notification.success('Device deleted successfully');
+      this.closeDeviceModal();
+      this.renderDevices();
+      Utils.events.emit('deviceDeleted');
+    }
+  }
+
+  closeDeviceModal() {
+    if (this.deviceModal) {
+      this.deviceModal.close();
+    }
+    this.currentDevice = null;
+    this.tempCommands = {};
+  }
+
+  handleCommandResult(result) {
+    const { deviceId, commandName, success, error } = result;
+    
+    if (success) {
+      const device = DataManager.getDevice(deviceId);
+      if (device) {
+        console.log(`Command ${commandName} executed successfully on ${device.name}`);
+      }
+    } else {
+      console.error(`Command ${commandName} failed:`, error);
+    }
+  }
+}
+
+window.DeviceManager = DeviceManager;

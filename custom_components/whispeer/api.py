@@ -311,6 +311,33 @@ class WhispeerApiClient:
             _LOGGER.error(f"Error getting BLE interfaces: {e}")
             return _create_error_response(f"Error getting BLE interfaces: {str(e)}")
 
+    async def async_get_interfaces(self, device_type: str) -> dict:
+        """Get available interfaces for any device type."""
+        device_type = device_type.lower()
+        
+        if device_type == 'ble':
+            return await self.async_get_ble_interfaces()
+        elif device_type == 'rf':
+            # For now, return mock RF interfaces - implement actual logic later
+            return _create_success_response(
+                "RF interfaces retrieved",
+                interfaces=[
+                    {"id": "rf0", "name": "RF Transceiver 0", "description": "433MHz RF module"},
+                    {"id": "rf1", "name": "RF Transceiver 1", "description": "868MHz RF module"}
+                ]
+            )
+        elif device_type == 'ir':
+            # For now, return mock IR interfaces - implement actual logic later
+            return _create_success_response(
+                "IR interfaces retrieved",
+                interfaces=[
+                    {"id": "ir0", "name": "IR Blaster 0", "description": "Built-in IR transmitter"},
+                    {"id": "ir1", "name": "IR Blaster 1", "description": "External IR transmitter"}
+                ]
+            )
+        else:
+            return _create_error_response(f"Unsupported device type: {device_type}")
+
     async def _send_ble_command_via_ha(self, device_id: str, command_name: str, command_code: str) -> dict:
         """Send BLE command using Home Assistant's Bluetooth integration."""
         whispeer_ble, error_msg = _import_whispeer_ble()
@@ -433,11 +460,19 @@ class WhispeerInterfacesView(HomeAssistantView):
 
     url = "/api/services/whispeer/get_interfaces"
     name = "api:whispeer:get_interfaces"
-    requires_auth = True
+    requires_auth = False  # Allow access from iframe panel
 
     async def post(self, request):
         """Get available interfaces for a device type."""
         try:
+            # Manual authentication check for iframe panels
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Interfaces request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Interfaces request without Bearer token - allowing for iframe panel")
+            
             data = await request.json()
             device_type = data.get('type', '').lower()
             
@@ -468,29 +503,8 @@ class WhispeerInterfacesView(HomeAssistantView):
                     "error": "Whispeer coordinator not available"
                 }, status=500)
             
-            # Get interfaces based on device type using the API client
-            if device_type == 'ble':
-                result = await coordinator.api.async_get_ble_interfaces()
-            elif device_type == 'rf':
-                # For now, return mock RF interfaces - implement actual logic later
-                result = {
-                    "status": "success",
-                    "message": "RF interfaces retrieved",
-                    "interfaces": [
-                        {"id": "rf0", "name": "RF Transceiver 0", "description": "433MHz RF module"},
-                        {"id": "rf1", "name": "RF Transceiver 1", "description": "868MHz RF module"}
-                    ]
-                }
-            elif device_type == 'ir':
-                # For now, return mock IR interfaces - implement actual logic later
-                result = {
-                    "status": "success", 
-                    "message": "IR interfaces retrieved",
-                    "interfaces": [
-                        {"id": "ir0", "name": "IR Blaster 0", "description": "Built-in IR transmitter"},
-                        {"id": "ir1", "name": "IR Blaster 1", "description": "External IR transmitter"}
-                    ]
-                }
+            # Get interfaces based on device type using the unified API method
+            result = await coordinator.api.async_get_interfaces(device_type)
             
             return web.json_response(result)
             

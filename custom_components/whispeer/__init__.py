@@ -9,7 +9,6 @@ import logging
 import os
 from datetime import timedelta
 
-import aiofiles
 from aiohttp import web
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core_config import Config
@@ -48,23 +47,48 @@ class WhispeerPanelView(HomeAssistantView):
         )
         
         try:
-            async with aiofiles.open(panel_path, "r", encoding="utf-8") as file:
-                content = await file.read()
+            # Use asyncio to run file I/O in executor to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            content = await loop.run_in_executor(
+                None,
+                lambda: open(panel_path, "r", encoding="utf-8").read()
+            )
             
-            # Get the access token from the request query params if available
+            # Get the access token from the request 
             hass = request.app["hass"]
+            access_token = ''
+            
+            # Try to get token from query parameters first
             access_token = request.query.get('access_token', '')
             
-            # If no token in query, try to create a long-lived token
+            # If no token in query, try to get from headers
+            if not access_token:
+                auth_header = request.headers.get('Authorization', '')
+                if auth_header.startswith('Bearer '):
+                    access_token = auth_header[7:]  # Remove 'Bearer ' prefix
+            
+            # Log for debugging
+            _LOGGER.debug(f"Panel request - Token from query: {bool(request.query.get('access_token'))}, Token from header: {bool(access_token)}")
+            
+            # If still no token, try to create a temporary one or use alternative auth
             if not access_token:
                 try:
-                    # Try to get the current user from headers or create a system token
-                    # For panels, we can create a system-level access that doesn't require user auth
-                    _LOGGER.debug("No access token in request, panel will need to handle auth in frontend")
+                    # For iframe panels, we often need to handle auth differently
+                    # Let's try to use the websocket auth token if available
+                    _LOGGER.debug("No access token found, frontend will need to handle auth")
                 except Exception as e:
-                    _LOGGER.debug(f"Could not create system token: {e}")
+                    _LOGGER.debug(f"Could not get system token: {e}")
             
-            # Inject a simpler authentication script
+            # Update asset paths to use the API endpoints
+            content = content.replace('href="styles.css"', 'href="/whispeer-assets/styles.css"')
+            content = content.replace('src="utils.js"', 'src="/whispeer-assets/utils.js"')
+            content = content.replace('src="ui-framework.js"', 'src="/whispeer-assets/ui-framework.js"')
+            content = content.replace('src="template-engine.js"', 'src="/whispeer-assets/template-engine.js"')
+            content = content.replace('src="data-manager.js"', 'src="/whispeer-assets/data-manager.js"')
+            content = content.replace('src="device-manager.js"', 'src="/whispeer-assets/device-manager.js"')
+            content = content.replace('src="app.js"', 'src="/whispeer-assets/app.js"')
+            
+            # Inject enhanced authentication script
             auth_script = f"""
             <script>
                 // Store the access token for the frontend
@@ -72,8 +96,9 @@ class WhispeerPanelView(HomeAssistantView):
                 
                 // Function to get Home Assistant token
                 function getHomeAssistantToken() {{
-                    // First try injected token from URL or backend
-                    if (injectedToken && injectedToken !== '') {{
+                    // First try injected token from backend
+                    if (injectedToken && injectedToken !== '' && injectedToken !== 'None') {{
+                        console.log('Using injected token from backend');
                         localStorage.setItem('ha_access_token', injectedToken);
                         return injectedToken;
                     }}
@@ -82,36 +107,48 @@ class WhispeerPanelView(HomeAssistantView):
                     const urlParams = new URLSearchParams(window.location.search);
                     const urlToken = urlParams.get('access_token');
                     if (urlToken) {{
+                        console.log('Using token from URL parameters');
                         localStorage.setItem('ha_access_token', urlToken);
                         return urlToken;
                     }}
                     
                     // Try from localStorage
                     const storedToken = localStorage.getItem('ha_access_token');
-                    if (storedToken && storedToken !== 'undefined' && storedToken !== '') {{
+                    if (storedToken && storedToken !== 'undefined' && storedToken !== '' && storedToken !== 'null') {{
+                        console.log('Using stored token from localStorage');
                         return storedToken;
                     }}
                     
-                    // Try to extract from current page context
+                    // Try to get from Home Assistant frontend context
                     try {{
-                        // Look for Home Assistant's auth in the page
+                        // Check if we're in Home Assistant's frontend context
+                        if (window.hassConnection || window.parent.hassConnection) {{
+                            const connection = window.hassConnection || window.parent.hassConnection;
+                            if (connection && connection.accessToken) {{
+                                console.log('Using token from HA connection');
+                                localStorage.setItem('ha_access_token', connection.accessToken);
+                                return connection.accessToken;
+                            }}
+                        }}
+                        
+                        // Try to get from window.parent if we're in an iframe
                         if (window.parent && window.parent !== window) {{
-                            // We're in an iframe, try to get token from parent
-                            const parentUrl = window.parent.location.href;
-                            if (parentUrl.includes('/auth/')) {{
-                                // Extract token from parent URL if available
-                                const match = parentUrl.match(/access_token=([^&]+)/);
-                                if (match) {{
-                                    const token = match[1];
-                                    localStorage.setItem('ha_access_token', token);
-                                    return token;
+                            try {{
+                                const parentAuth = window.parent.document.querySelector('home-assistant')?.hass?.auth?.accessToken;
+                                if (parentAuth) {{
+                                    console.log('Using token from parent HA instance');
+                                    localStorage.setItem('ha_access_token', parentAuth);
+                                    return parentAuth;
                                 }}
+                            }} catch (e) {{
+                                console.debug('Cannot access parent auth context (cross-origin):', e);
                             }}
                         }}
                     }} catch (e) {{
-                        console.debug('Cannot access parent context:', e);
+                        console.debug('Cannot access HA connection context:', e);
                     }}
                     
+                    console.warn('No Home Assistant access token found');
                     return null;
                 }}
                 
@@ -121,9 +158,15 @@ class WhispeerPanelView(HomeAssistantView):
                 // Try to get token immediately when script loads
                 const initialToken = getHomeAssistantToken();
                 if (initialToken) {{
-                    console.log('Home Assistant token found');
+                    console.log('Home Assistant token found and ready');
                 }} else {{
-                    console.warn('No Home Assistant token found - commands will not work');
+                    console.warn('No Home Assistant token found - service calls may fail');
+                    // Show a warning to the user
+                    setTimeout(() => {{
+                        if (!getHomeAssistantToken()) {{
+                            console.error('Authentication required: Please ensure you are accessing this panel from within Home Assistant');
+                        }}
+                    }}, 1000);
                 }}
             </script>
             """
@@ -136,16 +179,77 @@ class WhispeerPanelView(HomeAssistantView):
             return web.Response(text="Panel not found", status=404)
 
 
+class WhispeerAssetsView(HomeAssistantView):
+    """View to serve static assets for the Whispeer panel."""
+
+    url = r"/whispeer-assets/{filename}"
+    name = "whispeer:assets"
+    requires_auth = False
+
+    async def get(self, request, filename):
+        """Serve static assets."""
+        try:
+            _LOGGER.debug(f"Asset request received: {request.path}")
+            _LOGGER.debug(f"Requested filename: {filename}")
+            
+            # Security: only allow specific files
+            allowed_files = {
+                'styles.css': 'text/css',
+                'utils.js': 'application/javascript',
+                'ui-framework.js': 'application/javascript',
+                'template-engine.js': 'application/javascript',
+                'data-manager.js': 'application/javascript',
+                'device-manager.js': 'application/javascript',
+                'app.js': 'application/javascript'
+            }
+            
+            if filename not in allowed_files:
+                _LOGGER.error(f"Requested file not allowed: {filename}")
+                return web.Response(text="File not found", status=404)
+            
+            file_path = os.path.join(
+                os.path.dirname(__file__), "panel", filename
+            )
+            
+            _LOGGER.debug(f"Attempting to serve asset: {file_path}")
+            
+            # Use asyncio to run file I/O in executor to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            content = await loop.run_in_executor(
+                None,
+                lambda: open(file_path, "r", encoding="utf-8").read()
+            )
+            
+            content_type = allowed_files[filename]
+            _LOGGER.debug(f"Successfully served asset: {filename}")
+            return web.Response(text=content, content_type=content_type)
+            
+        except FileNotFoundError as e:
+            _LOGGER.error(f"Asset file not found: {filename} - {e}")
+            return web.Response(text="File not found", status=404)
+        except Exception as e:
+            _LOGGER.error(f"Error serving asset {filename}: {e}")
+            return web.Response(text="Internal server error", status=500)
+
+
 class WhispeerApiView(HomeAssistantView):
     """View to handle Whispeer API endpoints."""
 
     url = "/api/whispeer/devices"
     name = "api:whispeer:devices"
-    requires_auth = True
+    requires_auth = False  # Allow access from iframe panel
 
     async def get(self, request):
         """Get devices."""
         try:
+            # Manual authentication check for iframe panels
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Devices GET request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Devices GET request without Bearer token - allowing for iframe panel")
+                
             hass = request.app["hass"]
             domain_data = hass.data.get(DOMAIN, {})
             
@@ -168,6 +272,14 @@ class WhispeerApiView(HomeAssistantView):
     async def post(self, request):
         """Add a new device."""
         try:
+            # Manual authentication check for iframe panels
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Devices POST request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Devices POST request without Bearer token - allowing for iframe panel")
+                
             hass = request.app["hass"]
             domain_data = hass.data.get(DOMAIN, {})
             
@@ -194,11 +306,19 @@ class WhispeerDeviceView(HomeAssistantView):
 
     url = "/api/whispeer/device/{device_id}"
     name = "api:whispeer:device"
-    requires_auth = True
+    requires_auth = False  # Allow access from iframe panel
 
     async def delete(self, request):
         """Remove a device."""
         try:
+            # Manual authentication check for iframe panels
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Device DELETE request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Device DELETE request without Bearer token - allowing for iframe panel")
+                
             hass = request.app["hass"]
             domain_data = hass.data.get(DOMAIN, {})
             device_id = int(request.match_info['device_id'])
@@ -222,6 +342,14 @@ class WhispeerDeviceView(HomeAssistantView):
     async def post(self, request):
         """Test a device."""
         try:
+            # Manual authentication check for iframe panels
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Device POST request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Device POST request without Bearer token - allowing for iframe panel")
+                
             hass = request.app["hass"]
             domain_data = hass.data.get(DOMAIN, {})
             device_id = int(request.match_info['device_id'])
@@ -248,11 +376,19 @@ class WhispeerCommandView(HomeAssistantView):
 
     url = "/api/services/whispeer/send_command"
     name = "api:whispeer:send_command"
-    requires_auth = True
+    requires_auth = False  # Allow access from iframe panel
 
     async def post(self, request):
         """Send command to device."""
         try:
+            # Manual authentication check for iframe panels
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Command request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Command request without Bearer token - allowing for iframe panel")
+                
             hass = request.app["hass"]
             data = await request.json()
             
@@ -303,12 +439,22 @@ class WhispeerSyncView(HomeAssistantView):
 
     url = "/api/services/whispeer/sync_devices"
     name = "api:whispeer:sync_devices"
-    requires_auth = True
+    requires_auth = False  # Allow access from iframe panel
 
     async def post(self, request):
         """Sync devices with backend."""
         try:
+            # Manual authentication check for iframe panels
             hass = request.app["hass"]
+            
+            # Check for authorization header
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Sync request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Sync request without Bearer token - allowing for iframe panel")
+            
             data = await request.json()
             devices = data.get('devices', {})
             
@@ -345,11 +491,19 @@ class WhispeerRemoveDeviceView(HomeAssistantView):
 
     url = "/api/services/whispeer/remove_device"
     name = "api:whispeer:remove_device"
-    requires_auth = True
+    requires_auth = False  # Allow access from iframe panel
 
     async def post(self, request):
         """Remove device from backend."""
         try:
+            # Manual authentication check for iframe panels
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+                _LOGGER.debug(f"Remove device request with Bearer token: {bool(token)}")
+            else:
+                _LOGGER.debug("Remove device request without Bearer token - allowing for iframe panel")
+                
             data = await request.json()
             device_id = data.get('device_id')
             
@@ -378,7 +532,10 @@ async def register_panel(hass):
     """Register the Whispeer panel."""
     try:
         # Register all the views first
+        _LOGGER.debug("Registering Whispeer HTTP views...")
         hass.http.register_view(WhispeerPanelView())
+        hass.http.register_view(WhispeerAssetsView())
+        _LOGGER.debug("Registered WhispeerAssetsView")
         hass.http.register_view(WhispeerApiView())
         hass.http.register_view(WhispeerDeviceView())
         hass.http.register_view(WhispeerCommandView())
@@ -407,6 +564,19 @@ async def register_panel(hass):
 
 async def async_setup(hass: HomeAssistant, config: Config):
     """Set up this integration using YAML is not supported."""
+    _LOGGER.debug("Setting up Whispeer integration - registering HTTP views")
+    
+    # Register HTTP views first, regardless of config entries
+    hass.http.register_view(WhispeerPanelView())
+    hass.http.register_view(WhispeerAssetsView())
+    _LOGGER.debug("Registered WhispeerAssetsView")
+    hass.http.register_view(WhispeerApiView())
+    hass.http.register_view(WhispeerDeviceView())
+    hass.http.register_view(WhispeerCommandView())
+    hass.http.register_view(WhispeerSyncView())
+    hass.http.register_view(WhispeerRemoveDeviceView())
+    hass.http.register_view(WhispeerInterfacesView())
+    
     return True
 
 

@@ -1,0 +1,124 @@
+{
+    "ventilador_oficina": {
+        "uuid": "F0 08",
+        "remote_control_uuid": "000008f0-0000-1000-8000-00805f9b34fb",
+        "commands": {
+            "prueba": "188752b65f2b5e00fc3151d0af9e08240a97fcd604d37202016057",
+            "all_off": "100064657252c1ae0e825bba46d94451c3b01264434804f3",
+            "light_on": "100005c701c70fcd3c404b93b840d19185c8d1457459a1eb",
+            "light_off": "1000b472121f5168eb450d72d6c6cf073c769715f0c404d4",
+            "beep_on": "10001c74891cde66a2678cbeb97a9f7ea5b62227bd0aa553",
+            "beep_off": "1000b6acc475e742ce9963e4b2a6268f66197a905721dca0",
+            "fan_direction_reverse": "10006ef761a2e2042ef7e5f9241fe67636365d0bd3b3e6d2",
+            "fan_direction_forward": "10009c2ef17b6a5980f9691e02ce5b9c5e5873cfe959b3e7",
+            "fan_off": "100004fc1232a1ce6ee23b8426b90431a34b3904230b0953",
+            "fan_speed_0": "100004fc1232a1ce6ee23b8426b90431a34b3904230b0953",
+            "fan_speed_1": "1000eaae7164256dc97ef250fe6356e5863624d66477db67",
+            "fan_speed_2": "100006519504412f212394b58d455e8417ddfac3b2bb8eb9",
+            "fan_speed_3": "1000b12ae2ac40590d68a2a861f090a7248768405588ee07",
+            "fan_speed_4": "1000bef66f0982e2339858237cc9f9d418cd834aef654089",
+            "fan_speed_5": "100045910e958a33e5ebe01db97e9cf3989eb2340bb0eb29",
+            "fan_speed_6": "1000a57eda37912cab23c12b9407b803103017e902ac7b3c",
+            "light_warm": "10009f9a9c0b16277688e8c02db83fbd08f3043c0ad1782b",
+            "auto_off_1h": "1000331bbeaa21453aae3d3c69e97ca98db427bb989e4cd3",
+            "auto_off_4h": "1000de8c0f69e28253f838331ca949b078c7b22a8ff7079f",
+            "auto_off_8h": "1000f422525f1128ab054d6296866f467c190055b0827681",
+            "light_warm": "1000f173a2ec00194d28e2f821b0b0e49b36910015a24879",
+            "light_neutral": "1000620401c6a0ec739100be0217c518112e6a7005583d55",
+            "light_cold": "1000026561a6c08c13f160de6277a5788e6cc41065010067",
+            "light_bright_up": "100065b061a76fad5c202bc2d820a5f1e5dd71251485342d",
+            "light_bright_down": "100035bc906c7f93c32f844c4958b37f9f743f595c14ac01"
+        }
+    },
+    "ventilador_habitacion_principal": {
+        "uuid": "F0 08",
+        "remote_control_uuid": "000008f0-0000-1000-8000-00805f9b34fb",
+        "commands": {
+            "all_off": "10001599648000fc2cdf403ac7a5ac60f5d959ba47876635",
+            "light_on": "100092cc50fd4f194be402f239b724bb26198dc321c95a51",
+            "light_off": "1000aa083124bc2a893eb230be2336a4c6b1f49624f688d2",
+            "beep_on": "1000dc212f22b1f843befcfe68c1290c1d55f6da19850b86",
+            "beep_off": "10007e22afc99b25f35898c4bc091910d87d548a2fa368b8",
+            "fan_direction_reverse": "10006502e101ba13de21bc3434a6c5cd01724d912682a9d3",
+            "fan_direction_forward": "10006503e101ba13de21bc3434a6c4cd01ad5b9126824024",
+            "fan_off": "100093891e0a58e29a0e9decc949c0092d8c641b38a3cfdf",
+            "fan_speed_0": "100093891e0a58e29a0e9decc949c0092d8c641b38a3cfdf",
+            "fan_speed_1": "10003588906ca694c32f845c4958bb7e9fef48595c051487",
+            "fan_speed_2": "100005e201c7d6ca3c404bb2b840f19385fe044574737dad",
+            "fan_speed_3": "100005678161da73be41dc7054c684ae61b16ef146216dfd",
+            "fan_speed_4": "10009c596f62f1b803febc99288148485d68129a59ba9bd2",
+            "fan_speed_5": "100055e68be10f6d2783ba73d393a702aea6947276ad2cbd",
+            "fan_speed_6": "1000be5feafb322268c85fa95a105ecddbc03921ed5a9949",
+            "light_warm": "10004ca0168fc1210065ab1ff93b311f554d6f7b8c428a8f",
+            "auto_off_1h": "1000ac47f66f21c1e0854b9f19dbadff4abd589b6c227fb7",
+            "auto_off_4h": "1000d3c45e4a18a2da4edddc890950496dbfe45b7896a7c6",
+            "auto_off_8h": "100075d1abc12f4d07a39a23f3b347268e06995256da212b",
+            "light_warm": "10004ca0168fc1210065ab1ff93b311f554d6f7b8c428a8f",
+            "light_neutral": "1000dbae4c73d0333048ca428aaeff83673d522dbb56f09b",
+            "light_cold": "1000a2427cead3a827de1bf893fd08a75177ce5a6ebb63cf",
+            "light_bright_up": "10005e318fe9bb05d378b8d39c292d30f8f8ddaa0f38ee6f",
+            "light_bright_down": "1000952c4b21cfade7437aa313536fc76e7466b2b63da15d"
+        }
+    },
+    "fan": {
+      "interface": "hci0",
+      "type": "rf",
+      "props": {
+        "frequency": "433"
+      },
+      "commands": {
+          "test": {
+            "type": "single",
+            "values": {
+                "code": "188752b65f2b5e00fc3151d0af9e08240a97fcd604d37202016057"
+            },
+            "props": {
+              "shape": "rounded",
+              "color": "#00ff00"
+            }
+          },
+          "light": {
+            "type": "light",
+            "values": {
+                "on": "100005c701c70fcd3c404b93b840d19185c8d1457459a1eb",
+                "off": "1000b472121f5168eb450d72d6c6cf073c769715f0c404d4"
+            },
+            "props": {
+              "shape": "circle",
+              "color": "#00ff00"
+            }
+          },
+          "fan": {
+            "type": "switch",
+            "values": {
+                "on": "100005c701c70fcd3c404b93b840d19185c8d1457459a1eb",
+                "off": "1000b472121f5168eb450d72d6c6cf073c769715f0c404d4"
+            },
+            "props": {
+              "shape": "square",
+              "color": "#00ff00"
+            }
+          },
+          "speed": {
+            "type": "numeric",
+            "values": {
+                "0": "100004fc1232a1ce6ee23b8426b90431a34b3904230b0953",
+                "1": "1000eaae7164256dc97ef250fe6356e5863624d66477db67",
+                "2": "100006519504412f212394b58d455e8417ddfac3b2bb8eb9",
+                "3": "1000b12ae2ac40590d68a2a861f090a7248768405588ee07",
+                "4": "1000bef66f0982e2339858237cc9f9d418cd834aef654089",
+                "5": "100045910e958a33e5ebe01db97e9cf3989eb2340bb0eb29",
+                "6": "1000a57eda37912cab23c12b9407b803103017e902ac7b3c"
+            }
+          },
+          "light_tone": {
+            "type": "group",
+            "values": {
+                "warm": "1000f173a2ec00194d28e2f821b0b0e49b36910015a24879",
+                "neutral": "1000620401c6a0ec739100be0217c518112e6a7005583d55",
+                "cold": "1000026561a6c08c13f160de6277a5788e6cc41065010067"
+            }
+          }
+      }
+    }
+}
