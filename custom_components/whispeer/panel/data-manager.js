@@ -167,7 +167,7 @@ class DataManager {
     }
   }
 
-  static async sendCommand(deviceId, commandName, subCommand = null) {
+  static async sendCommand(deviceId, deviceType, commandName, commandCode, subCommand = null) {
     try {
       const token = DataManager.getHomeAssistantToken();
       if (!token) {
@@ -176,9 +176,9 @@ class DataManager {
 
       const payload = {
         device_id: deviceId,
+        device_type: deviceType,
         command_name: commandName,
-        device_type: 'ble',
-        command_code: subCommand || commandName
+        command_code: commandCode
       };
 
       if (subCommand) {

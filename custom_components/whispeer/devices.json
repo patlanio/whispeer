@@ -68,7 +68,7 @@
       },
       "commands": {
           "test": {
-            "type": "single",
+            "type": "button",
             "values": {
                 "code": "188752b65f2b5e00fc3151d0af9e08240a97fcd604d37202016057"
             },

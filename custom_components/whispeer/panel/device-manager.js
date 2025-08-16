@@ -24,7 +24,6 @@ class DeviceManager extends Component {
               <button class="pill-edit" onclick="deviceManager.configureDevice('{{id}}')">⚙️</button>
             </div>
           </div>
-          <div class="device-info">{{interface}} • {{commandCount}} commands</div>
           <div class="device-commands">{{commands}}</div>
         </div>
       `,
@@ -65,8 +64,8 @@ class DeviceManager extends Component {
       `,
 
       commandToggle: `
-        <div class="command-toggle-container">
-          <span>{{name}}</span>
+        <div class="command-toggle-full-width">
+          <span class="command-toggle-label">{{name}}</span>
           <div class="command-toggle {{state}}" 
                onclick="deviceManager.toggleCommand('{{deviceId}}', '{{commandName}}', '{{type}}')">
           </div>
@@ -115,8 +114,7 @@ class DeviceManager extends Component {
   }
 
   renderDeviceCard(device) {
-    const { id, name, type, interface: deviceInterface, commands = {} } = device;
-    const commandCount = Object.keys(commands).length;
+    const { id, name, type, commands = {} } = device;
     const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[type] || { label: type, badge: 'type-ble' };
     
     const commandsHTML = this.renderDeviceCommands(device);
@@ -126,8 +124,6 @@ class DeviceManager extends Component {
       name,
       type: deviceTypeConfig.label,
       badgeClass: deviceTypeConfig.badge,
-      interface: deviceInterface || 'Unknown',
-      commandCount,
       commands: commandsHTML
     });
   }
@@ -199,27 +195,89 @@ class DeviceManager extends Component {
   }
 
   renderNumericCommand(deviceId, commandName, command) {
-    const { options = {} } = command;
-    const optionButtons = Object.entries(options).map(([key, value]) => 
-      this.template('commandButton', {
-        deviceId,
-        commandName: `${commandName}:${key}`,
-        buttonStyle: '',
-        buttonContent: key
-      })
+    const { values = {} } = command;
+    const optionButtons = Object.entries(values).map(([key, value]) => 
+      `<button class="btn-group-item" 
+               onclick="deviceManager.executeCommand('${deviceId}', '${commandName}:${key}')"
+               data-value="${value}"
+               data-command="${commandName}"
+               data-option="${key}">
+         ${key}
+       </button>`
     ).join('');
 
-    return `<div class="command-group-inline">${optionButtons}</div>`;
+    return `
+      <div class="input-group-container" data-command="${commandName}">
+        <div class="input-group-prepend">
+          <span class="input-group-text">${commandName}</span>
+        </div>
+        <div class="btn-group-wrapper">
+          <div class="btn-group" data-command="${commandName}">${optionButtons}</div>
+        </div>
+      </div>
+    `;
   }
 
   renderGroupCommand(deviceId, commandName, command) {
-    return this.renderNumericCommand(deviceId, commandName, command);
+    const { values = {} } = command;
+    const optionButtons = Object.entries(values).map(([key, value]) => 
+      `<button class="btn-group-item" 
+               onclick="deviceManager.executeCommand('${deviceId}', '${commandName}:${key}')"
+               data-value="${value}"
+               data-command="${commandName}"
+               data-option="${key}">
+         ${key}
+       </button>`
+    ).join('');
+
+    return `
+      <div class="input-group-container" data-command="${commandName}">
+        <div class="input-group-prepend">
+          <span class="input-group-text">${commandName}</span>
+        </div>
+        <div class="btn-group-wrapper">
+          <div class="btn-group" data-command="${commandName}">${optionButtons}</div>
+        </div>
+      </div>
+    `;
   }
 
   async executeCommand(deviceId, commandName) {
     try {
+      const device = DataManager.getDevice(deviceId);
+      if (!device || !device.commands) {
+        throw new Error('Device or command not found');
+      }
+
       const [cmd, subCmd] = commandName.split(':');
-      await DataManager.sendCommand(deviceId, cmd, subCmd);
+      const command = device.commands[cmd];
+      
+      if (!command) {
+        throw new Error(`Command "${cmd}" not found`);
+      }
+
+      let commandCode;
+      
+      if (command.type === 'button') {
+        commandCode = command.values?.code;
+      } else if (command.type === 'light' || command.type === 'switch') {
+        commandCode = subCmd === 'on' ? command.values?.on : command.values?.off;
+      } else if (command.type === 'numeric' || command.type === 'group') {
+        commandCode = command.values?.[subCmd];
+      } else {
+        commandCode = command.values?.code || subCmd;
+      }
+
+      if (!commandCode) {
+        throw new Error(`No command code found for "${commandName}"`);
+      }
+
+      await DataManager.sendCommand(deviceId, device.type, cmd, commandCode, subCmd);
+      
+      if (command.type === 'numeric' || command.type === 'group') {
+        this.updateGroupCommandState(deviceId, cmd, subCmd);
+      }
+      
       Notification.success(`Command "${commandName}" executed successfully`);
       Utils.events.emit('commandExecuted', { deviceId, commandName, success: true });
     } catch (error) {
@@ -234,11 +292,42 @@ class DeviceManager extends Component {
     const subCommand = currentState;
 
     try {
-      await DataManager.sendCommand(deviceId, commandName, subCommand);
+      const device = DataManager.getDevice(deviceId);
+      if (!device || !device.commands) {
+        throw new Error('Device or command not found');
+      }
+
+      const command = device.commands[commandName];
+      if (!command) {
+        throw new Error(`Command "${commandName}" not found`);
+      }
+
+      const commandCode = currentState === 'on' ? command.values?.on : command.values?.off;
+      if (!commandCode) {
+        throw new Error(`No command code found for "${commandName}:${currentState}"`);
+      }
+
+      await DataManager.sendCommand(deviceId, device.type, commandName, commandCode, subCommand);
       toggleElement.classList.toggle('on');
       Notification.success(`${commandName} turned ${currentState}`);
     } catch (error) {
       Notification.error(`Failed to toggle ${commandName}: ${error.message}`);
+    }
+  }
+
+  updateGroupCommandState(deviceId, commandName, selectedOption) {
+    const deviceCard = document.querySelector(`[data-device-id="${deviceId}"]`);
+    if (!deviceCard) return;
+
+    const commandContainer = deviceCard.querySelector(`[data-command="${commandName}"]`);
+    if (!commandContainer) return;
+
+    const allButtons = commandContainer.querySelectorAll('.btn-group-item');
+    allButtons.forEach(btn => btn.classList.remove('active'));
+
+    const selectedButton = commandContainer.querySelector(`[data-option="${selectedOption}"]`);
+    if (selectedButton) {
+      selectedButton.classList.add('active');
     }
   }
 
@@ -777,8 +866,13 @@ class DeviceManager extends Component {
       return;
     }
 
+    if (!code) {
+      Notification.error('Command code is required for testing');
+      return;
+    }
+
     try {
-      await DataManager.sendCommand(this.currentDevice.id, name);
+      await DataManager.sendCommand(this.currentDevice.id, this.currentDevice.type, name, code);
       Notification.success(`Test command "${name}" sent successfully`);
     } catch (error) {
       Notification.error(`Test failed: ${error.message}`);
@@ -814,9 +908,17 @@ class DeviceManager extends Component {
       return;
     }
 
+    const optionValueInput = optionField.querySelector(`[data-option-value]`);
+    const commandCode = optionValueInput?.value.trim();
+    
+    if (!commandCode) {
+      Notification.error('Command code is required for testing');
+      return;
+    }
+
     try {
       const fullCommandName = `${commandName}.${finalOptionKey}`;
-      await DataManager.sendCommand(this.currentDevice.id, fullCommandName);
+      await DataManager.sendCommand(this.currentDevice.id, this.currentDevice.type, commandName, commandCode, finalOptionKey);
       Notification.success(`Test command "${fullCommandName}" sent successfully`);
     } catch (error) {
       Notification.error(`Test failed: ${error.message}`);
