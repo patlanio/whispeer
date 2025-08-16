@@ -612,6 +612,7 @@ class DeviceManager extends Component {
           </select>
           <input type="text" class="command-inline-input name" 
                  placeholder="Command name" value="${name}">
+          ${isExisting && name ? `<input type="hidden" class="original-command-name" value="${name}">` : ''}
           ${codeField}
           <button type="button" class="command-inline-btn save" 
                   onclick="deviceManager.saveInlineCommand(this)">${buttonText}</button>
@@ -693,9 +694,11 @@ class DeviceManager extends Component {
     
     const typeSelect = form.querySelector('.command-inline-select');
     const nameInput = form.querySelector('.command-inline-input.name');
+    const originalNameInput = form.querySelector('.original-command-name');
     const codeInputs = form.querySelectorAll('[data-field]');
 
     const name = nameInput.value.trim();
+    const originalName = originalNameInput?.value;
     const type = typeSelect.value;
 
     if (!name) {
@@ -751,7 +754,23 @@ class DeviceManager extends Component {
       const validation = CommandManager.validateCommand(command);
 
       if (validation.valid) {
-        this.tempCommands[name] = command;
+        if (originalName && originalName !== name && this.tempCommands[originalName]) {
+          const newTempCommands = {};
+          Object.keys(this.tempCommands).forEach(key => {
+            if (key === originalName) {
+              newTempCommands[name] = command;
+            } else {
+              newTempCommands[key] = this.tempCommands[key];
+            }
+          });
+          this.tempCommands = newTempCommands;
+        } else {
+          this.tempCommands[name] = command;
+        }
+
+        if (originalNameInput) {
+          originalNameInput.value = name;
+        }
       }
     } catch (error) {
       console.warn('Auto-save failed for command:', name, error);
@@ -764,9 +783,11 @@ class DeviceManager extends Component {
     
     const typeSelect = form.querySelector('.command-inline-select');
     const nameInput = form.querySelector('.command-inline-input.name');
+    const originalNameInput = form.querySelector('.original-command-name');
     const codeInputs = form.querySelectorAll('[data-field]');
 
     const name = nameInput.value.trim();
+    const originalName = originalNameInput?.value;
     const type = typeSelect.value;
 
     if (!name) {
@@ -833,10 +854,29 @@ class DeviceManager extends Component {
       return;
     }
 
-    this.tempCommands[name] = command;
+    if (originalName && originalName !== name && this.tempCommands[originalName]) {
+      const newTempCommands = {};
+      Object.keys(this.tempCommands).forEach(key => {
+        if (key === originalName) {
+          newTempCommands[name] = command;
+        } else {
+          newTempCommands[key] = this.tempCommands[key];
+        }
+      });
+      this.tempCommands = newTempCommands;
+    } else {
+      this.tempCommands[name] = command;
+    }
+
     Notification.success(`Command "${name}" saved`);
     
-    this.refreshCommandsList();
+    if (originalNameInput) {
+      originalNameInput.value = name;
+    }
+
+    if (!originalName || (originalName && originalName !== name)) {
+      this.refreshCommandsList();
+    }
   }
 
   deleteCommand(commandName) {
