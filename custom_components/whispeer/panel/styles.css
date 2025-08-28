@@ -246,6 +246,11 @@ body {
   color: #f57c00;
 }
 
+.type-broadlink {
+  background: #e8f5e8;
+  color: #2e7d32;
+}
+
 .device-info {
   color: var(--text-secondary);
   font-size: 0.9rem;
@@ -257,13 +262,13 @@ body {
   gap: 8px;
 }
 
-.loading {
+.loading:not(.form-group):not(form):not(.form-field) {
   text-align: center;
   padding: 40px;
   color: var(--text-secondary);
 }
 
-.loading::after {
+.loading:not(.form-group):not(form):not(.form-field)::after {
   content: '';
   width: 40px;
   height: 40px;
@@ -373,6 +378,37 @@ body {
 .form-input:focus, .form-select:focus, .command-name:focus, .command-code:focus {
   outline: none;
   border-color: var(--primary-color);
+}
+
+/* Ensure form groups maintain vertical alignment */
+.form-group {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.form-group label {
+  align-self: flex-start;
+  margin-bottom: 8px;
+}
+
+.form-group .form-select,
+.form-group .form-input {
+  align-self: stretch;
+}
+
+/* For form rows, ensure proper alignment */
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  align-items: flex-start;
+}
+
+.form-row .form-group {
+  margin-bottom: 0;
+  flex: 1;
 }
 
 .command-name {
@@ -762,6 +798,24 @@ body {
   color: white;
 }
 
+.command-inline-btn.learn {
+  background: #ff9800;
+  color: white;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+}
+
+.command-inline-btn.learn:hover {
+  background: #f57c00;
+}
+
+.command-inline-btn.learn:disabled {
+  background: #ccc;
+  color: #666;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .command-inline-btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
@@ -987,6 +1041,11 @@ body {
   .type-ir {
     background: #e65100;
     color: #ffe0b2;
+  }
+
+  .type-broadlink {
+    background: #1b5e20;
+    color: #c8e6c9;
   }
 
   .modal {

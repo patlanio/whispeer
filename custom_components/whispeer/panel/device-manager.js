@@ -526,12 +526,17 @@ class DeviceManager extends Component {
 
     let codeField = '';
     if (type === 'button') {
+      const learnButton = this.canLearnCommand() ? 
+        `<button type="button" class="command-inline-btn learn" 
+                onclick="deviceManager.learnCommand(this)">📡 Learn</button>` : '';
+      
       codeField = `
         <input type="text" class="command-inline-input code" 
                placeholder="code" value="${values.code || ''}" 
                data-field="code">
         <button type="button" class="command-inline-btn test" 
                 onclick="deviceManager.testInlineCommand(this)">Test</button>
+        ${learnButton}
       `;
     }
 
@@ -543,18 +548,27 @@ class DeviceManager extends Component {
       let optionsHtml = '';
       
       if (type === 'light' || type === 'switch') {
+        const learnButtonOn = this.canLearnCommand() ? 
+          `<button type="button" class="command-inline-btn learn" 
+                  onclick="deviceManager.learnOptionCommand(this, 'on')">📡</button>` : '';
+        const learnButtonOff = this.canLearnCommand() ? 
+          `<button type="button" class="command-inline-btn learn" 
+                  onclick="deviceManager.learnOptionCommand(this, 'off')">📡</button>` : '';
+        
         optionsHtml += `
           <div class="option-field">
             <input type="text" value="on" readonly class="command-inline-input">
             <input type="text" placeholder="On command code" value="${options.on || ''}" class="command-inline-input" data-option="on">
             <button type="button" class="command-inline-btn test" 
                     onclick="deviceManager.testOptionCommand(this, 'on')">Test</button>
+            ${learnButtonOn}
           </div>
           <div class="option-field">
             <input type="text" value="off" readonly class="command-inline-input">
             <input type="text" placeholder="Off command code" value="${options.off || ''}" class="command-inline-input" data-option="off">
             <button type="button" class="command-inline-btn test" 
                     onclick="deviceManager.testOptionCommand(this, 'off')">Test</button>
+            ${learnButtonOff}
           </div>
         `;
       } else if (type === 'numeric' || type === 'group') {
@@ -563,6 +577,10 @@ class DeviceManager extends Component {
         );
         
         filteredOptions.forEach(([key, value]) => {
+          const learnButton = this.canLearnCommand() ? 
+            `<button type="button" class="command-inline-btn learn" 
+                    onclick="deviceManager.learnOptionCommand(this, '${key}')">📡</button>` : '';
+          
           optionsHtml += `
             <div class="option-field">
               <input type="${type === 'numeric' ? 'number' : 'text'}" 
@@ -571,12 +589,17 @@ class DeviceManager extends Component {
               <input type="text" placeholder="Command code" value="${value}" class="command-inline-input" data-option-value>
               <button type="button" class="command-inline-btn test" 
                       onclick="deviceManager.testOptionCommand(this, '${key}')">Test</button>
+              ${learnButton}
               <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
             </div>
           `;
         });
         
         if (filteredOptions.length === 0) {
+          const learnButton = this.canLearnCommand() ? 
+            `<button type="button" class="command-inline-btn learn" 
+                    onclick="deviceManager.learnOptionCommand(this)">📡</button>` : '';
+          
           optionsHtml += `
             <div class="option-field">
               <input type="${type === 'numeric' ? 'number' : 'text'}" 
@@ -585,6 +608,7 @@ class DeviceManager extends Component {
               <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
               <button type="button" class="command-inline-btn test" 
                       onclick="deviceManager.testOptionCommand(this)">Test</button>
+              ${learnButton}
               <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
             </div>
           `;
@@ -644,13 +668,32 @@ class DeviceManager extends Component {
 
     const deviceType = typeSelect.value;
     
+    // Clear current interfaces and show loading
+    interfaceSelect.innerHTML = '<option value="">⏳ Loading interfaces...</option>';
+    interfaceSelect.disabled = true;
+    
     try {
       const interfaces = await DataManager.loadInterfaces(deviceType);
-      interfaceSelect.innerHTML = interfaces.map(iface => 
-        `<option value="${iface}">${iface}</option>`
-      ).join('');
+      
+      // Clear loading state
+      interfaceSelect.disabled = false;
+      
+      if (interfaces && interfaces.length > 0) {
+        interfaceSelect.innerHTML = interfaces.map(iface => 
+          `<option value="${iface}">${iface}</option>`
+        ).join('');
+        console.log(`Loaded ${interfaces.length} interfaces for ${deviceType}:`, interfaces);
+      } else {
+        interfaceSelect.innerHTML = '<option value="">❌ No interfaces available</option>';
+        console.log(`No interfaces found for device type: ${deviceType}`);
+      }
     } catch (error) {
       console.error('Failed to load interfaces:', error);
+      
+      // Clear loading state
+      interfaceSelect.disabled = false;
+      
+      interfaceSelect.innerHTML = '<option value="">⚠️ Error loading interfaces</option>';
       Notification.error('Failed to load interfaces');
     }
   }
@@ -1048,6 +1091,143 @@ class DeviceManager extends Component {
       }
     } else {
       console.error(`Command ${commandName} failed:`, error);
+    }
+  }
+
+  // Broadlink learning functions
+  canLearnCommand() {
+    // Check if current device type supports learning
+    const typeSelect = Utils.$('#deviceForm select[name="type"]');
+    if (!typeSelect) return false;
+    
+    const deviceType = typeSelect.value;
+    return deviceType === 'ir' || deviceType === 'rf';
+  }
+
+  getCurrentDeviceInfo() {
+    const form = Utils.$('#deviceForm');
+    if (!form) return null;
+    
+    const formData = new FormData(form);
+    const deviceData = Object.fromEntries(formData.entries());
+    
+    return {
+      name: deviceData.name,
+      type: deviceData.type,
+      interface: deviceData.interface
+    };
+  }
+
+  async learnCommand(buttonElement) {
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo || !this.canLearnCommand()) {
+      Notification.error('Invalid device configuration for learning');
+      return;
+    }
+
+    const commandContainer = buttonElement.closest('.command-container');
+    const nameInput = commandContainer.querySelector('.command-inline-input.name');
+    const codeInput = commandContainer.querySelector('.command-inline-input.code');
+    
+    if (!nameInput.value.trim()) {
+      Notification.error('Please enter a command name first');
+      nameInput.focus();
+      return;
+    }
+
+    await this.performLearnCommand(deviceInfo, nameInput.value.trim(), codeInput);
+  }
+
+  async learnOptionCommand(buttonElement, optionKey = null) {
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo || !this.canLearnCommand()) {
+      Notification.error('Invalid device configuration for learning');
+      return;
+    }
+
+    const commandContainer = buttonElement.closest('.command-container');
+    const nameInput = commandContainer.querySelector('.command-inline-input.name');
+    
+    if (!nameInput.value.trim()) {
+      Notification.error('Please enter a command name first');
+      nameInput.focus();
+      return;
+    }
+
+    const optionField = buttonElement.closest('.option-field');
+    let keyInput, valueInput;
+    
+    if (optionKey) {
+      // For predefined options like 'on'/'off'
+      valueInput = optionField.querySelector(`input[data-option="${optionKey}"]`);
+    } else {
+      // For dynamic options
+      keyInput = optionField.querySelector('input[data-option-key]');
+      valueInput = optionField.querySelector('input[data-option-value]');
+      
+      if (keyInput && !keyInput.value.trim()) {
+        Notification.error('Please enter an option name first');
+        keyInput.focus();
+        return;
+      }
+      
+      optionKey = keyInput ? keyInput.value.trim() : 'option';
+    }
+
+    const commandName = `${nameInput.value.trim()}_${optionKey}`;
+    await this.performLearnCommand(deviceInfo, commandName, valueInput);
+  }
+
+  async performLearnCommand(deviceInfo, commandName, codeInput) {
+    const deviceIp = DataManager.extractBroadlinkIpFromInterface(deviceInfo.interface);
+    if (!deviceIp) {
+      Notification.error('Could not extract device IP from interface');
+      return;
+    }
+
+    // Show learning modal
+    const originalButton = codeInput.parentElement.querySelector('.command-inline-btn.learn');
+    if (originalButton) {
+      originalButton.disabled = true;
+      originalButton.textContent = '⏳ Learning...';
+    }
+
+    try {
+      Notification.info(`Learning ${deviceInfo.type.toUpperCase()} command "${commandName}"...`);
+      
+      const frequency = deviceInfo.type === 'rf' ? 433.92 : undefined;
+      const result = await DataManager.learnBroadlinkCommand(
+        deviceInfo.name,
+        commandName,
+        deviceInfo.type,
+        deviceIp,
+        frequency
+      );
+
+      if (result.status === 'success') {
+        // The command is automatically saved to devices.json by the backend
+        // We need to get the learned command data
+        const devices = DataManager.loadDevices();
+        const device = devices.find(d => d.name === deviceInfo.name);
+        
+        if (device && device.commands && device.commands[commandName]) {
+          codeInput.value = device.commands[commandName];
+          Notification.success(`Command "${commandName}" learned successfully!`);
+        } else {
+          Notification.warning('Command learned but could not retrieve code');
+        }
+      } else {
+        Notification.error(result.message || 'Failed to learn command');
+      }
+    } catch (error) {
+      console.error('Learn command error:', error);
+      Notification.error(`Failed to learn command: ${error.message}`);
+    } finally {
+      // Restore button
+      if (originalButton) {
+        originalButton.disabled = false;
+        originalButton.textContent = '📡 Learn';
+      }
     }
   }
 }

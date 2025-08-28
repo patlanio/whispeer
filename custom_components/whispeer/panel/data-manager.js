@@ -47,7 +47,8 @@ const APP_CONFIG = {
   DEVICE_TYPES: {
     ble: { label: 'Bluetooth LE', badge: 'type-ble' },
     rf: { label: 'Radio Frequency', badge: 'type-rf' },
-    ir: { label: 'Infrared', badge: 'type-ir' }
+    ir: { label: 'Infrared', badge: 'type-ir' },
+    broadlink: { label: 'Broadlink', badge: 'type-broadlink' }
   }
 };
 
@@ -148,6 +149,31 @@ class DataManager {
 
   static async loadInterfaces(deviceType) {
     try {
+      // For IR and RF types, use Broadlink interfaces
+      if (deviceType === 'ir' || deviceType === 'rf') {
+        const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.INTERFACES, {
+          type: 'broadlink'
+        });
+        
+        // Check both interfaces (new format) and devices (fallback)
+        const interfaces = response.interfaces || response.devices || [];
+        
+        if (Array.isArray(interfaces)) {
+          return interfaces
+            .filter(interfaceName => {
+              // For RF, only show devices that support RF (typically RM Pro models)
+              if (deviceType === 'rf') {
+                return interfaceName && interfaceName.toLowerCase().includes('pro');
+              }
+              // For IR, show all Broadlink devices as they all support IR
+              return true;
+            });
+        }
+        
+        return [];
+      }
+      
+      // For other device types, use the original logic
       const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.INTERFACES, {
         type: deviceType
       });
@@ -316,6 +342,59 @@ class CommandManager {
         <span class="command-options-summary">${optionCount} items</span>
       </div>
     `;
+  }
+
+  // Broadlink specific functions
+  static async discoverBroadlinkDevices() {
+    try {
+      const response = await Utils.api.post('/api/services/whispeer/discover_broadlink_devices', {});
+      
+      if (response.devices && Array.isArray(response.devices)) {
+        return response.devices;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Failed to discover Broadlink devices:', error);
+      return [];
+    }
+  }
+
+  static async learnBroadlinkCommand(deviceName, commandName, commandType, deviceIp, frequency = 433.92) {
+    try {
+      const response = await Utils.api.post('/api/services/whispeer/learn_broadlink_command', {
+        device_name: deviceName,
+        command_name: commandName,
+        command_type: commandType,
+        device_ip: deviceIp,
+        frequency: frequency
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Failed to learn Broadlink command:', error);
+      throw error;
+    }
+  }
+
+  static async sendBroadlinkSignal(commandData, deviceIp) {
+    try {
+      const response = await Utils.api.post('/api/services/whispeer/send_broadlink_signal', {
+        command_data: commandData,
+        device_ip: deviceIp
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Failed to send Broadlink signal:', error);
+      throw error;
+    }
+  }
+
+  static extractBroadlinkIpFromInterface(interfaceString) {
+    // Extract IP from "Model (IP Address)" format
+    const match = interfaceString.match(/\(([^)]+)\)$/);
+    return match ? match[1] : null;
   }
 }
 
