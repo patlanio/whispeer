@@ -6,7 +6,8 @@
         "description": "Hvis du trenger hjep til konfigurasjon ta en titt her: https://github.com/patlanio/whispeer",
         "data": {
           "username": "Brukernavn",
-          "password": "Passord"
+          "password": "Passord",
+          "use_ha_broadlink_integration": "Bruk Home Assistant Broadlink-integrasjon for å oppdage enheter"
         }
       }
     },
@@ -23,7 +24,8 @@
         "data": {
           "binary_sensor": "Binær sensor aktivert",
           "sensor": "Sensor aktivert",
-          "switch": "Bryter aktivert"
+          "switch": "Bryter aktivert",
+          "use_ha_broadlink_integration": "Bruk Home Assistant Broadlink-integrasjon for å oppdage enheter"
         }
       }
     }

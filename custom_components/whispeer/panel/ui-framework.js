@@ -503,7 +503,14 @@ class Toast {
       setTimeout(() => Toast.remove(toast), duration);
     }
 
+    // Add close method to the toast instance
+    toast.close = () => Toast.remove(toast);
+
     return toast;
+  }
+
+  static permanent(message, type = 'info') {
+    return Toast.show(message, type, 0); // 0 duration means permanent
   }
 
   static remove(toast) {
@@ -551,6 +558,10 @@ class Notification {
 
   static info(message) {
     return Toast.info(message);
+  }
+
+  static permanent(message, type = 'info') {
+    return Toast.permanent(message, type);
   }
 }
 

@@ -7,6 +7,7 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from .api import WhispeerApiClient
 from .const import CONF_PASSWORD
 from .const import CONF_USERNAME
+from .const import CONF_USE_HA_BROADLINK_INTEGRATION
 from .const import DOMAIN
 from .const import PLATFORMS
 
@@ -54,7 +55,11 @@ class WhispeerFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
-                {vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str}
+                {
+                    vol.Required(CONF_USERNAME): str, 
+                    vol.Required(CONF_PASSWORD): str,
+                    vol.Optional(CONF_USE_HA_BROADLINK_INTEGRATION, default=False): bool
+                }
             ),
             errors=self._errors,
         )
@@ -63,7 +68,7 @@ class WhispeerFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Return true if credentials is valid."""
         try:
             session = async_create_clientsession(self.hass)
-            client = WhispeerApiClient(username, password, session)
+            client = WhispeerApiClient(username, password, session, self.hass, False)
             await client.async_get_data()
             return True
         except Exception:  # pylint: disable=broad-except
@@ -93,8 +98,14 @@ class WhispeerOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(x, default=self.options.get(x, True)): bool
-                    for x in sorted(PLATFORMS)
+                    **{
+                        vol.Required(x, default=self.options.get(x, True)): bool
+                        for x in sorted(PLATFORMS)
+                    },
+                    vol.Optional(
+                        CONF_USE_HA_BROADLINK_INTEGRATION, 
+                        default=self.options.get(CONF_USE_HA_BROADLINK_INTEGRATION, False)
+                    ): bool
                 }
             ),
         )

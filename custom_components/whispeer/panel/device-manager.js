@@ -456,11 +456,11 @@ class DeviceManager extends Component {
           options: { 
             name: 'type',
             label: 'Device Type',
-            value: device.type || 'ble',
+            value: device.type || 'ir',
             options: [
-              { value: 'ble', label: 'Bluetooth LE' },
+              { value: 'ir', label: 'Infrared' },
               { value: 'rf', label: 'Radio Frequency' },
-              { value: 'ir', label: 'Infrared' }
+              { value: 'ble', label: 'Bluetooth LE' }
             ]
           }
         },
@@ -526,17 +526,16 @@ class DeviceManager extends Component {
 
     let codeField = '';
     if (type === 'button') {
-      const learnButton = this.canLearnCommand() ? 
-        `<button type="button" class="command-inline-btn learn" 
-                onclick="deviceManager.learnCommand(this)">📡 Learn</button>` : '';
+      const learnButton = `<button type="button" class="command-inline-btn learn" 
+                onclick="deviceManager.learnCommand(this)">Learn</button>`;
       
       codeField = `
         <input type="text" class="command-inline-input code" 
                placeholder="code" value="${values.code || ''}" 
                data-field="code">
+        ${learnButton}
         <button type="button" class="command-inline-btn test" 
                 onclick="deviceManager.testInlineCommand(this)">Test</button>
-        ${learnButton}
       `;
     }
 
@@ -548,27 +547,25 @@ class DeviceManager extends Component {
       let optionsHtml = '';
       
       if (type === 'light' || type === 'switch') {
-        const learnButtonOn = this.canLearnCommand() ? 
-          `<button type="button" class="command-inline-btn learn" 
-                  onclick="deviceManager.learnOptionCommand(this, 'on')">📡</button>` : '';
-        const learnButtonOff = this.canLearnCommand() ? 
-          `<button type="button" class="command-inline-btn learn" 
-                  onclick="deviceManager.learnOptionCommand(this, 'off')">📡</button>` : '';
+        const learnButtonOn = `<button type="button" class="command-inline-btn learn" 
+                  onclick="deviceManager.learnOptionCommand(this, 'on')">Learn</button>`;
+        const learnButtonOff = `<button type="button" class="command-inline-btn learn" 
+                  onclick="deviceManager.learnOptionCommand(this, 'off')">Learn</button>`;
         
         optionsHtml += `
           <div class="option-field">
             <input type="text" value="on" readonly class="command-inline-input">
             <input type="text" placeholder="On command code" value="${options.on || ''}" class="command-inline-input" data-option="on">
+            ${learnButtonOn}
             <button type="button" class="command-inline-btn test" 
                     onclick="deviceManager.testOptionCommand(this, 'on')">Test</button>
-            ${learnButtonOn}
           </div>
           <div class="option-field">
             <input type="text" value="off" readonly class="command-inline-input">
             <input type="text" placeholder="Off command code" value="${options.off || ''}" class="command-inline-input" data-option="off">
+            ${learnButtonOff}
             <button type="button" class="command-inline-btn test" 
                     onclick="deviceManager.testOptionCommand(this, 'off')">Test</button>
-            ${learnButtonOff}
           </div>
         `;
       } else if (type === 'numeric' || type === 'group') {
@@ -577,9 +574,8 @@ class DeviceManager extends Component {
         );
         
         filteredOptions.forEach(([key, value]) => {
-          const learnButton = this.canLearnCommand() ? 
-            `<button type="button" class="command-inline-btn learn" 
-                    onclick="deviceManager.learnOptionCommand(this, '${key}')">📡</button>` : '';
+          const learnButton = `<button type="button" class="command-inline-btn learn" 
+                    onclick="deviceManager.learnOptionCommand(this, '${key}')">Learn</button>`;
           
           optionsHtml += `
             <div class="option-field">
@@ -587,18 +583,17 @@ class DeviceManager extends Component {
                      placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
                      value="${key}" class="command-inline-input" data-option-key>
               <input type="text" placeholder="Command code" value="${value}" class="command-inline-input" data-option-value>
+              ${learnButton}
               <button type="button" class="command-inline-btn test" 
                       onclick="deviceManager.testOptionCommand(this, '${key}')">Test</button>
-              ${learnButton}
               <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
             </div>
           `;
         });
         
         if (filteredOptions.length === 0) {
-          const learnButton = this.canLearnCommand() ? 
-            `<button type="button" class="command-inline-btn learn" 
-                    onclick="deviceManager.learnOptionCommand(this)">📡</button>` : '';
+          const learnButton = `<button type="button" class="command-inline-btn learn" 
+                    onclick="deviceManager.learnOptionCommand(this)">Learn</button>`;
           
           optionsHtml += `
             <div class="option-field">
@@ -606,9 +601,9 @@ class DeviceManager extends Component {
                      placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
                      value="" class="command-inline-input" data-option-key>
               <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
+              ${learnButton}
               <button type="button" class="command-inline-btn test" 
                       onclick="deviceManager.testOptionCommand(this)">Test</button>
-              ${learnButton}
               <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
             </div>
           `;
@@ -679,9 +674,18 @@ class DeviceManager extends Component {
       interfaceSelect.disabled = false;
       
       if (interfaces && interfaces.length > 0) {
-        interfaceSelect.innerHTML = interfaces.map(iface => 
-          `<option value="${iface}">${iface}</option>`
-        ).join('');
+        interfaceSelect.innerHTML = interfaces.map((iface, index) => {
+          // Todos los objetos deben tener label
+          if (typeof iface === 'object' && iface.label) {
+            // Usar el índice como value y guardar el objeto en data-interface
+            const interfaceData = JSON.stringify(iface).replace(/"/g, '&quot;');
+            return `<option value="${index}" data-interface="${interfaceData}">${iface.label}</option>`;
+          } else {
+            console.error('Invalid interface object, missing label:', iface);
+            return ''; // Skip invalid interfaces
+          }
+        }).filter(option => option).join(''); // Remove empty options
+        
         console.log(`Loaded ${interfaces.length} interfaces for ${deviceType}:`, interfaces);
       } else {
         interfaceSelect.innerHTML = '<option value="">❌ No interfaces available</option>';
@@ -698,7 +702,7 @@ class DeviceManager extends Component {
     }
   }
 
-  handleDeviceFormSubmit(e) {
+  async handleDeviceFormSubmit(e) {
     e.preventDefault();
     
     this.saveAllInlineCommands();
@@ -706,6 +710,51 @@ class DeviceManager extends Component {
     const formData = new FormData(e.target);
     const deviceData = Object.fromEntries(formData.entries());
     deviceData.commands = this.tempCommands;
+
+    // Add emitter information based on device type and interface
+    const deviceType = deviceData.type;
+    const deviceInterface = deviceData.interface;
+    
+    if (deviceInterface) {
+      const emitterData = { interface: deviceInterface };
+      
+      if (deviceType === 'ir' || deviceType === 'rf') {
+        // Extract IP from Broadlink interface
+        const deviceIp = DataManager.extractBroadlinkIpFromInterface(deviceInterface);
+        if (deviceIp) {
+          emitterData.ip = deviceIp;
+          
+          // Try to get additional Broadlink device info from metadata
+          try {
+            const interfacesResponse = await DataManager.getInterfaces(deviceType);
+            if (interfacesResponse && interfacesResponse.interfaces) {
+              // Look for matching interface in the response
+              const matchingInterface = interfacesResponse.interfaces.find(iface => 
+                iface.label === deviceInterface || iface.ip === deviceIp
+              );
+              if (matchingInterface) {
+                if (matchingInterface.mac) emitterData.mac = matchingInterface.mac;
+                if (matchingInterface.type) emitterData.type = matchingInterface.type;
+                if (matchingInterface.model) emitterData.model = matchingInterface.model;
+                if (matchingInterface.manufacturer) emitterData.manufacturer = matchingInterface.manufacturer;
+              }
+            }
+          } catch (error) {
+            console.warn('Could not get interface metadata:', error);
+          }
+          
+          // Add frequency for RF devices
+          if (deviceType === 'rf') {
+            emitterData.frequency = "433.92"; // Default frequency
+          }
+        }
+      } else if (deviceType === 'ble') {
+        // For BLE devices, the interface is the Bluetooth adapter
+        emitterData.adapter = deviceInterface;
+      }
+      
+      deviceData.emitter = emitterData;
+    }
 
     if (this.currentDevice) {
       DataManager.updateDevice(this.currentDevice.id, deviceData);
@@ -1111,24 +1160,39 @@ class DeviceManager extends Component {
     const formData = new FormData(form);
     const deviceData = Object.fromEntries(formData.entries());
     
+    // Get the interface object from the selected option's data-interface attribute
+    const interfaceSelect = form.querySelector('select[name="interface"]');
+    const selectedOption = interfaceSelect.selectedOptions[0];
+    let interfaceObject = null;
+    
+    if (selectedOption && selectedOption.hasAttribute('data-interface')) {
+      try {
+        const interfaceData = selectedOption.getAttribute('data-interface').replace(/&quot;/g, '"');
+        interfaceObject = JSON.parse(interfaceData);
+      } catch (e) {
+        console.error('Failed to parse interface from selected option:', e);
+      }
+    }
+    
     return {
       name: deviceData.name,
       type: deviceData.type,
-      interface: deviceData.interface
+      interface: interfaceObject
     };
   }
 
   async learnCommand(buttonElement) {
     const deviceInfo = this.getCurrentDeviceInfo();
-    if (!deviceInfo || !this.canLearnCommand()) {
-      Notification.error('Invalid device configuration for learning');
+    if (!deviceInfo) {
+      Notification.error('Please save the device first');
       return;
     }
 
     const commandContainer = buttonElement.closest('.command-container');
-    const nameInput = commandContainer.querySelector('.command-inline-input.name');
-    const codeInput = commandContainer.querySelector('.command-inline-input.code');
-    
+    const commandForm = commandContainer.querySelector('.command-inline-form');
+    const nameInput = commandForm.querySelector('input.command-inline-input.name');
+    const codeInput = commandForm.querySelector('input.command-inline-input.code');
+
     if (!nameInput.value.trim()) {
       Notification.error('Please enter a command name first');
       nameInput.focus();
@@ -1140,11 +1204,11 @@ class DeviceManager extends Component {
 
   async learnOptionCommand(buttonElement, optionKey = null) {
     const deviceInfo = this.getCurrentDeviceInfo();
-    if (!deviceInfo || !this.canLearnCommand()) {
-      Notification.error('Invalid device configuration for learning');
+    if (!deviceInfo) {
+      Notification.error('Please save the device first');
       return;
     }
-
+    
     const commandContainer = buttonElement.closest('.command-container');
     const nameInput = commandContainer.querySelector('.command-inline-input.name');
     
@@ -1179,9 +1243,12 @@ class DeviceManager extends Component {
   }
 
   async performLearnCommand(deviceInfo, commandName, codeInput) {
-    const deviceIp = DataManager.extractBroadlinkIpFromInterface(deviceInfo.interface);
-    if (!deviceIp) {
-      Notification.error('Could not extract device IP from interface');
+    // Interface should already be an object from getCurrentDeviceInfo()
+    const interfaceObject = deviceInfo.interface;
+    
+    if (!interfaceObject || typeof interfaceObject !== 'object') {
+      console.error('No valid interface object:', interfaceObject);
+      Notification.error('Please select an interface first');
       return;
     }
 
@@ -1189,44 +1256,118 @@ class DeviceManager extends Component {
     const originalButton = codeInput.parentElement.querySelector('.command-inline-btn.learn');
     if (originalButton) {
       originalButton.disabled = true;
-      originalButton.textContent = '⏳ Learning...';
+      originalButton.textContent = '⏳ Preparing...';
     }
 
+    let sessionId = null;
+    let learningToast = null;
+
     try {
-      Notification.info(`Learning ${deviceInfo.type.toUpperCase()} command "${commandName}"...`);
+      // Step 1: Prepare for learning
+      Notification.info(`Preparing ${deviceInfo.type.toUpperCase()} device for learning...`);
       
-      const frequency = deviceInfo.type === 'rf' ? 433.92 : undefined;
-      const result = await DataManager.learnBroadlinkCommand(
-        deviceInfo.name,
-        commandName,
+      const prepareResult = await CommandManager.learnCommand(
         deviceInfo.type,
-        deviceIp,
-        frequency
+        interfaceObject  // Send the complete interface object as emitter
       );
 
-      if (result.status === 'success') {
-        // The command is automatically saved to devices.json by the backend
-        // We need to get the learned command data
-        const devices = DataManager.loadDevices();
-        const device = devices.find(d => d.name === deviceInfo.name);
-        
-        if (device && device.commands && device.commands[commandName]) {
-          codeInput.value = device.commands[commandName];
-          Notification.success(`Command "${commandName}" learned successfully!`);
-        } else {
-          Notification.warning('Command learned but could not retrieve code');
-        }
-      } else {
-        Notification.error(result.message || 'Failed to learn command');
+      if (prepareResult.status !== 'prepared') {
+        throw new Error(prepareResult.message || 'Failed to prepare device for learning');
       }
+
+      sessionId = prepareResult.session_id;
+
+      // Step 2: Device is ready, show permanent toast and start polling
+      if (originalButton) {
+        originalButton.textContent = '📡 Ready to Learn';
+      }
+
+      // Show permanent toast asking user to press remote button
+      learningToast = Notification.permanent('Press a button on the remote control');
+
+      // Step 3: Poll for learned command
+      const timeout = 30000; // 30 seconds
+      const pollInterval = 1000; // 1 second
+      let elapsed = 0;
+      let commandLearned = false;
+
+      while (elapsed < timeout && !commandLearned) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        elapsed += pollInterval;
+
+        try {
+          const checkResult = await CommandManager.checkLearnedCommand(sessionId, deviceInfo.type);
+          
+          if (checkResult.status === 'success') {
+            if (checkResult.learning_status === 'completed' && checkResult.command_data) {
+              // Command learned successfully!
+              const commandCode = checkResult.command_data;
+              codeInput.value = commandCode;
+              
+              // Close permanent toast and show success
+              if (learningToast) {
+                learningToast.close();
+                learningToast = null;
+              }
+              
+              Notification.success(`Command "${commandName}" learned successfully!`);
+              Notification.info(`Code: ${commandCode.substring(0, 20)}...`);
+              commandLearned = true;
+              break; // Exit the polling loop immediately
+              
+            } else if (checkResult.learning_status === 'learning') {
+              // Still learning, continue polling
+              continue;
+            } else if (checkResult.learning_status === 'error') {
+              throw new Error(checkResult.message || 'Learning failed');
+            } else if (checkResult.learning_status === 'timeout') {
+              throw new Error('Learning session timed out');
+            }
+          } else if (checkResult.status === 'error') {
+            throw new Error(checkResult.message || 'Learning failed');
+          }
+          
+        } catch (pollError) {
+          console.error('Polling error:', pollError);
+          // Only continue polling for expected errors (like storage full)
+          const errorMessage = pollError.message || '';
+          if (errorMessage.includes('session not found') || 
+              errorMessage.includes('timed out') ||
+              errorMessage.includes('Learning failed') ||
+              errorMessage.includes('Learning session timed out')) {
+            throw pollError;
+          }
+          // For other errors (like storage full), continue polling silently
+        }
+      }
+
+      // If we exit the loop without learning a command, it's a timeout
+      if (!commandLearned) {
+        throw new Error('Learning timed out - no button press detected within 30 seconds');
+      }
+
     } catch (error) {
       console.error('Learn command error:', error);
+      
+      // Close permanent toast if it exists
+      if (learningToast) {
+        learningToast.close();
+        learningToast = null;
+      }
+      
+      // Show error toast
       Notification.error(`Failed to learn command: ${error.message}`);
+      
     } finally {
       // Restore button
       if (originalButton) {
         originalButton.disabled = false;
-        originalButton.textContent = '📡 Learn';
+        originalButton.textContent = 'Learn';
+      }
+      
+      // Clean up any remaining toast
+      if (learningToast) {
+        learningToast.close();
       }
     }
   }

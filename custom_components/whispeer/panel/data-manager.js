@@ -45,10 +45,9 @@ const APP_CONFIG = {
   },
   EMOJIS: ['🏠', '🛋️', '🛏️', '🚪', '🚗', '💡', '🖥️', '🧊', '🌀', '🔌'],
   DEVICE_TYPES: {
-    ble: { label: 'Bluetooth LE', badge: 'type-ble' },
-    rf: { label: 'Radio Frequency', badge: 'type-rf' },
     ir: { label: 'Infrared', badge: 'type-ir' },
-    broadlink: { label: 'Broadlink', badge: 'type-broadlink' }
+    rf: { label: 'Radio Frequency', badge: 'type-rf' },
+    ble: { label: 'Bluetooth LE', badge: 'type-ble' }
   }
 };
 
@@ -149,46 +148,35 @@ class DataManager {
 
   static async loadInterfaces(deviceType) {
     try {
-      // For IR and RF types, use Broadlink interfaces
-      if (deviceType === 'ir' || deviceType === 'rf') {
-        const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.INTERFACES, {
-          type: 'broadlink'
-        });
-        
-        // Check both interfaces (new format) and devices (fallback)
-        const interfaces = response.interfaces || response.devices || [];
-        
-        if (Array.isArray(interfaces)) {
-          return interfaces
-            .filter(interfaceName => {
-              // For RF, only show devices that support RF (typically RM Pro models)
-              if (deviceType === 'rf') {
-                return interfaceName && interfaceName.toLowerCase().includes('pro');
-              }
-              // For IR, show all Broadlink devices as they all support IR
-              return true;
-            });
-        }
-        
-        return [];
-      }
+      console.log(`Loading interfaces for device type: ${deviceType}`);
       
-      // For other device types, use the original logic
       const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.INTERFACES, {
         type: deviceType
       });
       
-      // Handle both array format (old) and object format (new API response)
-      if (response.interfaces) {
-        // New format: return interface names or IDs
-        return response.interfaces.map(iface => 
-          typeof iface === 'string' ? iface : (iface.id || iface.name)
-        );
+      console.log(`Interface response for ${deviceType}:`, response);
+      
+      if (response.status !== 'success') {
+        console.error(`Failed to load interfaces: ${response.message}`);
+        return [];
       }
       
-      return [];
+      const interfaces = response.interfaces || [];
+      
+      // Validar que todos los elementos sean objetos con label
+      const validInterfaces = interfaces.filter(iface => {
+        if (typeof iface !== 'object' || !iface.label) {
+          console.error('Invalid interface format, missing label:', iface);
+          return false;
+        }
+        return true;
+      });
+      
+      console.log(`Loaded ${validInterfaces.length} valid interfaces for ${deviceType}:`, validInterfaces);
+      return validInterfaces;
+      
     } catch (error) {
-      console.error('Failed to load interfaces:', error);
+      console.error(`Failed to load interfaces for ${deviceType}:`, error);
       return [];
     }
   }
@@ -377,6 +365,49 @@ class CommandManager {
     }
   }
 
+  static async learnCommand(deviceType, emitterData) {
+    try {
+      // First, prepare the device for learning
+      const prepareResponse = await Utils.api.post('/api/services/whispeer/prepare_to_learn', {
+        device_type: deviceType,
+        emitter: emitterData
+      });
+      
+      if (prepareResponse.status !== 'success') {
+        throw new Error(prepareResponse.message || 'Failed to prepare device for learning');
+      }
+      
+      const sessionId = prepareResponse.session_id;
+      console.log(`Learning session started: ${sessionId}`);
+      
+      // Return the session info for the UI to handle
+      return {
+        status: 'prepared',
+        session_id: sessionId,
+        device_type: deviceType,
+        message: 'Device prepared for learning'
+      };
+      
+    } catch (error) {
+      console.error('Failed to prepare for learning:', error);
+      throw error;
+    }
+  }
+
+  static async checkLearnedCommand(sessionId, deviceType) {
+    try {
+      const response = await Utils.api.post('/api/services/whispeer/check_learned_command', {
+        session_id: sessionId,
+        device_type: deviceType
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Failed to check learned command:', error);
+      throw error;
+    }
+  }
+
   static async sendBroadlinkSignal(commandData, deviceIp) {
     try {
       const response = await Utils.api.post('/api/services/whispeer/send_broadlink_signal', {
@@ -392,9 +423,101 @@ class CommandManager {
   }
 
   static extractBroadlinkIpFromInterface(interfaceString) {
-    // Extract IP from "Model (IP Address)" format
-    const match = interfaceString.match(/\(([^)]+)\)$/);
-    return match ? match[1] : null;
+    // Extract IP from various formats:
+    // "Model (IP Address)" format
+    // "Model (HASS, IP Address)" format  
+    // "Model Name (192.168.1.100)" format
+    
+    // First try to match patterns with parentheses
+    let match = interfaceString.match(/\(([^)]*)\)$/);
+    if (match) {
+      const content = match[1];
+      
+      // Check if content has comma (HASS format)
+      if (content.includes(',')) {
+        const parts = content.split(',').map(part => part.trim());
+        // Look for IP address in the parts
+        for (const part of parts) {
+          if (this.isValidIpAddress(part)) {
+            return part;
+          }
+        }
+      } else if (this.isValidIpAddress(content)) {
+        // Direct IP address
+        return content;
+      }
+    }
+    
+    // If no parentheses or no valid IP found, try to find IP anywhere in the string
+    const ipPattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+    const ipMatches = interfaceString.match(ipPattern);
+    if (ipMatches) {
+      for (const ip of ipMatches) {
+        if (this.isValidIpAddress(ip)) {
+          return ip;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  static isValidIpAddress(ip) {
+    const parts = ip.split('.');
+    if (parts.length !== 4) return false;
+    
+    for (const part of parts) {
+      const num = parseInt(part, 10);
+      if (isNaN(num) || num < 0 || num > 255) return false;
+    }
+    
+    return true;
+  }
+
+  static interfacesCache = {};
+  static CACHE_TIMEOUT = 30000; // 30 seconds
+
+  static async getInterfaces(deviceType) {
+    try {
+      // Check cache first
+      const cacheKey = deviceType;
+      const cached = this.interfacesCache[cacheKey];
+      
+      if (cached && (Date.now() - cached.timestamp) < this.CACHE_TIMEOUT) {
+        console.log(`Using cached interfaces for ${deviceType}`);
+        return cached.data;
+      }
+      
+      console.log(`Fetching fresh interfaces for ${deviceType}`);
+      const response = await Utils.api.post('/api/services/whispeer/get_interfaces', {
+        type: deviceType
+      });
+      
+      // Cache the response
+      if (response.status === 'success') {
+        this.interfacesCache[cacheKey] = {
+          data: response,
+          timestamp: Date.now()
+        };
+      }
+      
+      return response;
+    } catch (error) {
+      console.error(`Failed to get ${deviceType} interfaces:`, error);
+      throw error;
+    }
+  }
+
+  static getInterfacesList(deviceType) {
+    const cached = this.interfacesCache[deviceType];
+    if (cached && (Date.now() - cached.timestamp) < this.CACHE_TIMEOUT) {
+      return cached.data;
+    }
+    return null;
+  }
+
+  static clearInterfacesCache() {
+    this.interfacesCache = {};
   }
 }
 

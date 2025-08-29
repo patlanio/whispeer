@@ -22,8 +22,14 @@ from homeassistant.components.http import HomeAssistantView
 
 from .api import WhispeerApiClient
 from .api import WhispeerInterfacesView
+from .api import WhispeerPrepareToLearnView
+from .api import WhispeerCheckLearnedCommandView
+from .api import WhispeerBroadlinkLearnView
+from .api import WhispeerBroadlinkSendView
+from .api import WhispeerBroadlinkDiscoverView
 from .const import CONF_PASSWORD
 from .const import CONF_USERNAME
+from .const import CONF_USE_HA_BROADLINK_INTEGRATION
 from .const import DOMAIN
 from .const import PLATFORMS
 from .const import STARTUP_MESSAGE
@@ -542,6 +548,11 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerSyncView())
         hass.http.register_view(WhispeerRemoveDeviceView())
         hass.http.register_view(WhispeerInterfacesView())
+        hass.http.register_view(WhispeerPrepareToLearnView())
+        hass.http.register_view(WhispeerCheckLearnedCommandView())
+        hass.http.register_view(WhispeerBroadlinkLearnView())
+        hass.http.register_view(WhispeerBroadlinkSendView())
+        hass.http.register_view(WhispeerBroadlinkDiscoverView())
         
         # Register the panel using the frontend component
         frontend.async_register_built_in_panel(
@@ -576,6 +587,11 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerSyncView())
     hass.http.register_view(WhispeerRemoveDeviceView())
     hass.http.register_view(WhispeerInterfacesView())
+    hass.http.register_view(WhispeerPrepareToLearnView())
+    hass.http.register_view(WhispeerCheckLearnedCommandView())
+    hass.http.register_view(WhispeerBroadlinkLearnView())
+    hass.http.register_view(WhispeerBroadlinkSendView())
+    hass.http.register_view(WhispeerBroadlinkDiscoverView())
     
     return True
 
@@ -588,9 +604,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     username = entry.data.get(CONF_USERNAME)
     password = entry.data.get(CONF_PASSWORD)
+    use_ha_broadlink_integration = entry.options.get(CONF_USE_HA_BROADLINK_INTEGRATION, 
+                                                    entry.data.get(CONF_USE_HA_BROADLINK_INTEGRATION, False))
 
     session = async_get_clientsession(hass)
-    client = WhispeerApiClient(username, password, session)
+    client = WhispeerApiClient(username, password, session, hass, use_ha_broadlink_integration)
 
     coordinator = WhispeerDataUpdateCoordinator(hass, client=client)
     await coordinator.async_refresh()

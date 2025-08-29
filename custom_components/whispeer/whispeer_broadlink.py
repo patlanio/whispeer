@@ -75,25 +75,37 @@ def discover_broadlink_devices(timeout=5):
 
 def connect_to_device(ip, mac=None, device_type=None):
     """Connect to a specific Broadlink device."""
+    print(f"🔍 Attempting to connect to Broadlink device at {ip}")
+    
     try:
         if mac and device_type:
             # Fast connection with known parameters
+            print(f"🚀 Using fast connection with MAC: {mac}, Type: {device_type}")
             mac_bytes = bytes.fromhex(mac.replace(':', ''))
             device = broadlink.gendevice(int(device_type, 16), (ip, 80), mac_bytes)
         else:
             # Discover and find the specific device
+            print(f"🔍 Discovering Broadlink devices on network...")
             devices = broadlink.discover(timeout=5)
+            print(f"📡 Found {len(devices)} Broadlink devices total")
+            
             device = None
             for dev in devices:
+                print(f"   - Device at {dev.host[0]}:{dev.host[1]}")
                 if dev.host[0] == ip:
                     device = dev
+                    print(f"✅ Found target device at {ip}")
                     break
             
             if not device:
-                print(f"❌ Device with IP {ip} not found")
+                print(f"❌ Device with IP {ip} not found in discovery")
+                print("🔧 Available devices:")
+                for dev in devices:
+                    print(f"   - {dev.host[0]}:{dev.host[1]}")
                 return None
         
         # Authenticate
+        print(f"🔐 Authenticating with device...")
         if device.auth():
             print(f"✅ Connected and authenticated to device at {ip}")
             return device
@@ -103,6 +115,8 @@ def connect_to_device(ip, mac=None, device_type=None):
             
     except Exception as e:
         print(f"❌ Error connecting to device: {e}")
+        import traceback
+        print(f"🔍 Full error details: {traceback.format_exc()}")
         return None
 
 def learn_ir_command(device, timeout=30):
@@ -112,14 +126,25 @@ def learn_ir_command(device, timeout=30):
         device.enter_learning()
         print(f"👆 Point your remote at the device and press the button (timeout: {timeout}s)")
         
+        storage_warning_shown = False
         for i in range(timeout, 0, -1):
             time.sleep(1)
-            packet = device.check_data()
-            if packet:
-                print(f"\n✅ IR command learned successfully!")
-                return packet.hex()
-            else:
-                print(f"{i}...", end="", flush=True)
+            try:
+                packet = device.check_data()
+                if packet:
+                    print(f"\n✅ IR command learned successfully!")
+                    return packet.hex()
+                else:
+                    print(f"{i}...", end="", flush=True)
+            except Exception as check_error:
+                if "[Errno -5]" in str(check_error) and "storage is full" in str(check_error):
+                    if not storage_warning_shown:
+                        print(f"\n⚠️  Device storage is full warning (continuing anyway)...")
+                        storage_warning_shown = True
+                    print(f"{i}...", end="", flush=True)
+                    continue
+                else:
+                    raise check_error
         
         print(f"\n❌ No IR command detected within {timeout} seconds")
         return None
@@ -129,40 +154,35 @@ def learn_ir_command(device, timeout=30):
         return None
 
 def learn_rf_command(device, frequency=433.92, timeout=30):
-    """Learn an RF command from the device."""
+    """Learn an RF command from the device using simplified approach."""
     try:
-        print(f"📡 Starting RF learning mode on {frequency} MHz...")
-        device.sweep_frequency()
-        print(f"👆 Hold the button on your RF remote near the device to detect frequency...")
+        print(f"� Starting RF learning mode at {frequency} MHz...")
         
-        # Wait for frequency detection
-        freq_detected = False
-        for i in range(15, 0, -1):
-            time.sleep(1)
-            freq_found, detected_freq = device.check_frequency()
-            if freq_found:
-                print(f"\n✅ Frequency detected: {detected_freq} MHz")
-                freq_detected = True
-                break
-            else:
-                print(f"{i}...", end="", flush=True)
+        # Use the direct approach like in rm4.py - device should already be prepared with find_rf_packet
+        print("👆 Press the button on your RF remote briefly...")
         
-        if not freq_detected:
-            print(f"\n⚠️  No frequency detected, using default {frequency} MHz")
-            device.find_rf_packet(frequency)
-        else:
-            device.find_rf_packet()
-        
-        print("👆 Now press the button briefly to learn the command...")
-        
+        storage_warning_shown = False
         for i in range(timeout, 0, -1):
             time.sleep(1)
-            packet = device.check_data()
-            if packet:
-                print(f"\n✅ RF command learned successfully!")
-                return packet.hex()
-            else:
-                print(f"{i}...", end="", flush=True)
+            try:
+                packet = device.check_data()
+                if packet:
+                    print(f"\n✅ RF command learned successfully!")
+                    return packet.hex()
+                else:
+                    print(f"{i}...", end="", flush=True)
+            except Exception as check_error:
+                if "[Errno -5]" in str(check_error) and "storage is full" in str(check_error):
+                    if not storage_warning_shown:
+                        print(f"\n⚠️  Device storage is full warning (continuing anyway)...")
+                        storage_warning_shown = True
+                    print(f"{i}...", end="", flush=True)
+                    continue
+                else:
+                    # Log other errors but continue polling
+                    print(f"\n⚠️  Check data error (continuing): {check_error}")
+                    print(f"{i}...", end="", flush=True)
+                    continue
         
         print(f"\n❌ No RF command detected within {timeout} seconds")
         return None
@@ -189,7 +209,7 @@ def emit_command(device_name, command_names, device_ip=None):
     Args:
         device_name: Name of the device (must exist in devices.json)
         command_names: List of command names (must exist for the device)
-        device_ip: IP address of the Broadlink device. If None, use first available.
+        device_ip: IP address of the Broadlink device. If None, use from device config.
     
     Returns:
         bool: True if all commands successful, False otherwise
@@ -211,23 +231,31 @@ def emit_command(device_name, command_names, device_ip=None):
     
     # Validate all commands exist before executing any
     for command_name in command_names:
-        if command_name not in device_config.get("commands", {}):
+        commands = device_config.get("commands", {})
+        if command_name not in commands:
             print(f"❌ Command '{command_name}' not found for device '{device_name}'")
             print("Available commands:")
-            for cmd in device_config.get("commands", {}).keys():
+            for cmd in commands.keys():
                 print(f"  - {cmd}")
             return False
     
     # Connect to Broadlink device
     if not device_ip:
+        # Try to get IP from emitter config first, then fallback to broadlink config
+        emitter_config = device_config.get("emitter", {})
         broadlink_config = device_config.get("broadlink", {})
-        device_ip = broadlink_config.get("ip")
+        
+        device_ip = emitter_config.get("ip") or broadlink_config.get("ip")
         if not device_ip:
-            print("❌ No Broadlink device IP specified")
+            print("❌ No Broadlink device IP specified in device config")
             return False
     
-    mac = device_config.get("broadlink", {}).get("mac")
-    device_type = device_config.get("broadlink", {}).get("type")
+    # Get connection details from config
+    emitter_config = device_config.get("emitter", {})
+    broadlink_config = device_config.get("broadlink", {})
+    
+    mac = emitter_config.get("mac") or broadlink_config.get("mac")
+    device_type = emitter_config.get("type") or broadlink_config.get("type")
     
     device = connect_to_device(device_ip, mac, device_type)
     if not device:
@@ -236,7 +264,17 @@ def emit_command(device_name, command_names, device_ip=None):
     # Execute all commands
     success_count = 0
     for command_name in command_names:
-        command_data = device_config["commands"][command_name]
+        command_config = device_config["commands"][command_name]
+        
+        # Handle both old format (string) and new format (object)
+        if isinstance(command_config, str):
+            command_data = command_config
+        else:
+            # New format with values.code
+            command_data = command_config.get("values", {}).get("code")
+            if not command_data:
+                print(f"❌ No command code found for '{command_name}'")
+                continue
         
         print(f"📱 Sending command '{command_name}' to device '{device_name}'")
         
@@ -275,7 +313,7 @@ def learn_command(device_name, command_name, command_type="ir", device_ip=None, 
         devices_config[device_name] = {
             "uuid": f"broadlink_{device_name}",
             "commands": {},
-            "broadlink": {}
+            "emitter": {}
         }
     
     # Connect to Broadlink device
@@ -292,12 +330,19 @@ def learn_command(device_name, command_name, command_type="ir", device_ip=None, 
     if not device:
         return False
     
-    # Update device config with Broadlink info
-    devices_config[device_name]["broadlink"] = {
+    # Update device config with emitter info (Broadlink device details)
+    devices_config[device_name]["emitter"] = {
+        "interface": f"broadlink_{device_ip}",
         "ip": device_ip,
         "mac": device.mac.hex(),
-        "type": hex(device.devtype)
+        "type": hex(device.devtype),
+        "model": getattr(device, 'model', 'Unknown'),
+        "manufacturer": getattr(device, 'manufacturer', 'Broadlink')
     }
+    
+    # Add frequency for RF commands
+    if command_type.lower() == "rf":
+        devices_config[device_name]["emitter"]["frequency"] = frequency
     
     # Learn the command
     print(f"🎓 Learning {command_type.upper()} command '{command_name}' for device '{device_name}'")
@@ -314,12 +359,26 @@ def learn_command(device_name, command_name, command_type="ir", device_ip=None, 
         print("❌ Failed to learn command")
         return False
     
-    # Save the command
-    devices_config[device_name]["commands"][command_name] = command_data
+    # Save the command with type information
+    if "commands" not in devices_config[device_name]:
+        devices_config[device_name]["commands"] = {}
+    
+    devices_config[device_name]["commands"][command_name] = {
+        "type": "button",
+        "values": {
+            "code": command_data
+        },
+        "props": {
+            "color": "#03a9f4",
+            "icon": "💡",
+            "display": "both"
+        }
+    }
     
     if save_devices(devices_config):
         print(f"✅ Command '{command_name}' learned and saved successfully")
         print(f"📊 Command data: {command_data}")
+        print(f"🔧 Emitter info saved: {devices_config[device_name]['emitter']}")
         return True
     else:
         print("❌ Failed to save command to devices.json")

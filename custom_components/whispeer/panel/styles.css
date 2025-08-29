@@ -799,14 +799,14 @@ body {
 }
 
 .command-inline-btn.learn {
-  background: #ff9800;
+  background: #ff6b6b;
   color: white;
-  font-size: 0.8rem;
-  padding: 6px 8px;
+  font-size: 0.9rem;
+  padding: 8px 12px;
 }
 
 .command-inline-btn.learn:hover {
-  background: #f57c00;
+  background: #ff5252;
 }
 
 .command-inline-btn.learn:disabled {
