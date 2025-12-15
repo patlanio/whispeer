@@ -720,7 +720,7 @@ class DeviceManager extends Component {
       
       if (deviceType === 'ir' || deviceType === 'rf') {
         // Extract IP from Broadlink interface
-        const deviceIp = DataManager.extractBroadlinkIpFromInterface(deviceInterface);
+        const deviceIp = CommandManager.extractBroadlinkIpFromInterface(deviceInterface);
         if (deviceIp) {
           emitterData.ip = deviceIp;
           
