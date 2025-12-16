@@ -1,1 +1,0 @@
-"""Tests for Whispeer integration."""

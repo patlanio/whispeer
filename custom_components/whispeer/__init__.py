@@ -27,9 +27,6 @@ from .api import WhispeerCheckLearnedCommandView
 from .api import WhispeerBroadlinkLearnView
 from .api import WhispeerBroadlinkSendView
 from .api import WhispeerBroadlinkDiscoverView
-from .const import CONF_PASSWORD
-from .const import CONF_USERNAME
-from .const import CONF_USE_HA_BROADLINK_INTEGRATION
 from .const import DOMAIN
 from .const import PLATFORMS
 from .const import STARTUP_MESSAGE
@@ -602,13 +599,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         hass.data.setdefault(DOMAIN, {})
         _LOGGER.info(STARTUP_MESSAGE)
 
-    username = entry.data.get(CONF_USERNAME)
-    password = entry.data.get(CONF_PASSWORD)
-    use_ha_broadlink_integration = entry.options.get(CONF_USE_HA_BROADLINK_INTEGRATION, 
-                                                    entry.data.get(CONF_USE_HA_BROADLINK_INTEGRATION, False))
-
     session = async_get_clientsession(hass)
-    client = WhispeerApiClient(username, password, session, hass, use_ha_broadlink_integration)
+    client = WhispeerApiClient(session, hass)
 
     coordinator = WhispeerDataUpdateCoordinator(hass, client=client)
     await coordinator.async_refresh()

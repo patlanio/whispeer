@@ -23,9 +23,6 @@ PLATFORMS = [BINARY_SENSOR, SENSOR, SWITCH]
 
 # Configuration and options
 CONF_ENABLED = "enabled"
-CONF_USERNAME = "username"
-CONF_PASSWORD = "password"
-CONF_USE_HA_BROADLINK_INTEGRATION = "use_ha_broadlink_integration"
 
 # Defaults
 DEFAULT_NAME = DOMAIN

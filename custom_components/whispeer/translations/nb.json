@@ -3,17 +3,11 @@
     "step": {
       "user": {
         "title": "Whispeer",
-        "description": "Hvis du trenger hjep til konfigurasjon ta en titt her: https://github.com/patlanio/whispeer",
-        "data": {
-          "username": "Brukernavn",
-          "password": "Passord",
-          "use_ha_broadlink_integration": "Bruk Home Assistant Broadlink-integrasjon for å oppdage enheter"
-        }
+        "description": "Konfigurer Whispeer-integrasjon for IoT-enhetskontroll",
+        "data": {}
       }
     },
-    "error": {
-      "auth": "Brukernavn/Passord er feil."
-    },
+    "error": {},
     "abort": {
       "single_instance_allowed": "Denne integrasjonen kan kun konfigureres en gang."
     }
@@ -25,7 +19,7 @@
           "binary_sensor": "Binær sensor aktivert",
           "sensor": "Sensor aktivert",
           "switch": "Bryter aktivert",
-          "use_ha_broadlink_integration": "Bruk Home Assistant Broadlink-integrasjon for å oppdage enheter"
+
         }
       }
     }

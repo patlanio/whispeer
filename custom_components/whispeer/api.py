@@ -200,15 +200,12 @@ def _execute_broadlink_script(script_args: List[str], timeout: int = 30) -> Dict
 
 class WhispeerApiClient:
     def __init__(
-        self, username: str, password: str, session: aiohttp.ClientSession, 
-        hass=None, use_ha_broadlink_integration: bool = False
+        self, session: aiohttp.ClientSession, 
+        hass=None
     ) -> None:
-        """Sample API Client."""
-        self._username = username
-        self._passeword = password
+        """Whispeer API Client."""
         self._session = session
         self._hass = hass
-        self._use_ha_broadlink_integration = use_ha_broadlink_integration
 
     async def async_get_data(self) -> dict:
         """Get data from the API."""
@@ -368,29 +365,24 @@ class WhispeerApiClient:
             )
         
         try:
-            # Check if we should use Home Assistant Broadlink integration
-            if self._use_ha_broadlink_integration and self._hass:
-                _LOGGER.info("Using Home Assistant Broadlink integration to send command")
-                return await self._send_broadlink_command_via_ha(device_id, command_name, command_code)
-            else:
-                # Use emit_command mode with device and command name
-                _LOGGER.info("Using whispeer_broadlink script to send command")
-                result = _execute_broadlink_script(["emit_command", device_id, command_name])
-                
-                if not result["success"]:
-                    return _create_error_response(
-                        result["message"],
-                        command_code=command_code,
-                        device_id=device_id,
-                        command_name=command_name,
-                        script_output=result.get("stdout"),
-                        script_error=result.get("stderr"),
-                        return_code=result.get("return_code")
-                    )
-                
-                return _create_success_response(
-                    f"Broadlink command '{command_name}' sent successfully for device '{device_id}'",
+            # Use emit_command mode with device and command name
+            _LOGGER.info("Using whispeer_broadlink script to send command")
+            result = _execute_broadlink_script(["emit_command", device_id, command_name])
+            
+            if not result["success"]:
+                return _create_error_response(
+                    result["message"],
                     command_code=command_code,
+                    device_id=device_id,
+                    command_name=command_name,
+                    script_output=result.get("stdout"),
+                    script_error=result.get("stderr"),
+                    return_code=result.get("return_code")
+                )
+            
+            return _create_success_response(
+                f"Broadlink command '{command_name}' sent successfully for device '{device_id}'",
+                command_code=command_code,
                     device_id=device_id,
                     command_name=command_name,
                     script_output=result["stdout"],
@@ -452,70 +444,6 @@ class WhispeerApiClient:
         except Exception as e:
             _LOGGER.error(f"Error sending Broadlink signal: {e}")
             return _create_error_response(f"Broadlink signal execution failed: {str(e)}")
-
-    async def _send_broadlink_command_via_ha(self, device_id: str, command_name: str, command_code: str) -> dict:
-        """Send Broadlink command using Home Assistant's broadlink integration."""
-        try:
-            if not self._hass:
-                return _create_error_response("Home Assistant instance not available")
-            
-            # Look for Broadlink devices in the entity registry
-            from homeassistant.helpers import entity_registry as er
-            entity_registry = er.async_get(self._hass)
-            
-            # Find Broadlink remote entities
-            broadlink_entities = []
-            for entity in entity_registry.entities.values():
-                if (entity.platform == "broadlink" and 
-                    entity.domain == "remote" and 
-                    entity.entity_id.endswith(f"_{device_id}")):
-                    broadlink_entities.append(entity.entity_id)
-            
-            if not broadlink_entities:
-                # Try to find any Broadlink remote entity
-                for entity in entity_registry.entities.values():
-                    if entity.platform == "broadlink" and entity.domain == "remote":
-                        broadlink_entities.append(entity.entity_id)
-                        break
-            
-            if not broadlink_entities:
-                return _create_error_response(
-                    f"No Broadlink remote entities found for device '{device_id}'"
-                )
-            
-            # Use the first found entity
-            remote_entity = broadlink_entities[0]
-            
-            # Send command using Home Assistant's remote.send_command service
-            service_data = {
-                "entity_id": remote_entity,
-                "command": command_name,
-                "num_repeats": 1
-            }
-            
-            _LOGGER.info(f"Sending command via HA remote service: {service_data}")
-            
-            await self._hass.services.async_call(
-                "remote", 
-                "send_command", 
-                service_data, 
-                blocking=True
-            )
-            
-            return _create_success_response(
-                f"Broadlink command '{command_name}' sent successfully via Home Assistant",
-                command_code=command_code,
-                device_id=device_id,
-                command_name=command_name,
-                remote_entity=remote_entity,
-                method="home_assistant"
-            )
-            
-        except Exception as e:
-            _LOGGER.error(f"Error sending Broadlink command via Home Assistant: {e}")
-            import traceback
-            _LOGGER.error(f"Traceback: {traceback.format_exc()}")
-            return _create_error_response(f"Error sending command via Home Assistant: {str(e)}")
 
     async def async_learn_raw_command(self, command_type: str, device_ip: str, frequency: float = 433.92) -> dict:
         """Learn a raw command without saving it, just return the learned code."""
@@ -839,16 +767,11 @@ class WhispeerApiClient:
     async def async_learn_broadlink_command(self, device_name: str, command_name: str, command_type: str, device_ip: str, frequency: float = 433.92) -> dict:
         """Learn a new Broadlink command using whispeer_broadlink module functions or Home Assistant integration."""
         try:
-            # Check if we should use Home Assistant Broadlink integration
-            if self._use_ha_broadlink_integration and self._hass:
-                _LOGGER.info("Using Home Assistant Broadlink integration for command learning")
-                return await self._learn_broadlink_command_via_ha(device_name, command_name, command_type, device_ip, frequency)
-            else:
-                # Use whispeer_broadlink script
-                _LOGGER.info("Using whispeer_broadlink script for command learning")
-                whispeer_broadlink, error_msg = _import_whispeer_broadlink()
-                if not whispeer_broadlink:
-                    return _create_error_response(error_msg)
+            # Use whispeer_broadlink script
+            _LOGGER.info("Using whispeer_broadlink script for command learning")
+            whispeer_broadlink, error_msg = _import_whispeer_broadlink()
+            if not whispeer_broadlink:
+                return _create_error_response(error_msg)
                 
                 _LOGGER.info(f"Learning Broadlink command - Device: {device_name}, Command: {command_name}, Type: {command_type}, IP: {device_ip}")
                 
@@ -876,198 +799,56 @@ class WhispeerApiClient:
             _LOGGER.error(f"Error learning Broadlink command: {e}")
             return _create_error_response(f"Broadlink command learning failed: {str(e)}")
 
-    async def _learn_broadlink_command_via_ha(self, device_name: str, command_name: str, command_type: str, device_ip: str, frequency: float = 433.92) -> dict:
-        """Learn a new Broadlink command using Home Assistant's broadlink integration."""
-        try:
-            if not self._hass:
-                return _create_error_response("Home Assistant instance not available")
-            
-            # Look for Broadlink devices in the entity registry
-            from homeassistant.helpers import entity_registry as er
-            entity_registry = er.async_get(self._hass)
-            
-            # Find Broadlink remote entities
-            broadlink_entities = []
-            for entity in entity_registry.entities.values():
-                if (entity.platform == "broadlink" and 
-                    entity.domain == "remote"):
-                    broadlink_entities.append(entity.entity_id)
-            
-            if not broadlink_entities:
-                return _create_error_response(
-                    "No Broadlink remote entities found in Home Assistant"
-                )
-            
-            # Use the first found entity
-            remote_entity = broadlink_entities[0]
-            
-            # Start learning mode using Home Assistant's remote.learn_command service
-            service_data = {
-                "entity_id": remote_entity,
-                "command": command_name
-            }
-            
-            _LOGGER.info(f"Starting learning mode via HA remote service: {service_data}")
-            
-            await self._hass.services.async_call(
-                "remote", 
-                "learn_command", 
-                service_data, 
-                blocking=True
-            )
-            
-            return _create_success_response(
-                f"Broadlink command '{command_name}' learning started via Home Assistant",
-                device_name=device_name,
-                command_name=command_name,
-                command_type=command_type,
-                device_ip=device_ip,
-                frequency=frequency,
-                remote_entity=remote_entity,
-                method="home_assistant",
-                message="Please point your remote at the Broadlink device and press the button"
-            )
-            
-        except Exception as e:
-            _LOGGER.error(f"Error learning Broadlink command via Home Assistant: {e}")
-            import traceback
-            _LOGGER.error(f"Traceback: {traceback.format_exc()}")
-            return _create_error_response(f"Error learning command via Home Assistant: {str(e)}")
-
     async def async_get_broadlink_devices(self) -> dict:
         """Get available Broadlink devices using whispeer_broadlink module or Home Assistant integration."""
         try:
-            # Check if we should use Home Assistant Broadlink integration
-            if self._use_ha_broadlink_integration and self._hass:
-                _LOGGER.info("Using Home Assistant Broadlink integration for device discovery")
-                devices = await self.async_get_broadlink_devices_from_hass(self._hass)
-                return _create_success_response(
-                    f"Found {len(devices)} Broadlink device(s) from Home Assistant",
-                    devices=devices,
-                    source="home_assistant"
-                )
-            else:
-                # Use the script for discovery
-                _LOGGER.info("Using whispeer_broadlink script for device discovery")
-                whispeer_broadlink, error_msg = _import_whispeer_broadlink()
-                if not whispeer_broadlink:
-                    return _create_error_response(error_msg)
-                
-                devices = whispeer_broadlink.discover_broadlink_devices(timeout=10)
-                return _create_success_response(
-                    f"Found {len(devices)} Broadlink device(s) from network discovery",
-                    devices=devices,
-                    source="script"
-                )
+            # Use the script for discovery
+            _LOGGER.info("Using whispeer_broadlink script for device discovery")
+            whispeer_broadlink, error_msg = _import_whispeer_broadlink()
+            if not whispeer_broadlink:
+                return _create_error_response(error_msg)
+            
+            devices = whispeer_broadlink.discover_broadlink_devices(timeout=10)
+            return _create_success_response(
+                f"Found {len(devices)} Broadlink device(s) from network discovery",
+                devices=devices,
+                source="script"
+            )
                 
         except Exception as e:
             _LOGGER.error(f"Error discovering Broadlink devices: {e}")
             return _create_error_response(f"Error discovering Broadlink devices: {str(e)}")
-
-    async def async_get_broadlink_devices_from_hass(self, hass) -> list:
-        """Get Broadlink devices from Home Assistant integrations."""
-        try:
-            from homeassistant.helpers import device_registry as dr, entity_registry as er
-            
-            broadlink_devices = []
-            
-            # Get device and entity registries
-            device_registry = dr.async_get(hass)
-            entity_registry = er.async_get(hass)
-            
-            _LOGGER.info(f"Checking {len(device_registry.devices)} devices in registry for Broadlink devices")
-            
-            # Look for Broadlink devices
-            for device in device_registry.devices.values():
-                _LOGGER.debug(f"Checking device: {device.name}, identifiers: {device.identifiers}")
-                
-                # Check if device is from Broadlink integration
-                if any(identifier[0] == "broadlink" for identifier in device.identifiers):
-                    _LOGGER.info(f"Found Broadlink device: {device.name}, model: {device.model}")
-                    
-                    # Extract device info
-                    device_info = {
-                        'name': device.name or device.name_by_user or "Unknown Broadlink Device",
-                        'model': device.model or "Unknown",
-                        'manufacturer': device.manufacturer or "Broadlink",
-                        'id': device.id,
-                        'source': 'hass'
-                    }
-                    
-                    # Try to get IP from config entries if available
-                    for config_entry_id in device.config_entries:
-                        config_entry = hass.config_entries.async_get_entry(config_entry_id)
-                        if config_entry and config_entry.domain == "broadlink":
-                            _LOGGER.debug(f"Config entry data: {config_entry.data}")
-                            # Extract host/IP from config data if available
-                            host = config_entry.data.get("host") or config_entry.data.get("ip")
-                            if host:
-                                device_info['ip'] = host
-                                _LOGGER.info(f"Found IP for device {device.name}: {host}")
-                            break
-                    
-                    broadlink_devices.append(device_info)
-            
-            _LOGGER.info(f"Found {len(broadlink_devices)} Broadlink devices from Home Assistant")
-            return broadlink_devices
-            
-        except Exception as e:
-            _LOGGER.error(f"Error getting Broadlink devices from Home Assistant: {e}")
-            import traceback
-            _LOGGER.error(f"Traceback: {traceback.format_exc()}")
-            return []
 
     async def async_get_broadlink_interfaces(self, hass=None) -> dict:
         """Get available Broadlink interfaces from both network discovery and Home Assistant."""
         try:
             all_devices = []
             
-            if self._use_ha_broadlink_integration and (hass or self._hass):
-                # Use only Home Assistant integration
-                _LOGGER.info("Using Home Assistant Broadlink integration for interface discovery")
-                hass_obj = hass or self._hass
-                hass_devices = await self.async_get_broadlink_devices_from_hass(hass_obj)
-                _LOGGER.info(f"Found {len(hass_devices)} HASS devices")
-                
-                for device in hass_devices:
-                    display_name = device.get('model', device.get('name', 'Unknown'))
-                    device_ip = device.get('ip', 'Unknown IP')
-                    label = f"{display_name} (HASS, {device_ip})"
+            # Use script for network discovery
+            _LOGGER.info("Using whispeer_broadlink script for interface discovery")
+            try:
+                whispeer_broadlink, error_msg = _import_whispeer_broadlink()
+                if whispeer_broadlink:
+                    discovered_devices = whispeer_broadlink.discover_broadlink_devices(timeout=10)
                     
-                    all_devices.append({
-                        'label': label,
-                        'ip': device_ip,
-                        'mac': device.get('mac'),
-                        'type': device.get('type'),
-                        'model': device.get('model'),
-                        'source': 'home_assistant'
-                    })
-            else:
-                # Use script for network discovery
-                _LOGGER.info("Using whispeer_broadlink script for interface discovery")
-                try:
-                    whispeer_broadlink, error_msg = _import_whispeer_broadlink()
-                    if whispeer_broadlink:
-                        discovered_devices = whispeer_broadlink.discover_broadlink_devices(timeout=10)
+                    for device in discovered_devices:
+                        device_ip = device.get('ip')
+                        device_model = device.get('model', 'Broadlink')
+                        label = f"{device_model} ({device_ip})"
                         
-                        for device in discovered_devices:
-                            device_ip = device.get('ip')
-                            device_model = device.get('model', 'Broadlink')
-                            label = f"{device_model} ({device_ip})"
-                            
-                            all_devices.append({
-                                'label': label,
-                                'ip': device_ip,
-                                'mac': device.get('mac'),
-                                'type': device.get('type'),
-                                'model': device.get('model', 'Unknown'),
-                                'manufacturer': device.get('manufacturer', 'Broadlink'),
-                                'source': 'network_discovery'
-                            })
-                    else:
-                        _LOGGER.warning(f"Could not import whispeer_broadlink: {error_msg}")
-                except Exception as e:
-                    _LOGGER.error(f"Error in network discovery: {e}")
+                        all_devices.append({
+                            'label': label,
+                            'ip': device_ip,
+                            'mac': device.get('mac'),
+                            'type': device.get('type'),
+                            'model': device.get('model', 'Unknown'),
+                            'manufacturer': device.get('manufacturer', 'Broadlink'),
+                            'source': 'network_discovery'
+                        })
+                else:
+                    _LOGGER.warning(f"Could not import whispeer_broadlink: {error_msg}")
+            except Exception as e:
+                _LOGGER.error(f"Error in network discovery: {e}")
             
             # Always add manual entry option
             all_devices.append({

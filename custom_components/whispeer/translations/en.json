@@ -3,17 +3,11 @@
     "step": {
       "user": {
         "title": "Whispeer",
-        "description": "If you need help with the configuration have a look here: https://github.com/patlanio/whispeer",
-        "data": {
-          "username": "Username",
-          "password": "Password",
-          "use_ha_broadlink_integration": "Use Home Assistant Broadlink integration to discover devices"
-        }
+        "description": "Configure Whispeer integration for IoT device control",
+        "data": {}
       }
     },
-    "error": {
-      "auth": "Username/Password is wrong."
-    },
+    "error": {},
     "abort": {
       "single_instance_allowed": "Only a single instance is allowed."
     }
@@ -25,7 +19,7 @@
           "binary_sensor": "Binary sensor enabled",
           "sensor": "Sensor enabled",
           "switch": "Switch enabled",
-          "use_ha_broadlink_integration": "Use Home Assistant Broadlink integration to discover devices"
+
         }
       }
     }
