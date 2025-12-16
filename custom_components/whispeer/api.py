@@ -258,17 +258,17 @@ class WhispeerApiClient:
         # Implement actual device removal logic
         return _create_success_response(f"Device {device_id} removed successfully")
 
-    async def async_send_command(self, device_id: str, device_type: str, command_name: str, command_code: str) -> dict:
+    async def async_send_command(self, device_id: str, device_type: str, command_name: str, command_code: str, emitter_data: dict = None) -> dict:
         """Send a command to a device."""
         # Implement actual command sending logic based on device type
         if device_type == "ble":
-            return await self._send_ble_command(device_id, command_name, command_code)
+            return await self._send_ble_command(device_id, command_name, command_code, emitter_data)
         elif device_type == "rf":
-            return await self._send_rf_command(device_id, command_name, command_code)
+            return await self._send_rf_command(device_id, command_name, command_code, emitter_data)
         elif device_type == "ir":
-            return await self._send_ir_command(device_id, command_name, command_code)
+            return await self._send_ir_command(device_id, command_name, command_code, emitter_data)
         elif device_type == "broadlink":
-            return await self._send_broadlink_command(device_id, command_name, command_code)
+            return await self._send_broadlink_command(device_id, command_name, command_code, emitter_data)
         else:
             return _create_error_response(f"Unsupported device type: {device_type}")
 
@@ -301,22 +301,28 @@ class WhispeerApiClient:
             _LOGGER.error(f"Error sending BLE signal: {e}")
             return _create_error_response(f"BLE signal execution failed: {str(e)}")
 
-    async def _send_ble_command(self, device_id: str, command_name: str, command_code: str) -> dict:
+    async def _send_ble_command(self, device_id: str, command_name: str, command_code: str, emitter_data: dict = None) -> dict:
         """Send BLE command using emit_signal mode with the hex data."""
         if not command_code:
             return _create_error_response(
                 f"No command code provided for command '{command_name}' on device '{device_id}'"
             )
         
-        # Use emit_signal mode directly with the hex data
-        result = _execute_ble_script(["emit_signal", command_code])
+        # Extract interface from emitter data if available
+        script_args = ["emit_signal", command_code]
+        if emitter_data and emitter_data.get('adapter'):
+            script_args.extend(["--interface", emitter_data['adapter']])
         
+        # Use emit_signal mode directly with the hex data
+        result = _execute_ble_script(script_args)
+
         if not result["success"]:
             return _create_error_response(
                 result["message"],
                 command_code=command_code,
                 device_id=device_id,
                 command_name=command_name,
+                emitter_data=emitter_data,
                 script_output=result.get("stdout"),
                 script_error=result.get("stderr"),
                 return_code=result.get("return_code")
@@ -327,6 +333,7 @@ class WhispeerApiClient:
             command_code=command_code,
             device_id=device_id,
             command_name=command_name,
+            emitter_data=emitter_data,
             script_output=result["stdout"],
             return_code=result["return_code"]
         )
@@ -357,37 +364,77 @@ class WhispeerApiClient:
             return_code=result["return_code"]
         )
 
-    async def _send_broadlink_command(self, device_id: str, command_name: str, command_code: str) -> dict:
-        """Send Broadlink command using emit_command mode or Home Assistant integration."""
+    async def _send_broadlink_command(self, device_id: str, command_name: str, command_code: str, emitter_data: dict = None) -> dict:
+        """Send Broadlink command using emit_signal with emitter data or emit_command fallback."""
         if not command_code:
             return _create_error_response(
                 f"No command code provided for command '{command_name}' on device '{device_id}'"
             )
         
         try:
-            # Use emit_command mode with device and command name
-            _LOGGER.info("Using whispeer_broadlink script to send command")
-            result = _execute_broadlink_script(["emit_command", device_id, command_name])
-            
-            if not result["success"]:
-                return _create_error_response(
-                    result["message"],
+            # If emitter data is provided, use emit_signal for direct communication
+            if emitter_data and emitter_data.get('ip'):
+                _LOGGER.info(f"Using emit_signal mode with emitter data for device '{device_id}'")
+                _LOGGER.debug(f"Emitter data: {emitter_data}")
+
+                # Build script arguments for emit_signal
+                script_args = ["emit_signal", command_code, "--ip", emitter_data['ip']]
+
+                # Add optional parameters if available
+                if emitter_data.get('mac'):
+                    script_args.extend(["--mac", emitter_data['mac']])
+                if emitter_data.get('type'):
+                    script_args.extend(["--type", emitter_data['type']])
+
+                result = _execute_broadlink_script(script_args)
+
+                if not result["success"]:
+                    return _create_error_response(
+                        result["message"],
+                        command_code=command_code,
+                        device_id=device_id,
+                        command_name=command_name,
+                        emitter_data=emitter_data,
+                        script_output=result.get("stdout"),
+                        script_error=result.get("stderr"),
+                        return_code=result.get("return_code")
+                    )
+
+                return _create_success_response(
+                    f"Broadlink signal sent successfully for device '{device_id}' command '{command_name}'",
                     command_code=command_code,
                     device_id=device_id,
                     command_name=command_name,
-                    script_output=result.get("stdout"),
-                    script_error=result.get("stderr"),
-                    return_code=result.get("return_code")
+                    emitter_data=emitter_data,
+                    script_output=result["stdout"],
+                    return_code=result["return_code"]
                 )
-            
-            return _create_success_response(
-                f"Broadlink command '{command_name}' sent successfully for device '{device_id}'",
-                command_code=command_code,
+
+            else:
+                # Fallback: Use emit_command mode with device and command name (requires devices.json)
+                _LOGGER.info(f"Using emit_command fallback for device '{device_id}' (no emitter data provided)")
+                result = _execute_broadlink_script(["emit_command", device_id, command_name])
+
+                if not result["success"]:
+                    return _create_error_response(
+                        result["message"],
+                        command_code=command_code,
+                        device_id=device_id,
+                        command_name=command_name,
+                        script_output=result.get("stdout"),
+                        script_error=result.get("stderr"),
+                        return_code=result.get("return_code")
+                    )
+
+                return _create_success_response(
+                    f"Broadlink command '{command_name}' sent successfully for device '{device_id}'",
+                    command_code=command_code,
                     device_id=device_id,
                     command_name=command_name,
                     script_output=result["stdout"],
                     return_code=result["return_code"]
                 )
+
         except Exception as e:
             _LOGGER.error(f"Error sending Broadlink command: {e}")
             return _create_error_response(f"Error sending Broadlink command: {str(e)}")
@@ -950,31 +997,33 @@ class WhispeerApiClient:
             _LOGGER.error(f"Error preparing BLE command: {e}")
             return _create_error_response(f"BLE command preparation failed: {str(e)}")
 
-    async def _send_rf_command(self, device_id: str, command_name: str, command_code: str) -> dict:
+    async def _send_rf_command(self, device_id: str, command_name: str, command_code: str, emitter_data: dict = None) -> dict:
         """Send RF command."""
         # Try Broadlink first, then fallback to generic RF
         try:
-            return await self._send_broadlink_command(device_id, command_name, command_code)
+            return await self._send_broadlink_command(device_id, command_name, command_code, emitter_data)
         except Exception as e:
             _LOGGER.warning(f"Broadlink RF command failed, using generic RF: {e}")
             # Implement generic RF command sending logic
             return _create_success_response(
                 f"RF command '{command_name}' sent to '{device_id}'",
                 command_code=command_code,
+                emitter_data=emitter_data,
                 method="generic_rf"
             )
 
-    async def _send_ir_command(self, device_id: str, command_name: str, command_code: str) -> dict:
+    async def _send_ir_command(self, device_id: str, command_name: str, command_code: str, emitter_data: dict = None) -> dict:
         """Send IR command."""
         # Try Broadlink first, then fallback to generic IR
         try:
-            return await self._send_broadlink_command(device_id, command_name, command_code)
+            return await self._send_broadlink_command(device_id, command_name, command_code, emitter_data)
         except Exception as e:
             _LOGGER.warning(f"Broadlink IR command failed, using generic IR: {e}")
             # Implement generic IR command sending logic
             return _create_success_response(
                 f"IR command '{command_name}' sent to '{device_id}'",
                 command_code=command_code,
+                emitter_data=emitter_data,
                 method="generic_ir"
             )
 

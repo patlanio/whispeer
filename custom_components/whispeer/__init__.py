@@ -399,6 +399,7 @@ class WhispeerCommandView(HomeAssistantView):
             device_type = data.get('device_type')
             command_name = data.get('command_name')
             command_code = data.get('command_code')
+            emitter_data = data.get('emitter')
             
             if not all([device_id, device_type, command_name, command_code]):
                 return web.json_response({
@@ -415,7 +416,7 @@ class WhispeerCommandView(HomeAssistantView):
             
             if coordinator:
                 result = await coordinator.api.async_send_command(
-                    device_id, device_type, command_name, command_code
+                    device_id, device_type, command_name, command_code, emitter_data
                 )
                 return web.json_response(result)
             else:
