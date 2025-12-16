@@ -216,11 +216,6 @@ class WhispeerApiClient:
             "timestamp": asyncio.get_event_loop().time()
         }
 
-    async def async_set_title(self, value: str) -> None:
-        """Get data from the API."""
-        url = "https://jsonplaceholder.typicode.com/posts/1"
-        await self.api_wrapper("patch", url, data={"title": value}, headers=HEADERS)
-
     async def async_get_devices(self) -> list:
         """Get list of Whispeer devices."""
         # For now, return mock data - implement actual device discovery
