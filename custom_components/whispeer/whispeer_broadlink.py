@@ -384,6 +384,43 @@ def learn_command(device_name, command_name, command_type="ir", device_ip=None, 
         print("❌ Failed to save command to devices.json")
         return False
 
+def emit_signal(command_data, emitter_data):
+    """
+    Send a raw IR/RF signal directly to a Broadlink device.
+    
+    This is the equivalent of emit_signal in whispeer_ble.py for direct signal transmission
+    without requiring devices.json lookup. Used by Home Assistant backend.
+    
+    Args:
+        command_data: Hex command data to send
+        emitter_data: Dict containing emitter information (ip, mac, type, etc.)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    device_ip = emitter_data.get("ip")
+    if not device_ip:
+        print("❌ No IP address provided in emitter data")
+        return False
+    
+    # Get optional connection parameters for faster connection
+    mac = emitter_data.get("mac")
+    device_type = emitter_data.get("type") or emitter_data.get("broadlink_type")
+    
+    print(f"📡 Emitting signal to Broadlink device at {device_ip}")
+    print(f"📊 Command data: {command_data}")
+    if mac:
+        print(f"🔗 Using MAC: {mac}")
+    if device_type:
+        print(f"🔧 Using device type: {device_type}")
+    
+    device = connect_to_device(device_ip, mac, device_type)
+    if not device:
+        print(f"❌ Failed to connect to device at {device_ip}")
+        return False
+    
+    return send_command(device, command_data)
+
 def send_raw(command_data, device_ip):
     """Send a raw command to a Broadlink device."""
     device = connect_to_device(device_ip)
@@ -452,13 +489,19 @@ Examples:
   # Send multiple commands
   python3 whispeer_broadlink.py emit_command tv_living_room power_on volume_up volume_up
   
+  # Emit a raw signal directly (used by Home Assistant backend)
+  python3 whispeer_broadlink.py emit_signal "2600500000012693..." --ip 192.168.1.10
+  
+  # Emit with device details for faster connection
+  python3 whispeer_broadlink.py emit_signal "2600500000012693..." --ip 192.168.1.10 --mac 34ea34xxxx --type 0x2787
+  
   # Learn a new IR command
   python3 whispeer_broadlink.py learn_command tv_living_room power_off ir --ip 192.168.1.10
   
   # Learn a new RF command
   python3 whispeer_broadlink.py learn_command garage_door open rf --ip 192.168.1.10 --frequency 433.92
   
-  # Send a raw command
+  # Send a raw command (legacy)
   python3 whispeer_broadlink.py send_raw "2600500000012693..." --ip 192.168.1.10
   
   # List available devices
@@ -485,6 +528,13 @@ Examples:
     learn_parser.add_argument('--ip', required=True, help='Broadlink device IP address')
     learn_parser.add_argument('--frequency', type=float, default=433.92, help='RF frequency in MHz (default: 433.92)')
     
+    # emit_signal subcommand (for direct signal emission)
+    signal_parser = subparsers.add_parser('emit_signal', help='Emit a raw signal directly')
+    signal_parser.add_argument('command_data', help='Hex command data')
+    signal_parser.add_argument('--ip', required=True, help='Broadlink device IP address')
+    signal_parser.add_argument('--mac', help='Broadlink device MAC address (optional, for faster connection)')
+    signal_parser.add_argument('--type', help='Broadlink device type hex (optional, for faster connection)')
+    
     # send_raw subcommand
     raw_parser = subparsers.add_parser('send_raw', help='Send a raw command')
     raw_parser.add_argument('command_data', help='Hex command data')
@@ -505,6 +555,15 @@ Examples:
     # Execute based on mode
     if args.mode == 'emit_command':
         success = emit_command(args.device_name, args.command_names, args.ip)
+        sys.exit(0 if success else 1)
+    
+    elif args.mode == 'emit_signal':
+        emitter_data = {'ip': args.ip}
+        if args.mac:
+            emitter_data['mac'] = args.mac
+        if args.type:
+            emitter_data['type'] = args.type
+        success = emit_signal(args.command_data, emitter_data)
         sys.exit(0 if success else 1)
     
     elif args.mode == 'learn_command':

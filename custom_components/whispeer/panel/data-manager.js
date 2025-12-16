@@ -199,6 +199,13 @@ class DataManager {
         payload.sub_command = subCommand;
       }
 
+      // Get device emitter data for RF/IR devices to send directly
+      const device = DataManager.getDevice(deviceId);
+      if (device && device.emitter && (deviceType === 'rf' || deviceType === 'ir')) {
+        payload.emitter = device.emitter;
+        console.log('Including emitter data for RF/IR device:', payload.emitter);
+      }
+
       const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.SEND_COMMAND, payload, {
         headers: {
           'Authorization': `Bearer ${token}`
