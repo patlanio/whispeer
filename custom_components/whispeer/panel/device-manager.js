@@ -650,18 +650,21 @@ class DeviceManager extends Component {
     
     const typeSelect = deviceForm.querySelector('select[name="type"]');
     if (typeSelect) {
-      typeSelect.addEventListener('change', () => this.onDeviceTypeChange());
-      this.onDeviceTypeChange();
+      // On type change, don't preserve selection (user is changing type intentionally)
+      typeSelect.addEventListener('change', () => this.onDeviceTypeChange(false));
+      // Initial load should preserve selection for edit mode
+      this.onDeviceTypeChange(true);
     }
   }
 
-  async onDeviceTypeChange() {
+  async onDeviceTypeChange(preserveSelection = false) {
     const typeSelect = Utils.$('#deviceForm select[name="type"]');
     const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
     
     if (!typeSelect || !interfaceSelect) return;
 
     const deviceType = typeSelect.value;
+    const currentDevice = this.currentDevice;
     
     // Clear current interfaces and show loading
     interfaceSelect.innerHTML = '<option value="">⏳ Loading interfaces...</option>';
@@ -674,17 +677,45 @@ class DeviceManager extends Component {
       interfaceSelect.disabled = false;
       
       if (interfaces && interfaces.length > 0) {
+        let selectedIndex = null;
+        
         interfaceSelect.innerHTML = interfaces.map((iface, index) => {
           // Todos los objetos deben tener label
           if (typeof iface === 'object' && iface.label) {
             // Usar el índice como value y guardar el objeto en data-interface
             const interfaceData = JSON.stringify(iface).replace(/"/g, '&quot;');
-            return `<option value="${index}" data-interface="${interfaceData}">${iface.label}</option>`;
+            
+            // Check if this interface should be selected when editing
+            let shouldSelect = false;
+            if (preserveSelection && currentDevice && currentDevice.emitter) {
+              // Match by label first
+              if (currentDevice.interface === iface.label) {
+                shouldSelect = true;
+                selectedIndex = index;
+              }
+              // For RF/IR devices, also try to match by IP
+              else if (currentDevice.emitter.ip && iface.ip === currentDevice.emitter.ip) {
+                shouldSelect = true;
+                selectedIndex = index;
+              }
+              // For BLE devices, match by adapter
+              else if (currentDevice.emitter.adapter && iface.label === currentDevice.emitter.adapter) {
+                shouldSelect = true;
+                selectedIndex = index;
+              }
+            }
+            
+            return `<option value="${index}" data-interface="${interfaceData}" ${shouldSelect ? 'selected' : ''}>${iface.label}</option>`;
           } else {
             console.error('Invalid interface object, missing label:', iface);
             return ''; // Skip invalid interfaces
           }
         }).filter(option => option).join(''); // Remove empty options
+        
+        // Set the selected interface if found
+        if (selectedIndex !== null) {
+          interfaceSelect.value = selectedIndex.toString();
+        }
         
         console.log(`Loaded ${interfaces.length} interfaces for ${deviceType}:`, interfaces);
       } else {
@@ -713,47 +744,35 @@ class DeviceManager extends Component {
 
     // Add emitter information based on device type and interface
     const deviceType = deviceData.type;
-    const deviceInterface = deviceData.interface;
+    const interfaceIndex = deviceData.interface;
     
-    if (deviceInterface) {
-      const emitterData = { interface: deviceInterface };
-      
-      if (deviceType === 'ir' || deviceType === 'rf') {
-        // Extract IP from Broadlink interface
-        const deviceIp = CommandManager.extractBroadlinkIpFromInterface(deviceInterface);
-        if (deviceIp) {
-          emitterData.ip = deviceIp;
+    if (interfaceIndex !== '' && interfaceIndex !== undefined) {
+      try {
+        // Get the interface object from the select option
+        const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
+        const selectedOption = interfaceSelect.options[interfaceIndex];
+        
+        if (selectedOption && selectedOption.dataset.interface) {
+          const interfaceObj = JSON.parse(selectedOption.dataset.interface.replace(/&quot;/g, '"'));
           
-          // Try to get additional Broadlink device info from metadata
-          try {
-            const interfacesResponse = await DataManager.getInterfaces(deviceType);
-            if (interfacesResponse && interfacesResponse.interfaces) {
-              // Look for matching interface in the response
-              const matchingInterface = interfacesResponse.interfaces.find(iface => 
-                iface.label === deviceInterface || iface.ip === deviceIp
-              );
-              if (matchingInterface) {
-                if (matchingInterface.mac) emitterData.mac = matchingInterface.mac;
-                if (matchingInterface.type) emitterData.type = matchingInterface.type;
-                if (matchingInterface.model) emitterData.model = matchingInterface.model;
-                if (matchingInterface.manufacturer) emitterData.manufacturer = matchingInterface.manufacturer;
-              }
-            }
-          } catch (error) {
-            console.warn('Could not get interface metadata:', error);
-          }
+          // Create emitter data with complete interface object
+          const emitterData = {
+            device_type: deviceType,
+            interface_index: parseInt(interfaceIndex),
+            ...interfaceObj // Store everything from the interface object
+          };
           
-          // Add frequency for RF devices
-          if (deviceType === 'rf') {
-            emitterData.frequency = "433.92"; // Default frequency
-          }
+          // Store interface label for backward compatibility
+          deviceData.interface = interfaceObj.label;
+          deviceData.emitter = emitterData;
+          
+          console.log('Saving device with emitter data:', emitterData);
+        } else {
+          console.warn('Could not find interface data for selected option');
         }
-      } else if (deviceType === 'ble') {
-        // For BLE devices, the interface is the Bluetooth adapter
-        emitterData.adapter = deviceInterface;
+      } catch (error) {
+        console.error('Error processing interface data:', error);
       }
-      
-      deviceData.emitter = emitterData;
     }
 
     if (this.currentDevice) {
