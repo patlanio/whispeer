@@ -12,6 +12,7 @@ import aiohttp
 import async_timeout
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.helpers.storage import Store
 
 TIMEOUT = 10
 
@@ -206,6 +207,8 @@ class WhispeerApiClient:
         """Whispeer API Client."""
         self._session = session
         self._hass = hass
+        self._store = Store(hass, 1, "whispeer_devices")
+        self._devices_cache: Dict[str, Dict[str, Any]] = {}
 
     async def async_get_data(self) -> dict:
         """Get data from the API."""
@@ -216,41 +219,74 @@ class WhispeerApiClient:
             "timestamp": asyncio.get_event_loop().time()
         }
 
+    async def _load_devices(self) -> Dict[str, Dict[str, Any]]:
+        """Load devices from Home Assistant storage."""
+        try:
+            data = await self._store.async_load()
+            if not data:
+                return {}
+            if isinstance(data, dict):
+                # Sanitize: ensure every device has a non-empty id key and field
+                sanitized: Dict[str, Dict[str, Any]] = {}
+                for did, info in data.items():
+                    did_str = str(did).strip()
+                    if not did_str:
+                        did_str = uuid.uuid4().hex[:8]
+                    if not isinstance(info, dict):
+                        info = {}
+                    if not info.get("id"):
+                        info["id"] = did_str
+                    sanitized[did_str] = info
+                return sanitized
+            return {}
+        except Exception as e:
+            _LOGGER.error(f"Failed to load devices: {e}")
+            return {}
+
+    async def _save_devices(self, devices: Dict[str, Dict[str, Any]]) -> None:
+        """Save devices to Home Assistant storage."""
+        try:
+            await self._store.async_save(devices)
+            self._devices_cache = devices
+        except Exception as e:
+            _LOGGER.error(f"Failed to save devices: {e}")
+
     async def async_get_devices(self) -> list:
-        """Get list of Whispeer devices."""
-        # For now, return mock data - implement actual device discovery
+        """Get list of Whispeer devices from persistent storage."""
+        if not self._devices_cache:
+            self._devices_cache = await self._load_devices()
+        # Return as list for API consumers
         return [
-            {
-                "id": 1,
-                "name": "Living Room Microphone",
-                "type": "microphone",
-                "status": "online",
-                "address": "192.168.1.100",
-                "last_seen": "2025-01-14T12:00:00Z",
-            },
-            {
-                "id": 2,
-                "name": "Kitchen Speaker",
-                "type": "speaker",
-                "status": "offline",
-                "address": "192.168.1.101",
-                "last_seen": "2025-01-14T11:55:00Z",
-            },
+            {"id": did, **info} for did, info in self._devices_cache.items()
         ]
 
     async def async_add_device(self, device_data: dict) -> dict:
-        """Add a new Whispeer device."""
-        # Implement actual device addition logic
-        device_id = len(await self.async_get_devices()) + 1
+        """Add a new Whispeer device to persistent storage."""
+        devices = await self._load_devices()
+        # Generate ID if not provided
+        device_id = (device_data.get("id") or uuid.uuid4().hex[:8]).strip()
+        # Normalize minimal fields
+        info = {
+            "name": device_data.get("name") or f"Device {device_id}",
+            "type": device_data.get("type") or "unknown",
+            "emitter": device_data.get("emitter") or {},
+            "commands": device_data.get("commands") or {},
+        }
+        devices[str(device_id)] = info
+        await self._save_devices(devices)
         return _create_success_response(
             "Device added successfully",
-            id=device_id,
-            **device_data
+            id=str(device_id),
+            **info
         )
 
     async def async_remove_device(self, device_id: int) -> dict:
-        """Remove a Whispeer device."""
-        # Implement actual device removal logic
+        """Remove a Whispeer device from persistent storage."""
+        devices = await self._load_devices()
+        removed = devices.pop(str(device_id), None)
+        await self._save_devices(devices)
+        if removed is None:
+            return _create_error_response(f"Device {device_id} not found")
         return _create_success_response(f"Device {device_id} removed successfully")
 
     async def async_send_command(self, device_id: str, device_type: str, command_name: str, command_code: str, emitter_data: dict = None) -> dict:
@@ -1022,12 +1058,39 @@ class WhispeerApiClient:
                 method="generic_ir"
             )
 
-    async def async_sync_devices(self, devices: dict) -> dict:
-        """Sync devices with the backend."""
-        # Implement device synchronization logic
+    async def async_sync_devices(self, devices: dict, replace: bool = False) -> dict:
+        """Sync devices from frontend to backend persistent storage.
+
+        By default, merges the incoming devices into the stored set to avoid
+        accidentally deleting existing devices if the frontend sends a partial set.
+        Set `replace=True` to fully replace the stored set.
+        """
+        if not isinstance(devices, dict):
+            return _create_error_response("Invalid devices payload")
+
+        current = await self._load_devices()
+        if replace:
+            merged: Dict[str, Dict[str, Any]] = {}
+        else:
+            merged = {**current}
+
+        # Merge with id enforcement
+        for did, info in devices.items():
+            did_str = str(did).strip()
+            if not did_str:
+                did_str = uuid.uuid4().hex[:8]
+            if not isinstance(info, dict):
+                info = {}
+            if not info.get("id"):
+                info["id"] = did_str
+            merged[did_str] = info
+
+        await self._save_devices(merged)
         return _create_success_response(
             f"Synced {len(devices)} devices",
-            device_count=len(devices)
+            device_count=len(devices),
+            merged_count=len(merged),
+            replace=replace
         )
 
     async def async_test_device(self, device_id: int) -> dict:
@@ -1037,6 +1100,11 @@ class WhispeerApiClient:
             f"Device {device_id} test completed",
             test_result="passed"
         )
+
+    async def async_clear_devices(self) -> dict:
+        """Clear all stored Whispeer devices from persistent storage."""
+        await self._save_devices({})
+        return _create_success_response("All devices cleared")
 
     async def api_wrapper(
         self, method: str, url: str, data: dict = {}, headers: dict = {}

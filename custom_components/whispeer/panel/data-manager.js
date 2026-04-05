@@ -54,45 +54,103 @@ const APP_CONFIG = {
 class DataManager {
   static devices = {};
   static settings = {
-    refreshInterval: 5000,
     theme: 'auto',
     language: 'en'
   };
 
-  static loadDevices() {
-    const stored = Utils.storage.get(APP_CONFIG.STORAGE_KEYS.DEVICES, {});
-    DataManager.devices = stored;
-    return DataManager.devices;
+  static async loadDevices() {
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      console.log('[Whispeer] Loading devices from backend...', { tokenPresent: !!token });
+      const response = await Utils.api.get(APP_CONFIG.ENDPOINTS.DEVICES, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      console.log('[Whispeer] Devices GET response:', response);
+      const list = (response && response.devices) ? response.devices : [];
+      // Normalize to id -> device map
+      DataManager.devices = {};
+      list.forEach(d => {
+        const id = String(d.id);
+        DataManager.devices[id] = { ...d, id };
+      });
+      console.log('[Whispeer] Devices normalized:', DataManager.devices);
+      return DataManager.devices;
+    } catch (error) {
+      console.error('Failed to load devices from backend:', error);
+      DataManager.devices = {};
+      return DataManager.devices;
+    }
   }
 
-  static saveDevices() {
-    Utils.storage.set(APP_CONFIG.STORAGE_KEYS.DEVICES, DataManager.devices);
-    DataManager.syncWithBackend();
+  static async saveDevices() {
+    // Deprecated: syncing will be performed explicitly on CRUD operations
   }
 
-  static addDevice(device) {
-    const id = device.id || Utils.generateId();
-    DataManager.devices[id] = { ...device, id };
-    DataManager.saveDevices();
-    return id;
+  static async addDevice(device) {
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.DEVICES, device, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (response && response.status === 'success') {
+        const id = String(response.id);
+        DataManager.devices[id] = { id, ...device };
+        await DataManager.syncWithBackend();
+        // Emit event so UI refreshes immediately
+        Utils.events.emit('deviceUpdated', { deviceId: id });
+        return id;
+      }
+      throw new Error(response?.error || 'Failed to add device');
+    } catch (error) {
+      console.error('Failed to add device:', error);
+      throw error;
+    }
   }
 
-  static updateDevice(id, updates) {
+  static async updateDevice(id, updates) {
     if (DataManager.devices[id]) {
       DataManager.devices[id] = { ...DataManager.devices[id], ...updates };
-      DataManager.saveDevices();
+      await DataManager.syncWithBackend();
+      Utils.events.emit('deviceUpdated', { deviceId: id });
       return true;
     }
     return false;
   }
 
-  static deleteDevice(id) {
-    if (DataManager.devices[id]) {
-      delete DataManager.devices[id];
-      DataManager.saveDevices();
+  static async deleteDevice(id) {
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      await Utils.api.post(APP_CONFIG.ENDPOINTS.REMOVE_DEVICE, { device_id: id }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (DataManager.devices[id]) {
+        delete DataManager.devices[id];
+      }
+      await DataManager.syncWithBackend();
+      Utils.events.emit('deviceDeleted', { deviceId: id });
       return true;
+    } catch (error) {
+      console.error('Failed to delete device:', error);
+      return false;
     }
-    return false;
+  }
+
+  static async clearDevices() {
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      // Prefer GET with token as query for iframe compatibility
+      const url = token 
+        ? `/api/whispeer/clear_devices?access_token=${encodeURIComponent(token)}`
+        : '/api/whispeer/clear_devices';
+      const response = await Utils.api.get(url);
+      DataManager.devices = {};
+      Utils.events.emit('deviceUpdated', {});
+      return response;
+    } catch (error) {
+      console.error('Failed to clear devices:', error);
+      // Do not attempt POST fallback; endpoint supports GET for iframe contexts
+      throw error;
+    }
   }
 
   static getDevice(id) {
@@ -104,13 +162,12 @@ class DataManager {
   }
 
   static loadSettings() {
-    const stored = Utils.storage.get(APP_CONFIG.STORAGE_KEYS.SETTINGS, {});
-    DataManager.settings = { ...DataManager.settings, ...stored };
+    // Keep UI settings in memory only
     return DataManager.settings;
   }
 
   static saveSettings() {
-    Utils.storage.set(APP_CONFIG.STORAGE_KEYS.SETTINGS, DataManager.settings);
+    // No-op for now; could persist to backend later
   }
 
   static updateSettings(updates) {
@@ -121,14 +178,10 @@ class DataManager {
   static async syncWithBackend() {
     try {
       const token = DataManager.getHomeAssistantToken();
-      if (!token) return;
-
       await Utils.api.post(APP_CONFIG.ENDPOINTS.SYNC_DEVICES, {
         devices: DataManager.devices
       }, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
     } catch (error) {
       console.error('Failed to sync with backend:', error);

@@ -80,8 +80,8 @@ class DeviceManager extends Component {
     Utils.events.on('commandExecuted', (e) => this.handleCommandResult(e.detail));
   }
 
-  loadDevices() {
-    DataManager.loadDevices();
+  async loadDevices() {
+    await DataManager.loadDevices();
     this.renderDevices();
   }
 

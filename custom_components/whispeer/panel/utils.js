@@ -204,6 +204,22 @@ class Utils {
       
       return response.json();
     },
+    get: async (url, options = {}) => {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        ...options
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return response.json();
+    },
 
     post: async (url, data = {}, options = {}) => {
       const response = await fetch(url, {

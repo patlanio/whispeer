@@ -532,6 +532,52 @@ class WhispeerRemoveDeviceView(HomeAssistantView):
             return web.json_response({"error": str(e)}, status=500)
 
 
+class WhispeerClearDevicesView(HomeAssistantView):
+    """View to clear all devices."""
+
+    url = "/api/whispeer/clear_devices"
+    name = "api:whispeer:clear_devices"
+    requires_auth = False  # Allow access from iframe panel
+    cors_allowed = True
+
+    async def post(self, request):
+        """Clear all devices from backend storage (POST)."""
+        try:
+            hass = request.app["hass"]
+            domain_data = hass.data.get(DOMAIN, {})
+            coordinator = None
+            entry_id = None
+            for key, entry_data in domain_data.items():
+                if hasattr(entry_data, 'api'):
+                    coordinator = entry_data
+                    entry_id = key
+                    break
+
+            if coordinator:
+                # Clear persisted devices
+                result = await coordinator.api.async_clear_devices()
+
+                # Reload the integration's config entry to remove HA entities
+                if entry_id:
+                    try:
+                        await hass.config_entries.async_reload(entry_id)
+                        result["reloaded"] = True
+                    except Exception as reload_err:
+                        _LOGGER.error(f"Failed to reload entry {entry_id} after clear: {reload_err}")
+                        result["reloaded"] = False
+
+                return web.json_response(result)
+            else:
+                return web.json_response({"error": "No coordinator found"}, status=500)
+        except Exception as e:
+            _LOGGER.error(f"Error clearing devices: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def get(self, request):
+        """Clear all devices from backend storage (GET fallback for iframe contexts)."""
+        return await self.post(request)
+
+
 async def register_panel(hass):
     """Register the Whispeer panel."""
     try:
@@ -545,6 +591,7 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerCommandView())
         hass.http.register_view(WhispeerSyncView())
         hass.http.register_view(WhispeerRemoveDeviceView())
+        hass.http.register_view(WhispeerClearDevicesView())
         hass.http.register_view(WhispeerInterfacesView())
         hass.http.register_view(WhispeerPrepareToLearnView())
         hass.http.register_view(WhispeerCheckLearnedCommandView())
@@ -584,6 +631,7 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerCommandView())
     hass.http.register_view(WhispeerSyncView())
     hass.http.register_view(WhispeerRemoveDeviceView())
+    hass.http.register_view(WhispeerClearDevicesView())
     hass.http.register_view(WhispeerInterfacesView())
     hass.http.register_view(WhispeerPrepareToLearnView())
     hass.http.register_view(WhispeerCheckLearnedCommandView())

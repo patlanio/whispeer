@@ -1,7 +1,7 @@
 class WhispeerApp {
   constructor() {
     this.deviceManager = null;
-    this.autoRefreshInterval = null;
+    this.autoRefreshInterval = null; // deprecated
     this.settingsSubmitHandler = null;  // Store the handler reference
     this.init();
   }
@@ -25,9 +25,7 @@ class WhispeerApp {
       document.body.className = `theme-${settings.theme}`;
     }
 
-    if (settings.refreshInterval > 0) {
-      this.startAutoRefresh(settings.refreshInterval);
-    }
+    // Auto refresh removed; UI refresh occurs on CRUD events
   }
 
   initializeComponents() {
@@ -53,7 +51,14 @@ class WhispeerApp {
       onclick: () => this.refreshDevices()
     });
 
+    const clearBtn = Utils.createElement('button', {
+      className: 'btn btn-small btn-danger btn-outlined',
+      innerHTML: '🗑️ Clear Devices',
+      onclick: () => this.clearDevices()
+    });
+
     header.appendChild(refreshBtn);
+    header.appendChild(clearBtn);
     header.appendChild(settingsBtn);
   }
 
@@ -63,12 +68,7 @@ class WhispeerApp {
 
   setupSettingsModal() {
     const settingsForm = FormBuilder.create()
-      .number('refreshInterval', {
-        label: 'Auto Refresh Interval (seconds)',
-        value: DataManager.settings.refreshInterval / 1000,
-        min: 0,
-        step: 1
-      })
+      // Removed auto refresh interval setting
       .select('theme', [
         { value: 'auto', label: 'Auto (System)' },
         { value: 'light', label: 'Light' },
@@ -111,8 +111,9 @@ class WhispeerApp {
       }
     });
 
+    // On device updates, just re-render; syncing happens in DataManager
     Utils.events.on('deviceUpdated', () => {
-      this.syncWithBackend();
+      this.refreshDevices();
     });
 
     Utils.events.on('error', (e) => {
@@ -120,13 +121,17 @@ class WhispeerApp {
     });
   }
 
-  startApplication() {
+  async startApplication() {
     this.showLoadingState();
-    
-    setTimeout(() => {
+    try {
+      await this.deviceManager.loadDevices();
+    } catch (e) {
+      console.error('Failed to load devices on startup:', e);
+      // Render empty state so UI is usable
+      this.deviceManager.renderDevices();
+    } finally {
       this.hideLoadingState();
-      this.deviceManager.loadDevices();
-    }, 500);
+    }
   }
 
   showLoadingState() {
@@ -145,15 +150,29 @@ class WhispeerApp {
 
   async refreshDevices() {
     this.showLoadingState();
-    
     try {
-      await DataManager.syncWithBackend();
-      DataManager.loadDevices();
-      this.deviceManager.renderDevices();
+      await this.deviceManager.loadDevices();
       Notification.success('Devices refreshed successfully');
     } catch (error) {
       Notification.error('Failed to refresh devices');
       console.error('Refresh error:', error);
+      // Render empty state so UI remains usable
+      this.deviceManager.renderDevices();
+    } finally {
+      this.hideLoadingState();
+    }
+  }
+
+  async clearDevices() {
+    this.showLoadingState();
+    try {
+      await DataManager.clearDevices();
+      await this.deviceManager.loadDevices();
+      Notification.success('All devices cleared');
+    } catch (error) {
+      Notification.error('Failed to clear devices');
+      console.error('Clear error:', error);
+      this.deviceManager.renderDevices();
     } finally {
       this.hideLoadingState();
     }
@@ -187,7 +206,7 @@ class WhispeerApp {
     const formData = new FormData(e.target);
     const settings = Object.fromEntries(formData.entries());
     
-    settings.refreshInterval = parseInt(settings.refreshInterval) * 1000;
+    // Removed auto refresh interval handling
 
     DataManager.updateSettings(settings);
     this.applySettings();
@@ -197,28 +216,15 @@ class WhispeerApp {
   }
 
   startAutoRefresh(interval = 5000) {
-    this.stopAutoRefresh();
-    
-    if (interval > 0) {
-      this.autoRefreshInterval = setInterval(() => {
-        this.syncWithBackend();
-      }, interval);
-    }
+    // deprecated
   }
 
   stopAutoRefresh() {
-    if (this.autoRefreshInterval) {
-      clearInterval(this.autoRefreshInterval);
-      this.autoRefreshInterval = null;
-    }
+    // deprecated
   }
 
   async syncWithBackend() {
-    try {
-      await DataManager.syncWithBackend();
-    } catch (error) {
-      console.error('Auto sync failed:', error);
-    }
+    // deprecated: syncing is now performed on CRUD operations
   }
 
   handleError(error) {
