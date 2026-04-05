@@ -1106,6 +1106,65 @@ class WhispeerApiClient:
         await self._save_devices({})
         return _create_success_response("All devices cleared")
 
+    async def async_get_broadlink_codes(self) -> dict:
+        """Read learned Broadlink codes from Home Assistant .storage files."""
+        import json
+        result = []
+        storage_dir = self._hass.config.path(".storage")
+        try:
+            files = await self._hass.async_add_executor_job(os.listdir, storage_dir)
+        except OSError as e:
+            _LOGGER.error(f"Cannot list .storage directory: {e}")
+            return {"codes": result}
+
+        for fname in files:
+            if not fname.startswith("broadlink_remote_"):
+                continue
+            is_codes = fname.endswith("_codes")
+            is_flags = fname.endswith("_flags") and not fname.endswith("_flags.bak")
+            if not is_codes and not is_flags:
+                continue
+
+            fpath = os.path.join(storage_dir, fname)
+            try:
+                raw = await self._hass.async_add_executor_job(
+                    lambda p=fpath: open(p, "r", encoding="utf-8").read()
+                )
+                data = json.loads(raw)
+            except Exception as e:
+                _LOGGER.warning(f"Failed to read {fname}: {e}")
+                continue
+
+            # Extract MAC from filename: broadlink_remote_<mac>_codes / _flags
+            parts = fname.replace("broadlink_remote_", "").rsplit("_", 1)
+            mac = parts[0] if parts else fname
+            source = "codes" if is_codes else "flags"
+
+            entries = data.get("data", {})
+            for device_name, commands in entries.items():
+                if not isinstance(commands, dict):
+                    continue
+                for cmd_name, cmd_value in commands.items():
+                    if isinstance(cmd_value, str):
+                        # Skip known metadata keys in flags files
+                        if source == "flags" and cmd_name in ("model", "frequency"):
+                            continue
+                        code_preview = cmd_value[:60] + ("\u2026" if len(cmd_value) > 60 else "")
+                        result.append({
+                            "mac": mac,
+                            "source": source,
+                            "device": device_name,
+                            "command": cmd_name,
+                            "code": cmd_value,
+                            "code_preview": code_preview,
+                            "code_length": len(cmd_value),
+                        })
+                    elif isinstance(cmd_value, dict):
+                        # flags file: value is metadata, skip non-code keys
+                        pass
+
+        return {"codes": result}
+
     async def api_wrapper(
         self, method: str, url: str, data: dict = {}, headers: dict = {}
     ) -> dict:

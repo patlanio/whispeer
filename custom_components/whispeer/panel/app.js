@@ -57,7 +57,14 @@ class WhispeerApp {
       onclick: () => this.clearDevices()
     });
 
+    const codesBtn = Utils.createElement('button', {
+      className: 'btn btn-small btn-outlined',
+      innerHTML: '📋 Codes',
+      onclick: () => this.showCodesTable()
+    });
+
     header.appendChild(refreshBtn);
+    header.appendChild(codesBtn);
     header.appendChild(clearBtn);
     header.appendChild(settingsBtn);
   }
@@ -225,6 +232,60 @@ class WhispeerApp {
 
   async syncWithBackend() {
     // deprecated: syncing is now performed on CRUD operations
+  }
+
+  async showCodesTable() {
+    const token = DataManager.getHomeAssistantToken();
+    let codes = [];
+    try {
+      const url = token
+        ? `/api/whispeer/broadlink_codes?access_token=${encodeURIComponent(token)}`
+        : '/api/whispeer/broadlink_codes';
+      const response = await Utils.api.get(url);
+      codes = (response && response.codes) ? response.codes : [];
+    } catch (e) {
+      console.error('Failed to load broadlink codes:', e);
+    }
+
+    let rows = '';
+    codes.forEach(c => {
+      const preview = c.code_preview || '-';
+      rows += `<tr>`
+        + `<td>${c.device}</td>`
+        + `<td>${c.command}</td>`
+        + `<td>${c.mac}</td>`
+        + `<td>${c.source}</td>`
+        + `<td>${c.code_length}</td>`
+        + `<td title="${c.code}">${preview}</td>`
+        + `</tr>`;
+    });
+
+    if (!rows) {
+      rows = '<tr><td colspan="6">No learned codes found in Home Assistant</td></tr>';
+    }
+
+    const tableHTML = `
+      <table border="1" cellpadding="4" cellspacing="0">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Command</th>
+            <th>MAC</th>
+            <th>Source</th>
+            <th>Code Length</th>
+            <th>Code (preview)</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    this.codesModal = new Modal({
+      title: 'HA Broadlink Learned Codes',
+      content: tableHTML,
+      className: 'codes-modal'
+    });
+    this.codesModal.open();
   }
 
   handleError(error) {
