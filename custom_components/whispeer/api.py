@@ -1345,7 +1345,7 @@ class WhispeerPrepareToLearnView(HomeAssistantView):
                 token = auth_header[7:]
                 # TODO: Validate token if needed
             else:
-                _LOGGER.warning("No Authorization header found")
+                _LOGGER.debug("No Authorization header found")
             
             data = await request.json()
             device_type = data.get('device_type', '').lower()
@@ -1423,7 +1423,7 @@ class WhispeerCheckLearnedCommandView(HomeAssistantView):
                 token = auth_header[7:]
                 # TODO: Validate token if needed
             else:
-                _LOGGER.warning("No Authorization header found")
+                _LOGGER.debug("No Authorization header found")
             
             data = await request.json()
             device_type = data.get('device_type', '').lower()

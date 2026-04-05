@@ -202,9 +202,11 @@ class DataManager {
   static async loadInterfaces(deviceType) {
     try {
       console.log(`Loading interfaces for device type: ${deviceType}`);
-      
+      const token = DataManager.getHomeAssistantToken();
       const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.INTERFACES, {
         type: deviceType
+      }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       
       console.log(`Interface response for ${deviceType}:`, response);
@@ -395,7 +397,10 @@ class CommandManager {
   // Broadlink specific functions
   static async discoverBroadlinkDevices() {
     try {
-      const response = await Utils.api.post('/api/services/whispeer/discover_broadlink_devices', {});
+      const token = DataManager.getHomeAssistantToken();
+      const response = await Utils.api.post('/api/services/whispeer/discover_broadlink_devices', {}, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       
       if (response.devices && Array.isArray(response.devices)) {
         return response.devices;
@@ -410,12 +415,15 @@ class CommandManager {
 
   static async learnBroadlinkCommand(deviceName, commandName, commandType, deviceIp, frequency = 433.92) {
     try {
+      const token = DataManager.getHomeAssistantToken();
       const response = await Utils.api.post('/api/services/whispeer/learn_broadlink_command', {
         device_name: deviceName,
         command_name: commandName,
         command_type: commandType,
         device_ip: deviceIp,
         frequency: frequency
+      }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       
       return response;
@@ -427,10 +435,14 @@ class CommandManager {
 
   static async learnCommand(deviceType, emitterData) {
     try {
+      const token = DataManager.getHomeAssistantToken();
+      const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
       // First, prepare the device for learning
       const prepareResponse = await Utils.api.post('/api/services/whispeer/prepare_to_learn', {
         device_type: deviceType,
         emitter: emitterData
+      }, {
+        headers: authHeaders
       });
       
       if (prepareResponse.status !== 'success') {
@@ -456,9 +468,12 @@ class CommandManager {
 
   static async checkLearnedCommand(sessionId, deviceType) {
     try {
+      const token = DataManager.getHomeAssistantToken();
       const response = await Utils.api.post('/api/services/whispeer/check_learned_command', {
         session_id: sessionId,
         device_type: deviceType
+      }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       
       return response;
@@ -470,9 +485,12 @@ class CommandManager {
 
   static async sendBroadlinkSignal(commandData, deviceIp) {
     try {
+      const token = DataManager.getHomeAssistantToken();
       const response = await Utils.api.post('/api/services/whispeer/send_broadlink_signal', {
         command_data: commandData,
         device_ip: deviceIp
+      }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       
       return response;
