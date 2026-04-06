@@ -14,16 +14,18 @@ ICON = "mdi:remote"
 
 # Dispatcher signals
 SIGNAL_WHISPEER_NEW_DEVICE = f"{DOMAIN}_new_device"
+SIGNAL_WHISPEER_DATA_UPDATED = f"{DOMAIN}_data_updated"
 
 # Command types (JSON command.type → HA platform)
 CMD_TYPE_BUTTON = "button"
 CMD_TYPE_SWITCH = "switch"
 CMD_TYPE_LIGHT = "light"
+# "numeric" is also rendered as a SelectEntity (non-linear step sets).
 CMD_TYPE_NUMERIC = "numeric"
 CMD_TYPE_GROUP = "group"
 
 # Platforms
-PLATFORMS = ["switch", "button", "light", "number", "select"]
+PLATFORMS = ["switch", "button", "light", "select"]
 
 # Configuration and options
 CONF_ENABLED = "enabled"

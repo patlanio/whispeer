@@ -15,7 +15,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
-from .const import SIGNAL_WHISPEER_NEW_DEVICE
+from .const import SIGNAL_WHISPEER_DATA_UPDATED, SIGNAL_WHISPEER_NEW_DEVICE
 
 TIMEOUT = 10
 
@@ -298,6 +298,13 @@ class WhispeerApiClient:
         await self._save_devices(devices)
         if removed is None:
             return _create_error_response(f"Device {device_id} not found")
+
+        # Broadcast so __init__.py can remove stale entities from the registry.
+        remaining_ids: set[str] = set(devices.keys())
+        async_dispatcher_send(
+            self._hass, SIGNAL_WHISPEER_DATA_UPDATED, remaining_ids
+        )
+
         return _create_success_response(f"Device {device_id} removed successfully")
 
     async def async_send_command(self, device_id: str, device_type: str, command_name: str, command_code: str, emitter_data: dict = None) -> dict:
@@ -1098,13 +1105,19 @@ class WhispeerApiClient:
 
         await self._save_devices(merged)
 
-        # Dispatch signals for newly added devices only.
+        # Dispatch SIGNAL_WHISPEER_NEW_DEVICE for each brand-new device.
         new_device_ids = set(merged.keys()) - set(current.keys())
         for did in new_device_ids:
             device_data = {"id": did, **merged[did]}
             async_dispatcher_send(
                 self._hass, SIGNAL_WHISPEER_NEW_DEVICE, device_data
             )
+
+        # Always broadcast a full-data-updated signal so platforms and
+        # __init__.py can run cleanup / refresh logic.
+        async_dispatcher_send(
+            self._hass, SIGNAL_WHISPEER_DATA_UPDATED, set(merged.keys())
+        )
 
         return _create_success_response(
             f"Synced {len(devices)} devices",
@@ -1124,6 +1137,10 @@ class WhispeerApiClient:
     async def async_clear_devices(self) -> dict:
         """Clear all stored Whispeer devices from persistent storage."""
         await self._save_devices({})
+        # Broadcast an empty set so __init__.py removes all owned entities.
+        async_dispatcher_send(
+            self._hass, SIGNAL_WHISPEER_DATA_UPDATED, set()
+        )
         return _create_success_response("All devices cleared")
 
     async def async_get_broadlink_codes(self) -> dict:

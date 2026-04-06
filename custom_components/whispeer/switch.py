@@ -10,7 +10,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CMD_TYPE_SWITCH, DOMAIN, SIGNAL_WHISPEER_NEW_DEVICE
+from .const import (
+    CMD_TYPE_SWITCH,
+    DOMAIN,
+    SIGNAL_WHISPEER_DATA_UPDATED,
+    SIGNAL_WHISPEER_NEW_DEVICE,
+)
 from .entity import WhispeerBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,37 +32,59 @@ async def async_setup_entry(
 
     registered: set[str] = set()
 
+    def _entities_from_device(device: dict[str, Any]) -> list[WhispeerSwitch]:
+        result: list[WhispeerSwitch] = []
+        for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
+            if cmd_cfg.get("type") == CMD_TYPE_SWITCH:
+                uid = f"whispeer_{device['id']}_{cmd_name}"
+                if uid not in registered:
+                    result.append(WhispeerSwitch(device, cmd_name, cmd_cfg, api))
+                    registered.add(uid)
+        return result
+
     # Register entities that already exist in storage.
     devices = await api.async_get_devices()
     entities: list[WhispeerSwitch] = []
     for device in devices:
-        for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
-            if cmd_cfg.get("type") == CMD_TYPE_SWITCH:
-                uid = f"whispeer_{device['id']}_{cmd_name}"
-                entities.append(WhispeerSwitch(device, cmd_name, cmd_cfg, api))
-                registered.add(uid)
-
+        entities.extend(_entities_from_device(device))
     if entities:
         async_add_entities(entities)
 
-    # Listen for new devices added at runtime (no restart needed).
     @callback
-    def _async_add_new_entities(device_data: dict[str, Any]) -> None:
+    def _on_new_device(device_data: dict[str, Any]) -> None:
+        """Handle SIGNAL_WHISPEER_NEW_DEVICE — one new device arrived."""
+        new = _entities_from_device(device_data)
+        if new:
+            async_add_entities(new)
+
+    @callback
+    def _on_data_updated(current_device_ids: set[str]) -> None:
+        """Handle SIGNAL_WHISPEER_DATA_UPDATED — full data refresh.
+
+        Adds entities for any device IDs that appeared since the last
+        sync.  Removal is handled by __init__.py via the entity registry.
+        """
         new: list[WhispeerSwitch] = []
-        device_id = device_data["id"]
-        for cmd_name, cmd_cfg in (device_data.get("commands") or {}).items():
-            if cmd_cfg.get("type") == CMD_TYPE_SWITCH:
-                uid = f"whispeer_{device_id}_{cmd_name}"
-                if uid not in registered:
-                    new.append(WhispeerSwitch(device_data, cmd_name, cmd_cfg, api))
-                    registered.add(uid)
+        for uid in registered:
+            # Extract device_id from uid prefix
+            pass
+        # Re-query storage for any brand-new devices
+        hass.async_create_task(_async_refresh(current_device_ids))
+
+    async def _async_refresh(known_ids: set[str]) -> None:
+        all_devices = await api.async_get_devices()
+        new: list[WhispeerSwitch] = []
+        for device in all_devices:
+            if device["id"] in known_ids:
+                new.extend(_entities_from_device(device))
         if new:
             async_add_entities(new)
 
     entry.async_on_unload(
-        async_dispatcher_connect(
-            hass, SIGNAL_WHISPEER_NEW_DEVICE, _async_add_new_entities
-        )
+        async_dispatcher_connect(hass, SIGNAL_WHISPEER_NEW_DEVICE, _on_new_device)
+    )
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, SIGNAL_WHISPEER_DATA_UPDATED, _on_data_updated)
     )
 
 
@@ -74,6 +101,13 @@ class WhispeerSwitch(WhispeerBaseEntity, SwitchEntity):
         super().__init__(device_data, command_name, command_cfg, api_client)
         self._attr_is_on = False
 
+    async def async_added_to_hass(self) -> None:
+        """Restore last state from the recorder on startup."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None:
+            self._attr_is_on = last.state == "on"
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Send the ON code and update state optimistically."""
         code = self._command_cfg.get("values", {}).get("on", "")
@@ -89,3 +123,4 @@ class WhispeerSwitch(WhispeerBaseEntity, SwitchEntity):
             await self._async_send_code(code)
         self._attr_is_on = False
         self.async_write_ha_state()
+

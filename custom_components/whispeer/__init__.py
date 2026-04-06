@@ -12,13 +12,15 @@ from datetime import timedelta
 from aiohttp import web
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core_config import Config
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.components import frontend
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .api import WhispeerApiClient
 from .api import WhispeerInterfacesView
@@ -30,6 +32,7 @@ from .api import WhispeerBroadlinkDiscoverView
 from .const import DOMAIN
 from .const import PLATFORMS
 from .const import STARTUP_MESSAGE
+from .const import SIGNAL_WHISPEER_DATA_UPDATED
 
 SCAN_INTERVAL = timedelta(seconds=30)
 
@@ -673,6 +676,45 @@ async def async_setup(hass: HomeAssistant, config: Config):
     return True
 
 
+async def async_cleanup_removed_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    stored_device_ids: set[str],
+) -> None:
+    """Remove entities from the HA entity registry whose device has been deleted.
+
+    When a device is removed in the Whispeer frontend the corresponding
+    entities would otherwise remain in the registry showing the
+    "This entity is no longer provided" warning.  This helper proactively
+    removes them so the user never sees stale entities.
+
+    Args:
+        hass: The HomeAssistant instance.
+        entry: The config entry that owns the entities.
+        stored_device_ids: The set of device IDs **currently** present in
+            Whispeer storage after the mutation (add / remove / sync).
+    """
+    registry = er.async_get(hass)
+    # Collect every entity belonging to this config entry.
+    entry_entities = er.async_entries_for_config_entry(registry, entry.entry_id)
+    for entity_entry in entry_entities:
+        uid = entity_entry.unique_id  # e.g. "whispeer_9330c71e_luz"
+        if not uid.startswith("whispeer_"):
+            continue
+        # Extract the device_id component: "whispeer_{device_id}_{cmd}"
+        parts = uid.split("_", 2)  # ["whispeer", device_id, cmd_name]
+        if len(parts) < 3:
+            continue
+        device_id = parts[1]
+        if device_id not in stored_device_ids:
+            _LOGGER.debug(
+                "Removing stale entity %s (device %s no longer in storage)",
+                entity_entry.entity_id,
+                device_id,
+            )
+            registry.async_remove(entity_entry.entity_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up this integration using UI."""
     if hass.data.get(DOMAIN) is None:
@@ -695,11 +737,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         if entry.options.get(platform, True):
             coordinator.platforms.append(platform)
             platforms_to_setup.append(platform)
-    
+
     if platforms_to_setup:
         await hass.config_entries.async_forward_entry_setups(entry, platforms_to_setup)
 
-    # Register the panel after the platforms are set up
+    # On startup, clean up entities whose devices were removed while HA was
+    # offline (e.g. user deleted a device through the frontend and HA was
+    # restarted afterwards).
+    devices = await client.async_get_devices()
+    stored_ids: set[str] = {d["id"] for d in devices}
+    await async_cleanup_removed_entities(hass, entry, stored_ids)
+
+    # Listen for runtime data changes so stale entities are removed immediately
+    # when the user deletes a device from the frontend (no restart needed).
+    @callback
+    def _on_data_updated(current_device_ids: set[str]) -> None:
+        hass.async_create_task(
+            async_cleanup_removed_entities(hass, entry, current_device_ids)
+        )
+
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass, SIGNAL_WHISPEER_DATA_UPDATED, _on_data_updated
+        )
+    )
+
+    # Register the panel after the platforms are set up.
     await register_panel(hass)
 
     entry.add_update_listener(async_reload_entry)

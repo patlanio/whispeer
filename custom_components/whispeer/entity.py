@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from homeassistant.helpers.entity import DeviceInfo, Entity
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION, DOMAIN, NAME, VERSION
@@ -12,17 +13,19 @@ from .const import ATTRIBUTION, DOMAIN, NAME, VERSION
 _LOGGER = logging.getLogger(__name__)
 
 
-class WhispeerBaseEntity(Entity):
+class WhispeerBaseEntity(RestoreEntity):
     """Base entity for Whispeer command-driven entities.
 
-    All command entities (switch, button, light, number, select) inherit from
-    this class.  It provides:
+    All command entities (switch, button, light, select) inherit from this
+    class.  It provides:
 
     - A stable ``unique_id`` derived from *device_id* + *command_name*.
     - A shared ``DeviceInfo`` so every entity from the same JSON device object
       is grouped under one device in the HA device registry.
     - A helper ``_async_send_code`` that delegates to the API client.
     - ``should_poll = False`` — state is updated optimistically.
+    - ``RestoreEntity`` support so the last persisted state is reloaded on
+      startup without polling the (stateless) IR hardware.
     """
 
     _attr_should_poll = False
@@ -69,7 +72,7 @@ class WhispeerBaseEntity(Entity):
         )
 
 
-# Legacy entity kept for backward compatibility (sensor.py).
+# Legacy coordinator entity kept for sensor.py backward compatibility.
 class WhispeerEntity(CoordinatorEntity):
     def __init__(self, coordinator, config_entry):
         super().__init__(coordinator)
