@@ -12,7 +12,10 @@ import aiohttp
 import async_timeout
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
+
+from .const import SIGNAL_WHISPEER_NEW_DEVICE
 
 TIMEOUT = 10
 
@@ -175,10 +178,11 @@ def _execute_ble_script(script_args: List[str], timeout: int = 30) -> Dict[str, 
             "success": False,
             "message": f"BLE script not found at {script_path}"
         }
-    
-    # Build complete command
-    cmd = ["python3", script_path] + script_args
-    
+
+    # -P prevents prepending the script directory to sys.path, which would
+    # otherwise shadow stdlib modules (e.g. our select.py shadows stdlib select).
+    cmd = ["python3", "-P", script_path] + script_args
+
     return _run_subprocess(cmd, timeout)
 
 
@@ -192,10 +196,11 @@ def _execute_broadlink_script(script_args: List[str], timeout: int = 30) -> Dict
             "success": False,
             "message": f"Broadlink script not found at {script_path}"
         }
-    
-    # Build complete command
-    cmd = ["python3", script_path] + script_args
-    
+
+    # -P prevents prepending the script directory to sys.path, which would
+    # otherwise shadow stdlib modules (e.g. our select.py shadows stdlib select).
+    cmd = ["python3", "-P", script_path] + script_args
+
     return _run_subprocess(cmd, timeout)
 
 
@@ -274,6 +279,12 @@ class WhispeerApiClient:
         }
         devices[str(device_id)] = info
         await self._save_devices(devices)
+
+        # Broadcast the new device so that platform listeners register entities
+        # without requiring a restart.
+        device_info = {"id": str(device_id), **info}
+        async_dispatcher_send(self._hass, SIGNAL_WHISPEER_NEW_DEVICE, device_info)
+
         return _create_success_response(
             "Device added successfully",
             id=str(device_id),
@@ -1086,6 +1097,15 @@ class WhispeerApiClient:
             merged[did_str] = info
 
         await self._save_devices(merged)
+
+        # Dispatch signals for newly added devices only.
+        new_device_ids = set(merged.keys()) - set(current.keys())
+        for did in new_device_ids:
+            device_data = {"id": did, **merged[did]}
+            async_dispatcher_send(
+                self._hass, SIGNAL_WHISPEER_NEW_DEVICE, device_data
+            )
+
         return _create_success_response(
             f"Synced {len(devices)} devices",
             device_count=len(devices),

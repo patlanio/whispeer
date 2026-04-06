@@ -1,32 +1,35 @@
 """Constants for Whispeer."""
+
 # Base component constants
 NAME = "Whispeer"
 DOMAIN = "whispeer"
 DOMAIN_DATA = f"{DOMAIN}_data"
-VERSION = "0.0.0"
+VERSION = "0.1.0"
 
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
+ATTRIBUTION = "Data provided by Whispeer"
 ISSUE_URL = "https://github.com/patlanio/whispeer/issues"
 
 # Icons
-ICON = "mdi:format-quote-close"
+ICON = "mdi:remote"
 
-# Device classes
-BINARY_SENSOR_DEVICE_CLASS = "connectivity"
+# Dispatcher signals
+SIGNAL_WHISPEER_NEW_DEVICE = f"{DOMAIN}_new_device"
+
+# Command types (JSON command.type → HA platform)
+CMD_TYPE_BUTTON = "button"
+CMD_TYPE_SWITCH = "switch"
+CMD_TYPE_LIGHT = "light"
+CMD_TYPE_NUMERIC = "numeric"
+CMD_TYPE_GROUP = "group"
 
 # Platforms
-BINARY_SENSOR = "binary_sensor"
-SENSOR = "sensor"
-SWITCH = "switch"
-PLATFORMS = [BINARY_SENSOR, SENSOR, SWITCH]
-
+PLATFORMS = ["switch", "button", "light", "number", "select"]
 
 # Configuration and options
 CONF_ENABLED = "enabled"
 
 # Defaults
 DEFAULT_NAME = DOMAIN
-
 
 STARTUP_MESSAGE = f"""
 -------------------------------------------------------------------

@@ -1,16 +1,16 @@
-"""Switch platform for Whispeer."""
+"""Number platform for Whispeer."""
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CMD_TYPE_SWITCH, DOMAIN, SIGNAL_WHISPEER_NEW_DEVICE
+from .const import CMD_TYPE_NUMERIC, DOMAIN, SIGNAL_WHISPEER_NEW_DEVICE
 from .entity import WhispeerBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,35 +21,33 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Whispeer switch entities from a config entry."""
+    """Set up Whispeer number entities from a config entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     api = coordinator.api
 
     registered: set[str] = set()
 
-    # Register entities that already exist in storage.
     devices = await api.async_get_devices()
-    entities: list[WhispeerSwitch] = []
+    entities: list[WhispeerNumber] = []
     for device in devices:
         for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
-            if cmd_cfg.get("type") == CMD_TYPE_SWITCH:
+            if cmd_cfg.get("type") == CMD_TYPE_NUMERIC:
                 uid = f"whispeer_{device['id']}_{cmd_name}"
-                entities.append(WhispeerSwitch(device, cmd_name, cmd_cfg, api))
+                entities.append(WhispeerNumber(device, cmd_name, cmd_cfg, api))
                 registered.add(uid)
 
     if entities:
         async_add_entities(entities)
 
-    # Listen for new devices added at runtime (no restart needed).
     @callback
     def _async_add_new_entities(device_data: dict[str, Any]) -> None:
-        new: list[WhispeerSwitch] = []
+        new: list[WhispeerNumber] = []
         device_id = device_data["id"]
         for cmd_name, cmd_cfg in (device_data.get("commands") or {}).items():
-            if cmd_cfg.get("type") == CMD_TYPE_SWITCH:
+            if cmd_cfg.get("type") == CMD_TYPE_NUMERIC:
                 uid = f"whispeer_{device_id}_{cmd_name}"
                 if uid not in registered:
-                    new.append(WhispeerSwitch(device_data, cmd_name, cmd_cfg, api))
+                    new.append(WhispeerNumber(device_data, cmd_name, cmd_cfg, api))
                     registered.add(uid)
         if new:
             async_add_entities(new)
@@ -61,8 +59,10 @@ async def async_setup_entry(
     )
 
 
-class WhispeerSwitch(WhispeerBaseEntity, SwitchEntity):
-    """Representation of a Whispeer IR/RF switch command."""
+class WhispeerNumber(WhispeerBaseEntity, NumberEntity):
+    """Representation of a Whispeer IR/RF numeric control (e.g. fan speed)."""
+
+    _attr_mode = NumberMode.SLIDER
 
     def __init__(
         self,
@@ -72,20 +72,20 @@ class WhispeerSwitch(WhispeerBaseEntity, SwitchEntity):
         api_client: Any,
     ) -> None:
         super().__init__(device_data, command_name, command_cfg, api_client)
-        self._attr_is_on = False
+        values = command_cfg.get("values") or {}
+        numeric_keys = sorted(
+            int(k) for k in values if k.lstrip("-").isdigit()
+        )
+        self._attr_native_min_value = float(numeric_keys[0]) if numeric_keys else 0
+        self._attr_native_max_value = float(numeric_keys[-1]) if numeric_keys else 0
+        self._attr_native_step = 1.0
+        self._attr_native_value = self._attr_native_min_value
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Send the ON code and update state optimistically."""
-        code = self._command_cfg.get("values", {}).get("on", "")
+    async def async_set_native_value(self, value: float) -> None:
+        """Send the code for the selected numeric level."""
+        key = str(int(value))
+        code = self._command_cfg.get("values", {}).get(key, "")
         if code:
             await self._async_send_code(code)
-        self._attr_is_on = True
-        self.async_write_ha_state()
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Send the OFF code and update state optimistically."""
-        code = self._command_cfg.get("values", {}).get("off", "")
-        if code:
-            await self._async_send_code(code)
-        self._attr_is_on = False
+        self._attr_native_value = value
         self.async_write_ha_state()

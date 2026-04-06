@@ -1,16 +1,16 @@
-"""Switch platform for Whispeer."""
+"""Light platform for Whispeer."""
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CMD_TYPE_SWITCH, DOMAIN, SIGNAL_WHISPEER_NEW_DEVICE
+from .const import CMD_TYPE_LIGHT, DOMAIN, SIGNAL_WHISPEER_NEW_DEVICE
 from .entity import WhispeerBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,35 +21,33 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Whispeer switch entities from a config entry."""
+    """Set up Whispeer light entities from a config entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     api = coordinator.api
 
     registered: set[str] = set()
 
-    # Register entities that already exist in storage.
     devices = await api.async_get_devices()
-    entities: list[WhispeerSwitch] = []
+    entities: list[WhispeerLight] = []
     for device in devices:
         for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
-            if cmd_cfg.get("type") == CMD_TYPE_SWITCH:
+            if cmd_cfg.get("type") == CMD_TYPE_LIGHT:
                 uid = f"whispeer_{device['id']}_{cmd_name}"
-                entities.append(WhispeerSwitch(device, cmd_name, cmd_cfg, api))
+                entities.append(WhispeerLight(device, cmd_name, cmd_cfg, api))
                 registered.add(uid)
 
     if entities:
         async_add_entities(entities)
 
-    # Listen for new devices added at runtime (no restart needed).
     @callback
     def _async_add_new_entities(device_data: dict[str, Any]) -> None:
-        new: list[WhispeerSwitch] = []
+        new: list[WhispeerLight] = []
         device_id = device_data["id"]
         for cmd_name, cmd_cfg in (device_data.get("commands") or {}).items():
-            if cmd_cfg.get("type") == CMD_TYPE_SWITCH:
+            if cmd_cfg.get("type") == CMD_TYPE_LIGHT:
                 uid = f"whispeer_{device_id}_{cmd_name}"
                 if uid not in registered:
-                    new.append(WhispeerSwitch(device_data, cmd_name, cmd_cfg, api))
+                    new.append(WhispeerLight(device_data, cmd_name, cmd_cfg, api))
                     registered.add(uid)
         if new:
             async_add_entities(new)
@@ -61,8 +59,11 @@ async def async_setup_entry(
     )
 
 
-class WhispeerSwitch(WhispeerBaseEntity, SwitchEntity):
-    """Representation of a Whispeer IR/RF switch command."""
+class WhispeerLight(WhispeerBaseEntity, LightEntity):
+    """Representation of a Whispeer IR/RF light (on/off only)."""
+
+    _attr_color_mode = ColorMode.ONOFF
+    _attr_supported_color_modes = {ColorMode.ONOFF}
 
     def __init__(
         self,
