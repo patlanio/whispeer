@@ -1107,61 +1107,119 @@ class WhispeerApiClient:
         return _create_success_response("All devices cleared")
 
     async def async_get_broadlink_codes(self) -> dict:
-        """Read learned Broadlink codes from Home Assistant .storage files."""
+        """Read all learned remote codes from Home Assistant .storage files.
+
+        Handles known integrations explicitly and falls back to a generic scan
+        for any other remote storage file that looks like it contains learned codes.
+        """
         import json
+
         result = []
         storage_dir = self._hass.config.path(".storage")
+
         try:
             files = await self._hass.async_add_executor_job(os.listdir, storage_dir)
         except OSError as e:
             _LOGGER.error(f"Cannot list .storage directory: {e}")
             return {"codes": result}
 
-        for fname in files:
-            if not fname.startswith("broadlink_remote_"):
-                continue
-            is_codes = fname.endswith("_codes")
-            is_flags = fname.endswith("_flags") and not fname.endswith("_flags.bak")
-            if not is_codes and not is_flags:
-                continue
-
-            fpath = os.path.join(storage_dir, fname)
+        def _read_storage_file(path):
             try:
-                raw = await self._hass.async_add_executor_job(
-                    lambda p=fpath: open(p, "r", encoding="utf-8").read()
-                )
-                data = json.loads(raw)
-            except Exception as e:
-                _LOGGER.warning(f"Failed to read {fname}: {e}")
-                continue
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as exc:
+                _LOGGER.warning(f"Failed to read {path}: {exc}")
+                return None
 
-            # Extract MAC from filename: broadlink_remote_<mac>_codes / _flags
-            parts = fname.replace("broadlink_remote_", "").rsplit("_", 1)
-            mac = parts[0] if parts else fname
-            source = "codes" if is_codes else "flags"
+        # Metadata-only keys that should never be treated as codes
+        META_KEYS = {"model", "frequency", "type", "manufacturer"}
 
-            entries = data.get("data", {})
+        def _extract_codes(entries, identifier, source):
+            """Extract code entries from a {device: {command: code}} data dict."""
+            if not isinstance(entries, dict):
+                return
             for device_name, commands in entries.items():
                 if not isinstance(commands, dict):
                     continue
                 for cmd_name, cmd_value in commands.items():
-                    if isinstance(cmd_value, str):
-                        # Skip known metadata keys in flags files
-                        if source == "flags" and cmd_name in ("model", "frequency"):
-                            continue
-                        code_preview = cmd_value[:60] + ("\u2026" if len(cmd_value) > 60 else "")
-                        result.append({
-                            "mac": mac,
-                            "source": source,
-                            "device": device_name,
-                            "command": cmd_name,
-                            "code": cmd_value,
-                            "code_preview": code_preview,
-                            "code_length": len(cmd_value),
-                        })
-                    elif isinstance(cmd_value, dict):
-                        # flags file: value is metadata, skip non-code keys
-                        pass
+                    if not isinstance(cmd_value, str):
+                        continue
+                    if cmd_name in META_KEYS:
+                        continue
+                    code_preview = cmd_value[:60] + ("\u2026" if len(cmd_value) > 60 else "")
+                    result.append({
+                        "identifier": identifier,
+                        "source": source,
+                        "device": device_name,
+                        "command": cmd_name,
+                        "code": cmd_value,
+                        "code_preview": code_preview,
+                        "code_length": len(cmd_value),
+                    })
+
+        # Known integration patterns: (prefix, suffix, source_label)
+        # suffix=None means any suffix is accepted after the prefix
+        KNOWN_PATTERNS = [
+            ("broadlink_remote_", "_codes", "broadlink"),
+            ("broadlink_remote_", "_flags", "broadlink"),
+        ]
+
+        parsed_files: set = set()
+
+        # First pass: known patterns - parsed explicitly
+        for prefix, suffix, integration in KNOWN_PATTERNS:
+            for fname in sorted(files):
+                if not fname.startswith(prefix):
+                    continue
+                if suffix and not fname.endswith(suffix):
+                    continue
+                # Skip backup files
+                if fname.endswith(".bak") or fname.endswith(".orig"):
+                    continue
+                fpath = os.path.join(storage_dir, fname)
+                parsed_files.add(fname)
+                data = await self._hass.async_add_executor_job(_read_storage_file, fpath)
+                if data is None:
+                    continue
+                # Extract the identifier part (e.g. MAC) between prefix and suffix
+                identifier = fname[len(prefix):]
+                if suffix and identifier.endswith(suffix):
+                    identifier = identifier[:-len(suffix)]
+                _extract_codes(data.get("data", {}), identifier, integration)
+
+        # Second pass: generic scan for any other storage file that looks like
+        # it stores learned remote codes ({device: {command: code_string}})
+        for fname in sorted(files):
+            if fname in parsed_files:
+                continue
+            if fname.endswith(".bak") or fname.endswith(".orig"):
+                continue
+            fname_lower = fname.lower()
+            # Only bother reading files whose name hints at remote/learned content
+            if not any(kw in fname_lower for kw in ("remote", "learned", "learn_command", "ir_", "_ir", "rf_", "_rf")):
+                continue
+            fpath = os.path.join(storage_dir, fname)
+            data = await self._hass.async_add_executor_job(_read_storage_file, fpath)
+            if data is None:
+                continue
+            entries = data.get("data", {})
+            if not isinstance(entries, dict):
+                continue
+            # Heuristic: must contain at least one {command: long_string} mapping
+            looks_like_codes = any(
+                isinstance(cmds, dict) and any(
+                    isinstance(v, str) and len(v) > 10 and v not in META_KEYS
+                    for v in cmds.values()
+                )
+                for cmds in entries.values()
+                if isinstance(cmds, dict)
+            )
+            if not looks_like_codes:
+                continue
+            parsed_files.add(fname)
+            # Derive a readable source label from the filename
+            integration = fname.split("_")[0] if "_" in fname else fname
+            _extract_codes(entries, fname, integration)
 
         return {"codes": result}
 

@@ -244,16 +244,17 @@ class WhispeerApp {
       const response = await Utils.api.get(url);
       codes = (response && response.codes) ? response.codes : [];
     } catch (e) {
-      console.error('Failed to load broadlink codes:', e);
+      console.error('Failed to load learned codes:', e);
     }
 
     let rows = '';
     codes.forEach(c => {
       const preview = c.code_preview || '-';
+      const identifier = c.identifier || c.mac || '-';
       rows += `<tr>`
         + `<td>${c.device}</td>`
         + `<td>${c.command}</td>`
-        + `<td>${c.mac}</td>`
+        + `<td>${identifier}</td>`
         + `<td>${c.source}</td>`
         + `<td>${c.code_length}</td>`
         + `<td title="${c.code}">${preview}</td>`
@@ -270,7 +271,7 @@ class WhispeerApp {
           <tr>
             <th>Device</th>
             <th>Command</th>
-            <th>MAC</th>
+            <th>Identifier</th>
             <th>Source</th>
             <th>Code Length</th>
             <th>Code (preview)</th>
@@ -281,7 +282,7 @@ class WhispeerApp {
     `;
 
     this.codesModal = new Modal({
-      title: 'HA Broadlink Learned Codes',
+      title: 'HA Learned Remote Codes',
       content: tableHTML,
       className: 'codes-modal'
     });
