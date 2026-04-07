@@ -459,8 +459,7 @@ class DeviceManager extends Component {
             value: device.type || 'ir',
             options: [
               { value: 'ir', label: 'Infrared' },
-              { value: 'rf', label: 'Radio Frequency' },
-              { value: 'ble', label: 'Bluetooth LE' }
+              { value: 'rf', label: 'Radio Frequency' }
             ]
           }
         },
@@ -688,18 +687,13 @@ class DeviceManager extends Component {
             // Check if this interface should be selected when editing
             let shouldSelect = false;
             if (preserveSelection && currentDevice && currentDevice.emitter) {
-              // Match by label first
-              if (currentDevice.interface === iface.label) {
+              // Match by entity_id
+              if (currentDevice.emitter.entity_id && iface.entity_id === currentDevice.emitter.entity_id) {
                 shouldSelect = true;
                 selectedIndex = index;
               }
-              // For RF/IR devices, also try to match by IP
-              else if (currentDevice.emitter.ip && iface.ip === currentDevice.emitter.ip) {
-                shouldSelect = true;
-                selectedIndex = index;
-              }
-              // For BLE devices, match by adapter
-              else if (currentDevice.emitter.adapter && iface.label === currentDevice.emitter.adapter) {
+              // Fallback: match by label
+              else if (currentDevice.interface === iface.label) {
                 shouldSelect = true;
                 selectedIndex = index;
               }

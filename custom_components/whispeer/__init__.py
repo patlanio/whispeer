@@ -26,9 +26,6 @@ from .api import WhispeerApiClient
 from .api import WhispeerInterfacesView
 from .api import WhispeerPrepareToLearnView
 from .api import WhispeerCheckLearnedCommandView
-from .api import WhispeerBroadlinkLearnView
-from .api import WhispeerBroadlinkSendView
-from .api import WhispeerBroadlinkDiscoverView
 from .const import DOMAIN
 from .const import PLATFORMS
 from .const import STARTUP_MESSAGE
@@ -628,9 +625,6 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerInterfacesView())
         hass.http.register_view(WhispeerPrepareToLearnView())
         hass.http.register_view(WhispeerCheckLearnedCommandView())
-        hass.http.register_view(WhispeerBroadlinkLearnView())
-        hass.http.register_view(WhispeerBroadlinkSendView())
-        hass.http.register_view(WhispeerBroadlinkDiscoverView())
         
         # Register the panel using the frontend component
         frontend.async_register_built_in_panel(
@@ -669,9 +663,6 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerInterfacesView())
     hass.http.register_view(WhispeerPrepareToLearnView())
     hass.http.register_view(WhispeerCheckLearnedCommandView())
-    hass.http.register_view(WhispeerBroadlinkLearnView())
-    hass.http.register_view(WhispeerBroadlinkSendView())
-    hass.http.register_view(WhispeerBroadlinkDiscoverView())
     
     return True
 

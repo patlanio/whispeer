@@ -46,8 +46,7 @@ const APP_CONFIG = {
   EMOJIS: ['🏠', '🛋️', '🛏️', '🚪', '🚗', '💡', '🖥️', '🧊', '🌀', '🔌'],
   DEVICE_TYPES: {
     ir: { label: 'Infrared', badge: 'type-ir' },
-    rf: { label: 'Radio Frequency', badge: 'type-rf' },
-    ble: { label: 'Bluetooth LE', badge: 'type-ble' }
+    rf: { label: 'Radio Frequency', badge: 'type-rf' }
   }
 };
 
@@ -254,11 +253,10 @@ class DataManager {
         payload.sub_command = subCommand;
       }
 
-      // Get device emitter data for RF/IR devices to send directly
+      // Include emitter data so backend can resolve the hub entity
       const device = DataManager.getDevice(deviceId);
-      if (device && device.emitter && (deviceType === 'rf' || deviceType === 'ir')) {
+      if (device && device.emitter) {
         payload.emitter = device.emitter;
-        console.log('Including emitter data for RF/IR device:', payload.emitter);
       }
 
       const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.SEND_COMMAND, payload, {
@@ -394,45 +392,6 @@ class CommandManager {
     `;
   }
 
-  // Broadlink specific functions
-  static async discoverBroadlinkDevices() {
-    try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post('/api/services/whispeer/discover_broadlink_devices', {}, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      
-      if (response.devices && Array.isArray(response.devices)) {
-        return response.devices;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Failed to discover Broadlink devices:', error);
-      return [];
-    }
-  }
-
-  static async learnBroadlinkCommand(deviceName, commandName, commandType, deviceIp, frequency = 433.92) {
-    try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post('/api/services/whispeer/learn_broadlink_command', {
-        device_name: deviceName,
-        command_name: commandName,
-        command_type: commandType,
-        device_ip: deviceIp,
-        frequency: frequency
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      
-      return response;
-    } catch (error) {
-      console.error('Failed to learn Broadlink command:', error);
-      throw error;
-    }
-  }
-
   static async learnCommand(deviceType, emitterData) {
     try {
       const token = DataManager.getHomeAssistantToken();
@@ -481,75 +440,6 @@ class CommandManager {
       console.error('Failed to check learned command:', error);
       throw error;
     }
-  }
-
-  static async sendBroadlinkSignal(commandData, deviceIp) {
-    try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post('/api/services/whispeer/send_broadlink_signal', {
-        command_data: commandData,
-        device_ip: deviceIp
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      
-      return response;
-    } catch (error) {
-      console.error('Failed to send Broadlink signal:', error);
-      throw error;
-    }
-  }
-
-  static extractBroadlinkIpFromInterface(interfaceString) {
-    // Extract IP from various formats:
-    // "Model (IP Address)" format
-    // "Model (HASS, IP Address)" format  
-    // "Model Name (192.168.1.100)" format
-    
-    // First try to match patterns with parentheses
-    let match = interfaceString.match(/\(([^)]*)\)$/);
-    if (match) {
-      const content = match[1];
-      
-      // Check if content has comma (HASS format)
-      if (content.includes(',')) {
-        const parts = content.split(',').map(part => part.trim());
-        // Look for IP address in the parts
-        for (const part of parts) {
-          if (this.isValidIpAddress(part)) {
-            return part;
-          }
-        }
-      } else if (this.isValidIpAddress(content)) {
-        // Direct IP address
-        return content;
-      }
-    }
-    
-    // If no parentheses or no valid IP found, try to find IP anywhere in the string
-    const ipPattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-    const ipMatches = interfaceString.match(ipPattern);
-    if (ipMatches) {
-      for (const ip of ipMatches) {
-        if (this.isValidIpAddress(ip)) {
-          return ip;
-        }
-      }
-    }
-    
-    return null;
-  }
-
-  static isValidIpAddress(ip) {
-    const parts = ip.split('.');
-    if (parts.length !== 4) return false;
-    
-    for (const part of parts) {
-      const num = parseInt(part, 10);
-      if (isNaN(num) || num < 0 || num > 255) return false;
-    }
-    
-    return true;
   }
 
   static interfacesCache = {};

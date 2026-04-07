@@ -7,6 +7,6 @@
   "dependencies": ["frontend", "http"],
   "config_flow": true,
   "codeowners": ["@patlanio"],
-  "requirements": ["broadlink"],
+  "requirements": [],
   "homeassistant": "2026.1.0"
 }
