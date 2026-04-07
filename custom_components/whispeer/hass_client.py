@@ -135,6 +135,11 @@ class HassClient:
             timeout,
         )
 
+        # RF learning is a two-phase process (frequency sweep + command capture).
+        # Each phase can take up to `timeout` seconds, so allow double the time
+        # before the outer guard fires.
+        wait_timeout = timeout * 1.5 if command_type.lower() == "rf" else timeout
+
         try:
             # blocking=True makes HA wait until the button is pressed and
             # the code is stored, or until the device-side timeout fires.
@@ -145,7 +150,7 @@ class HassClient:
                     service_data,
                     blocking=True,
                 ),
-                timeout=timeout,
+                timeout=wait_timeout,
             )
         except asyncio.TimeoutError:
             _LOGGER.warning("Learn command timed out on %s", entity_id)

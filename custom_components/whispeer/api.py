@@ -396,11 +396,14 @@ class WhispeerApiClient:
         """Background coroutine that performs the actual learning."""
         try:
             _LOGGER.info("Starting background learn for session %s on %s", session.session_id, session.hub_entity_id)
+            # RF learning uses two phases (frequency sweep + command capture),
+            # each up to `timeout` seconds, so use a longer per-phase timeout.
+            per_phase_timeout = 45 if session.command_type.lower() == "rf" else 30
             code = await self._hass_client.async_learn_command(
                 entity_id=session.hub_entity_id,
                 command="default_command",
                 command_type=session.command_type,
-                timeout=30,
+                timeout=per_phase_timeout,
             )
             if code:
                 session.update_status("completed", command_data=code)
