@@ -5,6 +5,8 @@ class DeviceManager extends Component {
     this.tempCommands = {};
     this.deviceModal = null;
     this.commandModal = null;
+    this.storedCodes = null;
+    this._storedCodesFlat = [];
   }
 
   init() {
@@ -89,7 +91,7 @@ class DeviceManager extends Component {
     if (!this.element) return;
 
     const devices = DataManager.getAllDevices();
-    
+
     if (devices.length === 0) {
       this.element.innerHTML = `
         <div class="empty-state">
@@ -99,18 +101,20 @@ class DeviceManager extends Component {
         <div class="devices-grid">
           ${this.template('addDeviceCard')}
         </div>
+        <div id="storedCodesSection"></div>
       `;
-      return;
+    } else {
+      const devicesHTML = devices.map(device => this.renderDeviceCard(device)).join('');
+      this.element.innerHTML = `
+        <div class="devices-grid">
+          ${devicesHTML}
+          ${this.template('addDeviceCard')}
+        </div>
+        <div id="storedCodesSection"></div>
+      `;
     }
 
-    const devicesHTML = devices.map(device => this.renderDeviceCard(device)).join('');
-    
-    this.element.innerHTML = `
-      <div class="devices-grid">
-        ${devicesHTML}
-        ${this.template('addDeviceCard')}
-      </div>
-    `;
+    this._renderStoredCodesIntoSection(this.storedCodes);
   }
 
   renderDeviceCard(device) {
@@ -127,6 +131,147 @@ class DeviceManager extends Component {
       commands: commandsHTML
     });
   }
+
+  // ------------------------------------------------------------------
+  // Stored codes section
+  // ------------------------------------------------------------------
+
+  async loadAndRenderStoredCodes() {
+    const section = document.getElementById('storedCodesSection');
+    if (section) {
+      section.innerHTML = '<div class="stored-codes-loading">Loading stored codes…</div>';
+    }
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      const url = token
+        ? `/api/whispeer/stored_codes?access_token=${encodeURIComponent(token)}`
+        : '/api/whispeer/stored_codes';
+      const response = await Utils.api.get(url);
+      this.storedCodes = (response && response.codes) ? response.codes : [];
+    } catch (e) {
+      console.error('Failed to load stored codes:', e);
+      this.storedCodes = [];
+    }
+    this._renderStoredCodesIntoSection(this.storedCodes);
+  }
+
+  _renderStoredCodesIntoSection(codes) {
+    const section = document.getElementById('storedCodesSection');
+    if (!section) return;
+
+    if (!codes) {
+      section.innerHTML = '';
+      return;
+    }
+
+    // Build flat index for onclick reference (avoids embedding codes in HTML)
+    this._storedCodesFlat = codes.slice();
+
+    // Group by device
+    const grouped = {};
+    codes.forEach(c => {
+      if (!grouped[c.device]) grouped[c.device] = [];
+      grouped[c.device].push(c);
+    });
+
+    const cardsHTML = Object.entries(grouped).map(([device, cmds]) => {
+      const commandsHTML = cmds.map(c => {
+        const idx = this._storedCodesFlat.indexOf(c);
+        const codeType = this._detectCodeType(c.code);
+        const typeBadge = codeType
+          ? `<span class="cmd-type-badge type-${codeType}">${codeType.toUpperCase()}</span>`
+          : '';
+        const tooltip = `${c.identifier} | ${c.source} | ${c.code_preview}`;
+        return `<button class="btn btn-small command-btn stored-cmd-btn"
+                        title="${this._escapeAttr(tooltip)}"
+                        onclick="deviceManager.executeStoredCommandByIndex(${idx})">
+                  ${this._escapeHtml(c.command)}${typeBadge}
+                </button>`;
+      }).join('');
+
+      return `<div class="device-card stored-device-card">
+        <div class="device-header">
+          <div class="device-name">${this._escapeHtml(device)}</div>
+        </div>
+        <div class="device-commands">${commandsHTML}</div>
+      </div>`;
+    }).join('');
+
+    const noCodesMsg = cardsHTML
+      ? ''
+      : '<p class="no-stored-codes">No stored codes found</p>';
+
+    section.innerHTML = `
+      <hr class="stored-codes-divider">
+      <div class="stored-codes-header">
+        <h3 class="stored-codes-title">Existing codes in Home Assistant</h3>
+        <button class="btn btn-small btn-outlined" onclick="deviceManager.loadAndRenderStoredCodes()">🔄 Refresh</button>
+      </div>
+      <div class="devices-grid">
+        ${cardsHTML}${noCodesMsg}
+      </div>
+    `;
+  }
+
+  executeStoredCommandByIndex(index) {
+    const c = this._storedCodesFlat[index];
+    if (!c) {
+      Notification.error('Stored command not found');
+      return;
+    }
+    this.executeStoredCommand(c.identifier, c.source, c.device, c.command, c.code);
+  }
+
+  async executeStoredCommand(identifier, source, device, command, code) {
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      const response = await Utils.api.post('/api/whispeer/send_stored_code', {
+        identifier,
+        source,
+        device,
+        command,
+        code
+      }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (response && response.status === 'success') {
+        Notification.success(`Command "${command}" executed successfully`);
+      } else {
+        throw new Error(response?.message || 'Command failed');
+      }
+    } catch (error) {
+      Notification.error(`Failed to execute command: ${error.message}`);
+      console.error('Stored command error:', error);
+    }
+  }
+
+  _detectCodeType(code) {
+    if (!code || code.length < 4) return null;
+    try {
+      const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = atob(b64.substring(0, 4));
+      return decoded.charCodeAt(0) === 0x26 ? 'ir' : 'rf';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  _escapeAttr(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // ------------------------------------------------------------------
 
   renderDeviceCommands(device) {
     const { commands = {}, id } = device;
@@ -354,30 +499,30 @@ class DeviceManager extends Component {
       //     color: '#4caf50'
       //   }
       // },
-      'sample_light': {
-        type: 'light',
-        values: {
-          on: '',
-          off: ''
-        },
-        props: {
-          shape: 'circle',
-          color: '#ffeb3b'
-        }
-      },
-      'sample_numeric': {
-        type: 'numeric',
-        values: {
-          '0': '',
-          '1': '',
-          '2': '',
-          '3': ''
-        },
-        props: {
-          shape: 'rounded',
-          color: '#ff9800'
-        }
-      },
+      // 'sample_light': {
+      //   type: 'light',
+      //   values: {
+      //     on: '',
+      //     off: ''
+      //   },
+      //   props: {
+      //     shape: 'circle',
+      //     color: '#ffeb3b'
+      //   }
+      // },
+      // 'sample_numeric': {
+      //   type: 'numeric',
+      //   values: {
+      //     '0': '',
+      //     '1': '',
+      //     '2': '',
+      //     '3': ''
+      //   },
+      //   props: {
+      //     shape: 'rounded',
+      //     color: '#ff9800'
+      //   }
+      // },
       // 'sample_group': {
       //   type: 'group',
       //   values: {

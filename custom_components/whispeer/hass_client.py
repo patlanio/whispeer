@@ -299,6 +299,34 @@ class HassClient:
 
         return await self._hass.async_add_executor_job(_read_all)
 
+    async def async_find_remote_by_identifier(self, identifier: str) -> str | None:
+        """Return the ``remote.*`` entity_id whose device matches *identifier*.
+
+        *identifier* is a MAC-style string (e.g. ``e87072ba6c04``).
+        We normalise both sides by stripping ``:`` and ``-`` before comparing.
+        """
+        needle = identifier.lower().replace(":", "").replace("-", "")
+
+        entity_registry = er.async_get(self._hass)
+        device_registry = dr.async_get(self._hass)
+
+        for state in self._hass.states.async_all("remote"):
+            entry = entity_registry.async_get(state.entity_id)
+            if not (entry and entry.device_id):
+                continue
+            dev = device_registry.async_get(entry.device_id)
+            if not dev:
+                continue
+            for con_type, con_val in dev.connections:
+                if con_type == "mac":
+                    if con_val.lower().replace(":", "").replace("-", "") == needle:
+                        return state.entity_id
+            for _domain, ident_val in dev.identifiers:
+                if needle in ident_val.lower().replace(":", "").replace("-", ""):
+                    return state.entity_id
+
+        return None
+
 
 # ------------------------------------------------------------------
 # Helpers

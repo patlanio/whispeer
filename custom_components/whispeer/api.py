@@ -453,6 +453,31 @@ class WhispeerApiClient:
         codes = await self._hass_client.async_get_stored_codes()
         return {"codes": codes}
 
+    async def async_send_stored_code(
+        self,
+        identifier: str,
+        code: str,
+        device: str = "",
+        command: str = "",
+    ) -> dict:
+        """Send a stored code by resolving the hub from its MAC identifier."""
+        entity_id = await self._hass_client.async_find_remote_by_identifier(identifier)
+        if not entity_id:
+            return _err(
+                f"No remote entity found for identifier '{identifier}'. "
+                "Make sure the Broadlink hub is connected in Home Assistant."
+            )
+        success = await self._hass_client.async_send_command(entity_id, code)
+        if success:
+            return _ok(
+                f"Stored code '{command}' on '{device}' sent via {entity_id}",
+                entity_id=entity_id,
+            )
+        return _err(
+            f"Failed to send stored code '{command}' on '{device}' via {entity_id}",
+            entity_id=entity_id,
+        )
+
     # ------------------------------------------------------------------
     # Generic HTTP helper (kept for backward compat if anything uses it)
     # ------------------------------------------------------------------

@@ -1172,3 +1172,72 @@ body {
   box-shadow: inset 0 0 0 2px rgba(3, 169, 244, 0.3);
   z-index: 2;
 }
+
+/* ------------------------------------------------------------------
+   Stored codes section
+   ------------------------------------------------------------------ */
+
+.stored-codes-divider {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 28px 0 20px;
+}
+
+.stored-codes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.stored-codes-title {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stored-device-card {
+  opacity: 0.92;
+}
+
+.no-stored-codes,
+.stored-codes-loading {
+  color: var(--text-secondary);
+  padding: 20px 0;
+  font-size: 0.9rem;
+}
+
+.cmd-type-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-left: 5px;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.cmd-type-badge.type-ir {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.cmd-type-badge.type-rf {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cmd-type-badge.type-ir {
+    background: #e65100;
+    color: #ffe0b2;
+  }
+
+  .cmd-type-badge.type-rf {
+    background: #4a148c;
+    color: #e1bee7;
+  }
+}
