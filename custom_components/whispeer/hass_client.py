@@ -1,8 +1,7 @@
 """Home Assistant API client for Whispeer.
 
 Centralises all communication with HA services (remote.send_command,
-remote.learn_command) and state queries so that no other module needs
-to interact with the broadlink library or raw network sockets.
+remote.learn_command) and state queries
 """
 from __future__ import annotations
 
@@ -75,8 +74,7 @@ class HassClient:
         """Send an IR/RF code via ``remote.send_command``.
 
         ``command_data`` is the hex (or base64) string stored in the
-        device command slot.  The Broadlink HA integration expects a
-        base64-encoded string inside the *command* list.
+        device command slot.
         """
         b64 = _ensure_base64(command_data)
 
@@ -115,25 +113,12 @@ class HassClient:
     ) -> str | None:
         """Put the hub into learning mode via ``remote.learn_command``.
 
-        The HA Broadlink integration fires ``broadlink.remote_received``
-        events when a code is captured.  We listen for that event and
-        return the learned code as a hex string, or ``None`` on timeout.
+        Calls ``remote.learn_command`` with ``blocking=True`` so the
+        coroutine waits until the remote physically captures the button
+        press (or until the device-side timeout expires).  The learned
+        code is then read from HA storage and returned as a hex string,
+        or ``None`` on failure / timeout.
         """
-        learned_code: asyncio.Future[str] = self._hass.loop.create_future()
-
-        def _on_event(event):
-            """Handle broadlink learned-code event."""
-            data = event.data or {}
-            # The Broadlink integration fires the event with a "packet"
-            # key containing the base64-encoded data.
-            packet = data.get("packet") or data.get("code") or ""
-            if packet and not learned_code.done():
-                learned_code.set_result(packet)
-
-        unsub = self._hass.bus.async_listen(
-            "broadlink.remote_received", _on_event
-        )
-
         service_data: dict[str, Any] = {
             "entity_id": entity_id,
             "timeout": timeout,
@@ -151,24 +136,163 @@ class HassClient:
         )
 
         try:
-            await self._hass.services.async_call(
-                "remote",
-                "learn_command",
-                service_data,
-                blocking=False,
+            # blocking=True makes HA wait until the button is pressed and
+            # the code is stored, or until the device-side timeout fires.
+            await asyncio.wait_for(
+                self._hass.services.async_call(
+                    "remote",
+                    "learn_command",
+                    service_data,
+                    blocking=True,
+                ),
+                timeout=timeout,
             )
-
-            code = await asyncio.wait_for(learned_code, timeout=timeout)
-            _LOGGER.info("Learned %s code on %s (length=%d)", command_type, entity_id, len(code))
-            return _b64_to_hex(code)
         except asyncio.TimeoutError:
             _LOGGER.warning("Learn command timed out on %s", entity_id)
             return None
         except Exception:
             _LOGGER.exception("Error during learn_command on %s", entity_id)
             return None
-        finally:
-            unsub()
+
+        _LOGGER.info(
+            "learn_command completed for %s — reading code from storage", entity_id
+        )
+        code = await self._async_read_stored_code(entity_id, device, command)
+        if code:
+            _LOGGER.info(
+                "Learned %s code on %s (length=%d)", command_type, entity_id, len(code)
+            )
+            return _b64_to_hex(code)
+
+        _LOGGER.warning(
+            "learn_command returned but no code found in storage for device=%s command=%s",
+            device,
+            command,
+        )
+        return None
+
+    async def _async_read_stored_code(self, entity_id: str, device: str, command: str) -> str | None:
+        """Read a learned code from HA integration storage after learn_command completes.
+
+        Resolves the storage file prefix from the remote entity's manufacturer
+        via _get_storage_file_prefix(), which is the only brand-specific part.
+        """
+        import json
+        import os
+
+        entry = er.async_get(self._hass).async_get(entity_id)
+        manufacturer = ""
+        if entry and entry.device_id:
+            dev = dr.async_get(self._hass).async_get(entry.device_id)
+            if dev:
+                manufacturer = (dev.manufacturer or "").lower()
+
+        prefix = _get_storage_file_prefix(manufacturer)
+        if not prefix:
+            _LOGGER.warning(
+                "No storage prefix known for %s (manufacturer=%r); cannot retrieve learned code",
+                entity_id,
+                manufacturer,
+            )
+            return None
+
+        storage_dir = self._hass.config.path(".storage")
+
+        def _read() -> str | None:
+            try:
+                files = os.listdir(storage_dir)
+            except OSError:
+                return None
+            for fname in sorted(files):
+                if not fname.startswith(prefix) or not fname.endswith("_codes"):
+                    continue
+                fpath = os.path.join(storage_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    code = data.get("data", {}).get(device, {}).get(command)
+                    if isinstance(code, str) and code:
+                        return code
+                except Exception:
+                    continue
+            return None
+
+        return await self._hass.async_add_executor_job(_read)
+
+    async def async_get_stored_codes(self) -> list[dict]:
+        """Return all learned codes found in HA storage across known remote integrations.
+
+        Discovers which storage file prefixes are relevant by inspecting the
+        manufacturer of every connected remote entity.
+        """
+        import json
+        import os
+
+        storage_dir = self._hass.config.path(".storage")
+        result: list[dict] = []
+
+        # Collect unique (prefix, source_label) pairs from connected remotes.
+        prefixes: dict[str, str] = {}  # prefix → source label
+        entity_registry = er.async_get(self._hass)
+        device_registry = dr.async_get(self._hass)
+        for state in self._hass.states.async_all("remote"):
+            entry = entity_registry.async_get(state.entity_id)
+            if not (entry and entry.device_id):
+                continue
+            dev = device_registry.async_get(entry.device_id)
+            if not dev:
+                continue
+            manufacturer = (dev.manufacturer or "").lower()
+            prefix = _get_storage_file_prefix(manufacturer)
+            if prefix and prefix not in prefixes:
+                prefixes[prefix] = manufacturer
+
+        if not prefixes:
+            return result
+
+        META_KEYS = {"model", "frequency", "type", "manufacturer"}
+
+        def _read_all() -> list[dict]:
+            try:
+                files = os.listdir(storage_dir)
+            except OSError:
+                return []
+            found: list[dict] = []
+            for fname in sorted(files):
+                if fname.endswith((".bak", ".orig")):
+                    continue
+                matched_prefix = next((p for p in prefixes if fname.startswith(p)), None)
+                if not matched_prefix or not fname.endswith("_codes"):
+                    continue
+                fpath = os.path.join(storage_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception:
+                    continue
+                source = prefixes[matched_prefix]
+                identifier = fname
+                for strip in (matched_prefix, "_codes", "_flags"):
+                    identifier = identifier.replace(strip, "")
+                for device_name, commands in (data.get("data") or {}).items():
+                    if not isinstance(commands, dict):
+                        continue
+                    for cmd_name, cmd_value in commands.items():
+                        if not isinstance(cmd_value, str) or cmd_name in META_KEYS:
+                            continue
+                        preview = cmd_value[:60] + ("\u2026" if len(cmd_value) > 60 else "")
+                        found.append({
+                            "identifier": identifier,
+                            "source": source,
+                            "device": device_name,
+                            "command": cmd_name,
+                            "code": cmd_value,
+                            "code_preview": preview,
+                            "code_length": len(cmd_value),
+                        })
+            return found
+
+        return await self._hass.async_add_executor_job(_read_all)
 
 
 # ------------------------------------------------------------------
@@ -210,6 +334,17 @@ def _b64_to_hex(data: str) -> str:
         return raw.hex()
     except Exception:
         return data
+
+
+def _get_storage_file_prefix(manufacturer: str) -> str | None:
+    """Map a remote device manufacturer to its HA storage file prefix.
+
+    This is the brand-specific part of the code-retrieval flow.
+    Add new manufacturers here as support is added.
+    """
+    if "broadlink" in manufacturer:
+        return "broadlink_remote_"
+    return None
 
 
 def _get_capabilities(state, device_entry=None) -> list[str]:

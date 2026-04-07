@@ -246,11 +246,6 @@ body {
   color: #f57c00;
 }
 
-.type-broadlink {
-  background: #e8f5e8;
-  color: #2e7d32;
-}
-
 .device-info {
   color: var(--text-secondary);
   font-size: 0.9rem;
@@ -1041,11 +1036,6 @@ body {
   .type-ir {
     background: #e65100;
     color: #ffe0b2;
-  }
-
-  .type-broadlink {
-    background: #1b5e20;
-    color: #c8e6c9;
   }
 
   .modal {

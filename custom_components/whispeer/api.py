@@ -395,6 +395,7 @@ class WhispeerApiClient:
     async def _background_learn(self, session: LearnSession) -> None:
         """Background coroutine that performs the actual learning."""
         try:
+            _LOGGER.info("Starting background learn for session %s on %s", session.session_id, session.hub_entity_id)
             code = await self._hass_client.async_learn_command(
                 entity_id=session.hub_entity_id,
                 command="default_command",
@@ -444,66 +445,10 @@ class WhispeerApiClient:
             device_type=session.command_type,
         )
 
-    # ------------------------------------------------------------------
-    # Broadlink codes from HA .storage (read-only introspection)
-    # ------------------------------------------------------------------
-
-    async def async_get_broadlink_codes(self) -> dict:
-        """Read learned Broadlink codes from HA .storage files."""
-        import json
-        import os
-
-        result: list[dict] = []
-        storage_dir = self._hass.config.path(".storage")
-
-        try:
-            files = await self._hass.async_add_executor_job(os.listdir, storage_dir)
-        except OSError as exc:
-            _LOGGER.error("Cannot list .storage directory: %s", exc)
-            return {"codes": result}
-
-        def _read(path):
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    return json.load(fh)
-            except Exception:
-                return None
-
-        META_KEYS = {"model", "frequency", "type", "manufacturer"}
-
-        def _extract(entries, identifier, source):
-            if not isinstance(entries, dict):
-                return
-            for device_name, commands in entries.items():
-                if not isinstance(commands, dict):
-                    continue
-                for cmd_name, cmd_value in commands.items():
-                    if not isinstance(cmd_value, str) or cmd_name in META_KEYS:
-                        continue
-                    preview = cmd_value[:60] + ("\u2026" if len(cmd_value) > 60 else "")
-                    result.append({
-                        "identifier": identifier,
-                        "source": source,
-                        "device": device_name,
-                        "command": cmd_name,
-                        "code": cmd_value,
-                        "code_preview": preview,
-                        "code_length": len(cmd_value),
-                    })
-
-        for fname in sorted(files):
-            if fname.endswith((".bak", ".orig")):
-                continue
-            if not fname.startswith("broadlink_remote_"):
-                continue
-            fpath = os.path.join(storage_dir, fname)
-            data = await self._hass.async_add_executor_job(_read, fpath)
-            if data is None:
-                continue
-            identifier = fname.replace("broadlink_remote_", "").replace("_codes", "").replace("_flags", "")
-            _extract(data.get("data", {}), identifier, "broadlink")
-
-        return {"codes": result}
+    async def async_get_stored_codes(self) -> dict:
+        """Return all learned remote codes found in HA storage."""
+        codes = await self._hass_client.async_get_stored_codes()
+        return {"codes": codes}
 
     # ------------------------------------------------------------------
     # Generic HTTP helper (kept for backward compat if anything uses it)
@@ -647,5 +592,5 @@ class WhispeerCheckLearnedCommandView(HomeAssistantView):
             result = await coord.api.async_check_learned_command(session_id, device_type)
             return web.json_response(result)
         except Exception as exc:
-            _LOGGER.error("Error checking learned command: %s", exc)
+            _LOGGER.error("[check_learned_command] Exception: %s", exc, exc_info=True)
             return web.json_response({"error": str(exc)}, status=500)

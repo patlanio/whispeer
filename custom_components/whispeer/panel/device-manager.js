@@ -1156,16 +1156,6 @@ class DeviceManager extends Component {
     }
   }
 
-  // Broadlink learning functions
-  canLearnCommand() {
-    // Check if current device type supports learning
-    const typeSelect = Utils.$('#deviceForm select[name="type"]');
-    if (!typeSelect) return false;
-    
-    const deviceType = typeSelect.value;
-    return deviceType === 'ir' || deviceType === 'rf';
-  }
-
   getCurrentDeviceInfo() {
     const form = Utils.$('#deviceForm');
     if (!form) return null;

@@ -239,8 +239,8 @@ class WhispeerApp {
     let codes = [];
     try {
       const url = token
-        ? `/api/whispeer/broadlink_codes?access_token=${encodeURIComponent(token)}`
-        : '/api/whispeer/broadlink_codes';
+        ? `/api/whispeer/stored_codes?access_token=${encodeURIComponent(token)}`
+        : '/api/whispeer/stored_codes';
       const response = await Utils.api.get(url);
       codes = (response && response.codes) ? response.codes : [];
     } catch (e) {

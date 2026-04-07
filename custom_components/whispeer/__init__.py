@@ -532,16 +532,16 @@ class WhispeerRemoveDeviceView(HomeAssistantView):
             return web.json_response({"error": str(e)}, status=500)
 
 
-class WhispeerBroadlinkCodesView(HomeAssistantView):
-    """View to list learned Broadlink codes from HA storage."""
+class WhispeerStoredCodesView(HomeAssistantView):
+    """View to list learned remote codes from HA storage."""
 
-    url = "/api/whispeer/broadlink_codes"
-    name = "api:whispeer:broadlink_codes"
+    url = "/api/whispeer/stored_codes"
+    name = "api:whispeer:stored_codes"
     requires_auth = False
     cors_allowed = True
 
     async def get(self, request):
-        """Return all Broadlink learned codes."""
+        """Return all learned remote codes."""
         try:
             hass = request.app["hass"]
             domain_data = hass.data.get(DOMAIN, {})
@@ -552,12 +552,12 @@ class WhispeerBroadlinkCodesView(HomeAssistantView):
                     break
 
             if coordinator:
-                result = await coordinator.api.async_get_broadlink_codes()
+                result = await coordinator.api.async_get_stored_codes()
                 return web.json_response(result)
             else:
                 return web.json_response({"codes": []})
         except Exception as e:
-            _LOGGER.error(f"Error getting broadlink codes: {e}")
+            _LOGGER.error(f"Error getting stored codes: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
 
@@ -621,7 +621,7 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerSyncView())
         hass.http.register_view(WhispeerRemoveDeviceView())
         hass.http.register_view(WhispeerClearDevicesView())
-        hass.http.register_view(WhispeerBroadlinkCodesView())
+        hass.http.register_view(WhispeerStoredCodesView())
         hass.http.register_view(WhispeerInterfacesView())
         hass.http.register_view(WhispeerPrepareToLearnView())
         hass.http.register_view(WhispeerCheckLearnedCommandView())
@@ -659,7 +659,7 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerSyncView())
     hass.http.register_view(WhispeerRemoveDeviceView())
     hass.http.register_view(WhispeerClearDevicesView())
-    hass.http.register_view(WhispeerBroadlinkCodesView())
+    hass.http.register_view(WhispeerStoredCodesView())
     hass.http.register_view(WhispeerInterfacesView())
     hass.http.register_view(WhispeerPrepareToLearnView())
     hass.http.register_view(WhispeerCheckLearnedCommandView())
