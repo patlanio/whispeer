@@ -576,6 +576,82 @@ class WhispeerSendStoredCodeView(HomeAssistantView):
             return web.json_response({"error": str(e)}, status=500)
 
 
+class WhispeerBleScanView(HomeAssistantView):
+    """GET /api/whispeer/ble/scan?adapter_mac=..."""
+
+    url = "/api/whispeer/ble/scan"
+    name = "api:whispeer:ble:scan"
+    requires_auth = False
+    cors_allowed = True
+
+    async def get(self, request):
+        try:
+            adapter_mac = request.query.get("adapter_mac", "")
+            if not adapter_mac:
+                return web.json_response(
+                    {"error": "Missing query param: adapter_mac"}, status=400
+                )
+
+            hass = request.app["hass"]
+            domain_data = hass.data.get(DOMAIN, {})
+            coordinator = None
+            for entry_data in domain_data.values():
+                if hasattr(entry_data, 'api'):
+                    coordinator = entry_data
+                    break
+
+            if not coordinator:
+                return web.json_response({"error": "No coordinator found"}, status=500)
+
+            result = await coordinator.api.async_scan_ble(adapter_mac)
+            return web.json_response(result)
+        except Exception as e:
+            _LOGGER.error(f"Error scanning BLE: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+
+class WhispeerBleEmitView(HomeAssistantView):
+    """POST /api/whispeer/ble/emit"""
+
+    url = "/api/whispeer/ble/emit"
+    name = "api:whispeer:ble:emit"
+    requires_auth = False
+    cors_allowed = True
+
+    async def post(self, request):
+        try:
+            data = await request.json()
+            adapter = data.get("adapter", "")
+            ad_type = data.get("ad_type", "")
+            field_id = data.get("field_id", 0)
+            data_hex = data.get("data_hex", "")
+
+            if not adapter or not ad_type or not data_hex:
+                return web.json_response(
+                    {"error": "Missing required fields: adapter, ad_type, data_hex"},
+                    status=400,
+                )
+
+            hass = request.app["hass"]
+            domain_data = hass.data.get(DOMAIN, {})
+            coordinator = None
+            for entry_data in domain_data.values():
+                if hasattr(entry_data, 'api'):
+                    coordinator = entry_data
+                    break
+
+            if not coordinator:
+                return web.json_response({"error": "No coordinator found"}, status=500)
+
+            result = await coordinator.api.async_emit_ble(
+                adapter, ad_type, field_id, data_hex
+            )
+            return web.json_response(result)
+        except Exception as e:
+            _LOGGER.error(f"Error emitting BLE: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+
 class WhispeerStoredCodesView(HomeAssistantView):
     """View to list learned remote codes from HA storage."""
 
@@ -670,6 +746,8 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerInterfacesView())
         hass.http.register_view(WhispeerPrepareToLearnView())
         hass.http.register_view(WhispeerCheckLearnedCommandView())
+        hass.http.register_view(WhispeerBleScanView())
+        hass.http.register_view(WhispeerBleEmitView())
         
         # Register the panel using the frontend component
         frontend.async_register_built_in_panel(
@@ -709,6 +787,8 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerInterfacesView())
     hass.http.register_view(WhispeerPrepareToLearnView())
     hass.http.register_view(WhispeerCheckLearnedCommandView())
+    hass.http.register_view(WhispeerBleScanView())
+    hass.http.register_view(WhispeerBleEmitView())
     
     return True
 

@@ -282,6 +282,12 @@ class WhispeerApiClient:
         if not command_code:
             return _err(f"No command code for '{command_name}' on device '{device_id}'")
 
+        # BLE commands go through ble_emitter instead of remote.*
+        if device_type == "ble":
+            return await self._send_ble_command(
+                device_id, command_name, command_code, emitter_data
+            )
+
         # Resolve hub entity_id from the device's emitter/interface_id.
         entity_id = self._resolve_entity_id(device_id, emitter_data)
         if not entity_id:
@@ -340,6 +346,9 @@ class WhispeerApiClient:
 
     async def async_get_interfaces(self, device_type: str, hass=None) -> dict:
         """Return available hubs/interfaces for the given device type."""
+        if device_type == "ble":
+            return await self.async_get_ble_interfaces()
+
         hubs = await self._hass_client.async_discover_hubs()
 
         # Filter by capability
@@ -479,6 +488,88 @@ class WhispeerApiClient:
         )
 
     # ------------------------------------------------------------------
+    # BLE support
+    # ------------------------------------------------------------------
+
+    async def _send_ble_command(
+        self,
+        device_id: str,
+        command_name: str,
+        command_code: str,
+        emitter_data: dict | None,
+    ) -> dict:
+        """Route a BLE command to ``ble_emitter``."""
+        import json as _json
+        try:
+            desc = _json.loads(command_code)
+        except (ValueError, TypeError):
+            return _err(
+                f"Invalid BLE command code for '{command_name}' — expected JSON"
+            )
+
+        adapter = None
+        if emitter_data:
+            adapter = emitter_data.get("hci_name")
+        if not adapter:
+            device = self._devices_cache.get(str(device_id)) or {}
+            emitter = device.get("emitter") or {}
+            adapter = emitter.get("hci_name")
+        if not adapter:
+            return _err("No BLE adapter (hci_name) found for this device")
+
+        return await self.async_emit_ble(
+            adapter,
+            desc.get("ad_type", ""),
+            desc.get("field_id", 0),
+            desc.get("data_hex", ""),
+        )
+
+    async def async_get_ble_interfaces(self) -> dict:
+        """Return available BLE adapters as interfaces."""
+        adapters = await self._hass_client.async_get_ble_adapters()
+        if not adapters:
+            return _err(
+                "No BLE adapters found. Ensure hcitool and hciconfig are "
+                "installed and a Bluetooth adapter is connected."
+            )
+        interfaces = []
+        for a in adapters:
+            status_icon = "✅" if a["status"] == "UP" else "⚠️"
+            interfaces.append({
+                "label": f"{a['hci_name']} — {a['mac']} {status_icon}",
+                "hci_name": a["hci_name"],
+                "mac": a["mac"],
+                "status": a["status"],
+                "can_emit": a["can_emit"],
+                "source": "ble",
+            })
+        return _ok(f"Found {len(interfaces)} BLE adapter(s)", interfaces=interfaces)
+
+    async def async_scan_ble(self, adapter_mac: str) -> dict:
+        """Return BLE advertisements visible to the adapter with *adapter_mac*."""
+        devices, error = await self._hass_client.async_scan_ble_devices(adapter_mac)
+        if error:
+            return _err(error, devices=devices)
+        return _ok(f"Found {len(devices)} device(s)", devices=devices)
+
+    async def async_emit_ble(
+        self,
+        adapter: str,
+        ad_type: str,
+        field_id: int | str,
+        data_hex: str,
+    ) -> dict:
+        """Emit a BLE advertisement via ``ble_emitter``."""
+        from .ble_emitter import emit_ble
+
+        success = await self._hass.async_add_executor_job(
+            emit_ble, adapter, ad_type, field_id, data_hex
+        )
+        if success:
+            return _ok(f"BLE advertisement emitted on {adapter}")
+        return _err(f"Failed to emit BLE on {adapter}")
+
+    # ------------------------------------------------------------------
     # Generic HTTP helper (kept for backward compat if anything uses it)
     # ------------------------------------------------------------------
 
@@ -524,7 +615,7 @@ class WhispeerInterfacesView(HomeAssistantView):
 
             if not device_type:
                 return web.json_response({"error": "Missing field: type"}, status=400)
-            if device_type not in ("ir", "rf"):
+            if device_type not in ("ir", "rf", "ble"):
                 return web.json_response(
                     {"error": f"Unsupported device type: {device_type}"}, status=400
                 )

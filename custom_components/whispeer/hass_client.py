@@ -299,6 +299,66 @@ class HassClient:
 
         return await self._hass.async_add_executor_job(_read_all)
 
+    # ------------------------------------------------------------------
+    # BLE adapter discovery and scanning
+    # ------------------------------------------------------------------
+
+    async def async_get_ble_adapters(self) -> list[dict]:
+        """Return local BLE adapters (via ``ble_emitter.get_ble_adapters``)."""
+        from .ble_emitter import get_ble_adapters
+
+        return await self._hass.async_add_executor_job(get_ble_adapters)
+
+    async def async_scan_ble_devices(
+        self, adapter_mac: str
+    ) -> tuple[list[dict], str | None]:
+        """Return BLE advertisements seen by the adapter matching *adapter_mac*.
+
+        Uses HA's bluetooth integration (``async_discovered_service_info``).
+        Returns ``(devices_list, error_message_or_None)``.
+        """
+        try:
+            from homeassistant.components.bluetooth import (
+                async_discovered_service_info,
+            )
+        except ImportError:
+            _LOGGER.warning("HA bluetooth integration not available")
+            return [], "HA Bluetooth integration not found — enable it in Settings > Integrations."
+
+        needle = adapter_mac.upper().replace("-", ":")
+        seen: dict[str, dict] = {}
+
+        for info in async_discovered_service_info(self._hass):
+            # info.source is typically the adapter MAC in colon format.
+            src = (info.source or "").upper()
+            if src != needle:
+                continue
+
+            addr = info.address
+            if addr in seen:
+                continue
+
+            mfr_data: dict[str, str] = {}
+            if info.manufacturer_data:
+                for mfr_id, raw_bytes in info.manufacturer_data.items():
+                    mfr_data[str(mfr_id)] = raw_bytes.hex()
+
+            svc_data: dict[str, str] = {}
+            if info.service_data:
+                for uuid_str, raw_bytes in info.service_data.items():
+                    svc_data[uuid_str] = raw_bytes.hex()
+
+            seen[addr] = {
+                "address": addr,
+                "name": info.name or "",
+                "rssi": info.rssi if hasattr(info, "rssi") else None,
+                "source": info.source,
+                "manufacturer_data": mfr_data,
+                "service_data": svc_data,
+            }
+
+        return list(seen.values()), None
+
     async def async_find_remote_by_identifier(self, identifier: str) -> str | None:
         """Return the ``remote.*`` entity_id whose device matches *identifier*.
 

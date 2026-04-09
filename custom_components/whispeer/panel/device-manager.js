@@ -604,7 +604,8 @@ class DeviceManager extends Component {
             value: device.type || 'ir',
             options: [
               { value: 'ir', label: 'Infrared' },
-              { value: 'rf', label: 'Radio Frequency' }
+              { value: 'rf', label: 'Radio Frequency' },
+              { value: 'ble', label: 'Bluetooth LE' }
             ]
           }
         },
@@ -650,11 +651,21 @@ class DeviceManager extends Component {
   }
 
   addInlineCommand() {
+    if (this._getCurrentDeviceType() === 'ble') {
+      this.openBleScannerModal();
+      return;
+    }
+
     const commandsList = Utils.$('#commandsList');
     if (!commandsList) return;
 
     const form = this.createInlineCommandForm();
     commandsList.insertAdjacentHTML('beforeend', form);
+  }
+
+  _getCurrentDeviceType() {
+    const sel = Utils.$('#deviceForm select[name="type"]');
+    return sel ? sel.value : '';
   }
 
   createInlineCommandForm(command = null, isExisting = false) {
@@ -1516,6 +1527,293 @@ class DeviceManager extends Component {
       // Clean up any remaining toast
       if (learningToast) {
         learningToast.close();
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // BLE Scanner Modal
+  // ------------------------------------------------------------------
+
+  // Known consumer manufacturer IDs to filter out by default
+  static BLE_CONSUMER_MFR_IDS = new Set([
+    '76',    // Apple (0x004C)
+    '224',   // Google (0x00E0)
+    '117',   // Samsung (0x0075)
+    '6',     // Microsoft (0x0006)
+    '7',     // Microsoft (0x0007)
+    '301',   // Xiaomi (0x012D)
+  ]);
+
+  openBleScannerModal() {
+    const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
+    if (!interfaceSelect) {
+      Notification.error('No interface selected');
+      return;
+    }
+    const selectedOption = interfaceSelect.options[interfaceSelect.selectedIndex];
+    if (!selectedOption || !selectedOption.dataset.interface) {
+      Notification.error('Please select a BLE interface first');
+      return;
+    }
+
+    let ifaceData;
+    try {
+      ifaceData = JSON.parse(selectedOption.dataset.interface.replace(/&quot;/g, '"'));
+    } catch (e) {
+      Notification.error('Invalid interface data');
+      return;
+    }
+
+    const adapterMac = ifaceData.mac;
+    const hciName = ifaceData.hci_name;
+
+    const scannerHTML = `
+      <div class="ble-scanner-header">
+        <div class="ble-scanner-status">📡 Scanning on ${this._escapeHtml(hciName)}…</div>
+        <div class="ble-scanner-actions">
+          <button class="btn btn-small btn-outlined" id="bleStopBtn" onclick="deviceManager.stopBlePoll()">⏹ Stop Listening</button>
+          <button class="btn btn-small" id="bleImportBtn" onclick="deviceManager.importSelectedBleCommands()" disabled>Import Selected</button>
+        </div>
+      </div>
+      <div class="ble-filter-bar">
+        <label class="ble-filter-toggle">
+          <input type="checkbox" id="bleConsumerFilter" checked onchange="deviceManager._applyBleFilters()">
+          Hide consumer devices
+        </label>
+        <input type="text" id="bleAddressFilter" class="form-input ble-address-input" placeholder="Filter by address…" oninput="deviceManager._applyBleFilters()">
+      </div>
+      <div class="ble-scanner-table-wrap">
+        <table class="ble-scanner-table">
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Data Field</th>
+              <th>Test</th>
+              <th>Import</th>
+              <th>Import As</th>
+            </tr>
+          </thead>
+          <tbody id="bleScannerBody"></tbody>
+        </table>
+      </div>
+    `;
+
+    this._bleScannerModal = new Modal({
+      title: 'BLE Advertisement Scanner',
+      content: scannerHTML,
+      className: 'ble-scanner-modal'
+    });
+    this._bleScannerModal.open();
+
+    this.startBlePoll(adapterMac, hciName);
+  }
+
+  startBlePoll(adapterMac, hciName) {
+    this._bleScanActive = true;
+    this._bleScanAddresses = new Set();
+    this._bleScanHciName = hciName;
+    this._bleScanAdapterMac = adapterMac;
+
+    this._blePollTimer = setInterval(() => {
+      if (this._bleScanActive) {
+        this._fetchAndMergeBleScan(adapterMac, hciName);
+      }
+    }, 2000);
+
+    // Fetch immediately
+    this._fetchAndMergeBleScan(adapterMac, hciName);
+  }
+
+  stopBlePoll() {
+    this._bleScanActive = false;
+    if (this._blePollTimer) {
+      clearInterval(this._blePollTimer);
+      this._blePollTimer = null;
+    }
+    const statusEl = this._bleScannerModal?.element?.querySelector('.ble-scanner-status');
+    if (statusEl) statusEl.textContent = '⏹ Stopped';
+    const stopBtn = document.getElementById('bleStopBtn');
+    if (stopBtn) stopBtn.disabled = true;
+  }
+
+  async _fetchAndMergeBleScan(adapterMac, hciName) {
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      const url = token
+        ? `${APP_CONFIG.ENDPOINTS.BLE_SCAN}?adapter_mac=${encodeURIComponent(adapterMac)}&access_token=${encodeURIComponent(token)}`
+        : `${APP_CONFIG.ENDPOINTS.BLE_SCAN}?adapter_mac=${encodeURIComponent(adapterMac)}`;
+      const response = await Utils.api.get(url);
+      const devices = (response && response.devices) ? response.devices : [];
+
+      devices.forEach(d => {
+        if (this._bleScanAddresses.has(d.address)) return;
+        this._bleScanAddresses.add(d.address);
+        this._appendScannerRow(d, hciName);
+      });
+    } catch (e) {
+      console.error('BLE scan fetch error:', e);
+    }
+  }
+
+  _appendScannerRow(device, hciName) {
+    const tbody = document.getElementById('bleScannerBody');
+    if (!tbody) return;
+
+    const addr = device.address || '';
+    const name = device.name || 'Unknown';
+    const rssi = device.rssi != null ? `${device.rssi} dBm` : '';
+
+    // Determine if this is a consumer device
+    const mfrIds = Object.keys(device.manufacturer_data || {});
+    const isConsumer = mfrIds.some(id => DeviceManager.BLE_CONSUMER_MFR_IDS.has(id));
+
+    // Build <select> options from manufacturer_data and service_data
+    let optionsHtml = '';
+    for (const [mfrId, dataHex] of Object.entries(device.manufacturer_data || {})) {
+      const preview = dataHex.length > 16 ? dataHex.substring(0, 16) + '…' : dataHex;
+      const val = JSON.stringify({ ad_type: 'manufacturer', field_id: parseInt(mfrId), data_hex: dataHex });
+      optionsHtml += `<option value='${this._escapeAttr(val)}'>Mfr 0x${parseInt(mfrId).toString(16).toUpperCase().padStart(4, '0')} — ${preview}</option>`;
+    }
+    for (const [uuid, dataHex] of Object.entries(device.service_data || {})) {
+      const preview = dataHex.length > 16 ? dataHex.substring(0, 16) + '…' : dataHex;
+      const val = JSON.stringify({ ad_type: 'service', field_id: uuid, data_hex: dataHex });
+      optionsHtml += `<option value='${this._escapeAttr(val)}'>SVC ${uuid.length > 8 ? uuid.substring(0, 8) + '…' : uuid} — ${preview}</option>`;
+    }
+
+    if (!optionsHtml) {
+      // No data fields — skip
+      return;
+    }
+
+    const tr = document.createElement('tr');
+    tr.className = 'ble-row-new';
+    tr.dataset.address = addr.toLowerCase();
+    tr.dataset.consumer = isConsumer ? 'true' : 'false';
+
+    tr.innerHTML = `
+      <td>
+        <div class="ble-device-addr">${this._escapeHtml(addr)}</div>
+        <div class="ble-device-name">${this._escapeHtml(name)}${rssi ? ' <small>' + rssi + '</small>' : ''}</div>
+      </td>
+      <td><select class="ble-field-select form-select">${optionsHtml}</select></td>
+      <td><button class="btn btn-small command-inline-btn test" onclick="deviceManager._testBleEmit(this, '${this._escapeAttr(hciName)}')">Test</button></td>
+      <td><input type="checkbox" class="ble-import-check" onchange="deviceManager._updateBleImportBtn()"></td>
+      <td><input type="text" class="ble-import-name form-input" placeholder="Import as…"></td>
+    `;
+
+    tbody.appendChild(tr);
+    this._applyBleFilters();
+  }
+
+  async _testBleEmit(btn, hciName) {
+    const row = btn.closest('tr');
+    const select = row.querySelector('.ble-field-select');
+    if (!select || !select.value) return;
+
+    let payload;
+    try {
+      payload = JSON.parse(select.value);
+    } catch (e) { return; }
+
+    btn.disabled = true;
+    btn.textContent = '…';
+
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.BLE_EMIT, {
+        adapter: hciName,
+        ad_type: payload.ad_type,
+        field_id: payload.field_id,
+        data_hex: payload.data_hex
+      }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+
+      if (response && response.status === 'success') {
+        btn.textContent = '✅';
+        btn.classList.add('test-ok');
+      } else {
+        btn.textContent = '❌';
+        btn.classList.add('test-fail');
+      }
+    } catch (e) {
+      btn.textContent = '❌';
+      btn.classList.add('test-fail');
+    }
+
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Test';
+      btn.classList.remove('test-ok', 'test-fail');
+    }, 2000);
+  }
+
+  _applyBleFilters() {
+    const hideConsumer = document.getElementById('bleConsumerFilter')?.checked;
+    const addrFilter = (document.getElementById('bleAddressFilter')?.value || '').toLowerCase();
+    const rows = document.querySelectorAll('#bleScannerBody tr');
+
+    rows.forEach(tr => {
+      let hidden = false;
+      if (hideConsumer && tr.dataset.consumer === 'true') hidden = true;
+      if (addrFilter && !tr.dataset.address.includes(addrFilter)) hidden = true;
+      tr.style.display = hidden ? 'none' : '';
+    });
+  }
+
+  _updateBleImportBtn() {
+    const btn = document.getElementById('bleImportBtn');
+    if (!btn) return;
+    const anyChecked = document.querySelectorAll('#bleScannerBody .ble-import-check:checked').length > 0;
+    btn.disabled = !anyChecked;
+  }
+
+  importSelectedBleCommands() {
+    const rows = document.querySelectorAll('#bleScannerBody tr');
+    let imported = 0;
+
+    rows.forEach(tr => {
+      const checkbox = tr.querySelector('.ble-import-check');
+      if (!checkbox || !checkbox.checked) return;
+
+      const select = tr.querySelector('.ble-field-select');
+      const nameInput = tr.querySelector('.ble-import-name');
+      if (!select || !select.value) return;
+
+      const cmdName = (nameInput?.value || '').trim() || tr.dataset.address || `ble_cmd_${imported}`;
+
+      let payload;
+      try {
+        payload = JSON.parse(select.value);
+      } catch (e) { return; }
+
+      this.tempCommands[cmdName] = {
+        type: 'button',
+        values: {
+          code: JSON.stringify(payload)
+        },
+        props: {
+          color: '#2196f3',
+          icon: '📡',
+          display: 'both'
+        }
+      };
+      imported++;
+    });
+
+    this.stopBlePoll();
+    if (this._bleScannerModal) {
+      this._bleScannerModal.close();
+      this._bleScannerModal = null;
+    }
+
+    if (imported > 0) {
+      Notification.success(`Imported ${imported} BLE command(s)`);
+      // Re-render commands list in device modal
+      const commandsList = Utils.$('#commandsList');
+      if (commandsList) {
+        commandsList.innerHTML = this.renderCommandsList(this.tempCommands);
       }
     }
   }

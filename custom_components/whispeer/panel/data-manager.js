@@ -5,7 +5,9 @@ const APP_CONFIG = {
     SEND_COMMAND: '/api/services/whispeer/send_command',
     SYNC_DEVICES: '/api/services/whispeer/sync_devices',
     REMOVE_DEVICE: '/api/services/whispeer/remove_device',
-    INTERFACES: '/api/services/whispeer/get_interfaces'
+    INTERFACES: '/api/services/whispeer/get_interfaces',
+    BLE_SCAN: '/api/whispeer/ble/scan',
+    BLE_EMIT: '/api/whispeer/ble/emit'
   },
   STORAGE_KEYS: {
     DEVICES: 'whispeer_devices',
@@ -46,7 +48,8 @@ const APP_CONFIG = {
   EMOJIS: ['🏠', '🛋️', '🛏️', '🚪', '🚗', '💡', '🖥️', '🧊', '🌀', '🔌'],
   DEVICE_TYPES: {
     ir: { label: 'Infrared', badge: 'type-ir' },
-    rf: { label: 'Radio Frequency', badge: 'type-rf' }
+    rf: { label: 'Radio Frequency', badge: 'type-rf' },
+    ble: { label: 'Bluetooth LE', badge: 'type-ble' }
   }
 };
 
