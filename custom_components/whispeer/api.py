@@ -500,12 +500,6 @@ class WhispeerApiClient:
     ) -> dict:
         """Route a BLE command to ``ble_emitter``."""
         import json as _json
-        try:
-            desc = _json.loads(command_code)
-        except (ValueError, TypeError):
-            return _err(
-                f"Invalid BLE command code for '{command_name}' — expected JSON"
-            )
 
         adapter = None
         if emitter_data:
@@ -517,12 +511,20 @@ class WhispeerApiClient:
         if not adapter:
             return _err("No BLE adapter (hci_name) found for this device")
 
-        return await self.async_emit_ble(
-            adapter,
-            desc.get("ad_type", ""),
-            desc.get("field_id", 0),
-            desc.get("data_hex", ""),
-        )
+        # Try JSON descriptor first (legacy: {ad_type, field_id, data_hex})
+        try:
+            desc = _json.loads(command_code)
+            return await self.async_emit_ble(
+                adapter,
+                desc.get("ad_type", ""),
+                desc.get("field_id", 0),
+                desc.get("data_hex", ""),
+            )
+        except (ValueError, TypeError):
+            pass
+
+        # Fall back: treat command_code as raw BLE advertisement hex
+        return await self.async_emit_ble_raw(adapter, command_code)
 
     async def async_get_ble_interfaces(self) -> dict:
         """Return available BLE adapters as interfaces."""
@@ -568,6 +570,17 @@ class WhispeerApiClient:
         if success:
             return _ok(f"BLE advertisement emitted on {adapter}")
         return _err(f"Failed to emit BLE on {adapter}")
+
+    async def async_emit_ble_raw(self, adapter: str, raw_hex: str) -> dict:
+        """Emit a raw BLE advertisement PDU via ``ble_emitter``."""
+        from .ble_emitter import emit_ble_raw
+
+        success = await self._hass.async_add_executor_job(
+            emit_ble_raw, adapter, raw_hex
+        )
+        if success:
+            return _ok(f"Raw BLE advertisement emitted on {adapter}")
+        return _err(f"Failed to emit raw BLE on {adapter}")
 
     # ------------------------------------------------------------------
     # Generic HTTP helper (kept for backward compat if anything uses it)

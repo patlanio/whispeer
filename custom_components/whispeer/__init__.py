@@ -622,13 +622,19 @@ class WhispeerBleEmitView(HomeAssistantView):
         try:
             data = await request.json()
             adapter = data.get("adapter", "")
+            raw_hex = data.get("raw_hex", "")
             ad_type = data.get("ad_type", "")
             field_id = data.get("field_id", 0)
             data_hex = data.get("data_hex", "")
 
-            if not adapter or not ad_type or not data_hex:
+            if not adapter:
                 return web.json_response(
-                    {"error": "Missing required fields: adapter, ad_type, data_hex"},
+                    {"error": "Missing required field: adapter"},
+                    status=400,
+                )
+            if not raw_hex and not (ad_type and data_hex):
+                return web.json_response(
+                    {"error": "Provide either raw_hex or (ad_type + data_hex)"},
                     status=400,
                 )
 
@@ -643,9 +649,12 @@ class WhispeerBleEmitView(HomeAssistantView):
             if not coordinator:
                 return web.json_response({"error": "No coordinator found"}, status=500)
 
-            result = await coordinator.api.async_emit_ble(
-                adapter, ad_type, field_id, data_hex
-            )
+            if raw_hex:
+                result = await coordinator.api.async_emit_ble_raw(adapter, raw_hex)
+            else:
+                result = await coordinator.api.async_emit_ble(
+                    adapter, ad_type, field_id, data_hex
+                )
             return web.json_response(result)
         except Exception as e:
             _LOGGER.error(f"Error emitting BLE: {e}")

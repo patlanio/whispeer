@@ -20,6 +20,9 @@ class HassClient:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
+        # BLE real-time advertisement buffer: address -> info dict
+        self._ble_buffer: dict[str, dict] = {}
+        self._ble_cancel_cb = None
 
     # ------------------------------------------------------------------
     # Hub / interface discovery
@@ -309,55 +312,95 @@ class HassClient:
 
         return await self._hass.async_add_executor_job(get_ble_adapters)
 
+    async def async_ensure_ble_monitoring(self) -> str | None:
+        """Register a real-time BLE advertisement callback if not already active.
+
+        Returns an error string on failure, or ``None`` on success.
+        """
+        if self._ble_cancel_cb is not None:
+            return None
+
+        try:
+            from homeassistant.components import bluetooth
+            from homeassistant.components.bluetooth import BluetoothScanningMode
+            from homeassistant.core import callback as ha_callback
+            import time as _time
+
+            @ha_callback
+            def _on_adv(service_info, change) -> None:
+                addr = service_info.address
+                mfr_data: dict[str, str] = {}
+                if service_info.manufacturer_data:
+                    for mid, raw in service_info.manufacturer_data.items():
+                        mfr_data[str(mid)] = raw.hex()
+                svc_data: dict[str, str] = {}
+                if service_info.service_data:
+                    for uuid, raw_bytes in service_info.service_data.items():
+                        svc_data[uuid] = raw_bytes.hex()
+                raw_bytes = getattr(service_info, "raw", None)
+                if raw_bytes is None:
+                    _adv = getattr(service_info, "advertisement", None)
+                    raw_bytes = getattr(_adv, "raw", None)
+                raw_hex = raw_bytes.hex() if isinstance(raw_bytes, (bytes, bytearray)) and raw_bytes else ""
+                t = getattr(service_info, "time", _time.monotonic())
+                self._ble_buffer[addr] = {
+                    "address": addr,
+                    "name": service_info.name or "",
+                    "rssi": getattr(service_info, "rssi", None),
+                    "source": service_info.source,
+                    "manufacturer_data": mfr_data,
+                    "service_data": svc_data,
+                    "raw": raw_hex,
+                    "time": t,
+                }
+
+            self._ble_cancel_cb = bluetooth.async_register_callback(
+                self._hass,
+                _on_adv,
+                {},
+                BluetoothScanningMode.PASSIVE,
+            )
+            _LOGGER.info("Whispeer BLE advertisement monitoring started")
+            return None
+        except ImportError:
+            return "HA Bluetooth integration not found — enable it in Settings > Integrations."
+        except Exception as exc:
+            _LOGGER.error("Failed to start BLE monitoring: %s", exc)
+            return str(exc)
+
     async def async_scan_ble_devices(
         self, adapter_mac: str
     ) -> tuple[list[dict], str | None]:
-        """Return BLE advertisements seen by the adapter matching *adapter_mac*.
+        """Return BLE advertisements seen by *adapter_mac* since the last call.
 
-        Uses HA's bluetooth integration (``async_discovered_service_info``).
-        Returns ``(devices_list, error_message_or_None)``.
+        Pops returned entries from the buffer so each poll only delivers
+        advertisements that arrived after the previous one — mirroring how
+        HA's bluetooth websocket subscription stream works.
         """
-        try:
-            from homeassistant.components.bluetooth import (
-                async_discovered_service_info,
-            )
-        except ImportError:
-            _LOGGER.warning("HA bluetooth integration not available")
-            return [], "HA Bluetooth integration not found — enable it in Settings > Integrations."
+        import time as _time
+
+        error = await self.async_ensure_ble_monitoring()
+        if error and not self._ble_buffer:
+            return [], error
 
         needle = adapter_mac.upper().replace("-", ":")
-        seen: dict[str, dict] = {}
+        now = _time.monotonic()
+        result: list[dict] = []
+        to_pop: list[str] = []
 
-        for info in async_discovered_service_info(self._hass):
-            # info.source is typically the adapter MAC in colon format.
-            src = (info.source or "").upper()
+        for addr, info in list(self._ble_buffer.items()):
+            src = (info.get("source") or "").upper()
             if src != needle:
                 continue
+            t = info.get("time", 0)
+            last_seen_ago = round(now - t, 1) if t else None
+            result.append({**info, "last_seen_ago": last_seen_ago})
+            to_pop.append(addr)
 
-            addr = info.address
-            if addr in seen:
-                continue
+        for addr in to_pop:
+            self._ble_buffer.pop(addr, None)
 
-            mfr_data: dict[str, str] = {}
-            if info.manufacturer_data:
-                for mfr_id, raw_bytes in info.manufacturer_data.items():
-                    mfr_data[str(mfr_id)] = raw_bytes.hex()
-
-            svc_data: dict[str, str] = {}
-            if info.service_data:
-                for uuid_str, raw_bytes in info.service_data.items():
-                    svc_data[uuid_str] = raw_bytes.hex()
-
-            seen[addr] = {
-                "address": addr,
-                "name": info.name or "",
-                "rssi": info.rssi if hasattr(info, "rssi") else None,
-                "source": info.source,
-                "manufacturer_data": mfr_data,
-                "service_data": svc_data,
-            }
-
-        return list(seen.values()), None
+        return result, None
 
     async def async_find_remote_by_identifier(self, identifier: str) -> str | None:
         """Return the ``remote.*`` entity_id whose device matches *identifier*.

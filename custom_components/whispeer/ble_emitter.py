@@ -125,6 +125,23 @@ def build_adv_payload_service_16(
     return [ad_len] + ad_content
 
 
+def _extract_uuid16(field_id) -> int:
+    """Return the 16-bit short UUID from a full 128-bit UUID string or an int/hex string.
+
+    For standard Bluetooth base UUIDs (``0000xxxx-0000-1000-8000-00805f9b34fb``),
+    the short UUID occupies characters 4–7 of the 32-char hex representation,
+    e.g. ``00001827-...`` → ``0x1827``.
+    """
+    if isinstance(field_id, int):
+        return field_id
+    s = str(field_id).replace("-", "")
+    if len(s) == 32:
+        # Standard 128-bit Bluetooth base UUID — short UUID at index 4:8.
+        return int(s[4:8], 16)
+    # Fall back to plain hex parse.
+    return int(s, 16)
+
+
 def _build_hci_payload(ad_type: str, field_id, data_hex: str) -> list[str]:
     """Build full HCI LE Set Advertising Data payload bytes.
 
@@ -136,7 +153,8 @@ def _build_hci_payload(ad_type: str, field_id, data_hex: str) -> list[str]:
     if ad_type == "manufacturer":
         ad_struct = build_adv_payload_manufacturer(int(field_id), data_hex)
     elif ad_type == "service":
-        ad_struct = build_adv_payload_service_16(int(field_id, 16) if isinstance(field_id, str) else int(field_id), data_hex)
+        uuid16 = _extract_uuid16(field_id)
+        ad_struct = build_adv_payload_service_16(uuid16, data_hex)
     else:
         raise ValueError(f"Unknown ad_type: {ad_type}")
 
@@ -191,4 +209,39 @@ def emit_ble(
         return False
     except Exception as exc:
         _LOGGER.error("BLE emit error: %s", exc)
+        return False
+
+
+def emit_ble_raw(adapter: str, raw_hex: str) -> bool:
+    """Emit a raw BLE advertisement PDU on *adapter*.
+
+    *raw_hex* is the raw advertising payload as seen in
+    ``BluetoothServiceInfoBleak.raw`` (without a leading length byte).
+    A significant-length byte is prepended automatically.
+    """
+    if not CAN_EMIT:
+        _LOGGER.error("hcitool not available — cannot emit BLE")
+        return False
+
+    try:
+        data_bytes = _hex_str_to_bytes(raw_hex)
+        sig_len = f"{len(data_bytes):02X}"
+        payload = [sig_len] + data_bytes
+    except Exception as exc:
+        _LOGGER.error("Failed to parse raw BLE hex: %s", exc)
+        return False
+
+    _LOGGER.info("Emitting raw BLE on %s (len=%d)", adapter, len(data_bytes))
+
+    try:
+        _run_hcitool(adapter, "0x08", "0x000A", "00")
+        _run_hcitool(adapter, "0x08", "0x0008", *payload)
+        _run_hcitool(adapter, "0x08", "0x000A", "01")
+        _LOGGER.info("Raw BLE advertisement emitted successfully on %s", adapter)
+        return True
+    except subprocess.CalledProcessError as exc:
+        _LOGGER.error("hcitool raw emit failed: %s", exc)
+        return False
+    except Exception as exc:
+        _LOGGER.error("BLE raw emit error: %s", exc)
         return False

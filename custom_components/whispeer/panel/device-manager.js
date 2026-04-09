@@ -686,7 +686,7 @@ class DeviceManager extends Component {
       
       codeField = `
         <input type="text" class="command-inline-input code" 
-               placeholder="code" value="${values.code || ''}" 
+               placeholder="code" value="${this._escapeAttr(values.code || '')}" 
                data-field="code">
         ${learnButton}
         <button type="button" class="command-inline-btn test" 
@@ -1149,11 +1149,6 @@ class DeviceManager extends Component {
   }
 
   async testInlineCommand(button) {
-    if (!this.currentDevice) {
-      Notification.warning('Save the device first to test commands');
-      return;
-    }
-
     const container = button.closest('.command-container');
     const form = container.querySelector('.command-inline-form');
     const nameInput = form.querySelector('.command-inline-input.name');
@@ -1169,6 +1164,47 @@ class DeviceManager extends Component {
 
     if (!code) {
       Notification.error('Command code is required for testing');
+      return;
+    }
+
+    const deviceType = this._getCurrentDeviceType();
+
+    // BLE: send directly to the BLE emit endpoint — no saved device needed
+    if (deviceType === 'ble') {
+      const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
+      const selectedOpt = interfaceSelect?.options[interfaceSelect?.selectedIndex];
+      const ifaceDataStr = selectedOpt?.dataset?.interface;
+      let hciName = null;
+      if (ifaceDataStr) {
+        try {
+          hciName = JSON.parse(ifaceDataStr.replace(/&quot;/g, '"')).hci_name;
+        } catch (_) {}
+      }
+      if (!hciName) {
+        Notification.error('Select a BLE adapter before testing');
+        return;
+      }
+      try {
+        const token = DataManager.getHomeAssistantToken();
+        const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.BLE_EMIT, {
+          adapter: hciName,
+          raw_hex: code
+        }, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (response?.status === 'success') {
+          Notification.success(`Test "${name}" sent successfully`);
+        } else {
+          Notification.error(`Test failed: ${response?.message || 'Unknown error'}`);
+        }
+      } catch (error) {
+        Notification.error(`Test failed: ${error.message}`);
+      }
+      return;
+    }
+
+    if (!this.currentDevice) {
+      Notification.warning('Save the device first to test commands');
       return;
     }
 
@@ -1573,6 +1609,7 @@ class DeviceManager extends Component {
         <div class="ble-scanner-status">📡 Scanning on ${this._escapeHtml(hciName)}…</div>
         <div class="ble-scanner-actions">
           <button class="btn btn-small btn-outlined" id="bleStopBtn" onclick="deviceManager.stopBlePoll()">⏹ Stop Listening</button>
+          <button class="btn btn-small btn-outlined" id="bleClearBtn" onclick="deviceManager.clearBleTable()">🗑 Clear</button>
           <button class="btn btn-small" id="bleImportBtn" onclick="deviceManager.importSelectedBleCommands()" disabled>Import Selected</button>
         </div>
       </div>
@@ -1580,6 +1617,10 @@ class DeviceManager extends Component {
         <label class="ble-filter-toggle">
           <input type="checkbox" id="bleConsumerFilter" checked onchange="deviceManager._applyBleFilters()">
           Hide consumer devices
+        </label>
+        <label class="ble-filter-toggle">
+          <input type="checkbox" id="bleHideEmptyFilter" checked onchange="deviceManager._applyBleFilters()">
+          Hide empty
         </label>
         <input type="text" id="bleAddressFilter" class="form-input ble-address-input" placeholder="Filter by address…" oninput="deviceManager._applyBleFilters()">
       </div>
@@ -1604,6 +1645,12 @@ class DeviceManager extends Component {
       content: scannerHTML,
       className: 'ble-scanner-modal'
     });
+    // Stop scanning when the modal is dismissed (close btn, backdrop, Escape)
+    const origClose = this._bleScannerModal.close.bind(this._bleScannerModal);
+    this._bleScannerModal.close = () => {
+      deviceManager.stopBlePoll();
+      return origClose();
+    };
     this._bleScannerModal.open();
 
     this.startBlePoll(adapterMac, hciName);
@@ -1621,20 +1668,57 @@ class DeviceManager extends Component {
       }
     }, 2000);
 
+    this._bleAgeTimer = setInterval(() => this._updateAgeDisplays(), 1000);
+
     // Fetch immediately
     this._fetchAndMergeBleScan(adapterMac, hciName);
   }
 
   stopBlePoll() {
     this._bleScanActive = false;
-    if (this._blePollTimer) {
-      clearInterval(this._blePollTimer);
-      this._blePollTimer = null;
-    }
+    clearInterval(this._blePollTimer);
+    this._blePollTimer = null;
+    clearInterval(this._bleAgeTimer);
+    this._bleAgeTimer = null;
+
     const statusEl = this._bleScannerModal?.element?.querySelector('.ble-scanner-status');
-    if (statusEl) statusEl.textContent = '⏹ Stopped';
+    if (statusEl) statusEl.textContent = '⏹ Paused';
+
     const stopBtn = document.getElementById('bleStopBtn');
-    if (stopBtn) stopBtn.disabled = true;
+    if (stopBtn) {
+      stopBtn.textContent = '▶ Start Listening';
+      stopBtn.onclick = () => deviceManager.resumeBlePoll();
+    }
+  }
+
+  resumeBlePoll() {
+    const adapterMac = this._bleScanAdapterMac;
+    const hciName = this._bleScanHciName;
+    if (!adapterMac || !hciName) return;
+
+    this._bleScanActive = true;
+
+    const statusEl = this._bleScannerModal?.element?.querySelector('.ble-scanner-status');
+    if (statusEl) statusEl.textContent = `📡 Scanning on ${this._escapeHtml(hciName)}…`;
+
+    const stopBtn = document.getElementById('bleStopBtn');
+    if (stopBtn) {
+      stopBtn.textContent = '⏹ Stop Listening';
+      stopBtn.onclick = () => deviceManager.stopBlePoll();
+    }
+
+    this._blePollTimer = setInterval(() => {
+      if (this._bleScanActive) this._fetchAndMergeBleScan(adapterMac, hciName);
+    }, 2000);
+    this._bleAgeTimer = setInterval(() => this._updateAgeDisplays(), 1000);
+
+    this._fetchAndMergeBleScan(adapterMac, hciName);
+  }
+
+  clearBleTable() {
+    const tbody = document.getElementById('bleScannerBody');
+    if (tbody) tbody.innerHTML = '';
+    this._bleScanAddresses = new Set();
   }
 
   async _fetchAndMergeBleScan(adapterMac, hciName) {
@@ -1663,6 +1747,8 @@ class DeviceManager extends Component {
     const addr = device.address || '';
     const name = device.name || 'Unknown';
     const rssi = device.rssi != null ? `${device.rssi} dBm` : '';
+    const initialAgo = device.last_seen_ago != null ? device.last_seen_ago : 9999;
+    const fetchedAt = Date.now();
 
     // Determine if this is a consumer device
     const mfrIds = Object.keys(device.manufacturer_data || {});
@@ -1681,29 +1767,59 @@ class DeviceManager extends Component {
       optionsHtml += `<option value='${this._escapeAttr(val)}'>SVC ${uuid.length > 8 ? uuid.substring(0, 8) + '…' : uuid} — ${preview}</option>`;
     }
 
-    if (!optionsHtml) {
-      // No data fields — skip
-      return;
-    }
+    const hasData = !!optionsHtml;
+    const selectHtml = hasData
+      ? `<select class="ble-field-select form-select">${optionsHtml}</select>`
+      : `<select class="ble-field-select form-select" disabled><option>No data fields</option></select>`;
+
+    const ageDisplay = Math.round(initialAgo);
 
     const tr = document.createElement('tr');
     tr.className = 'ble-row-new';
     tr.dataset.address = addr.toLowerCase();
     tr.dataset.consumer = isConsumer ? 'true' : 'false';
+    tr.dataset.hasData = hasData ? 'true' : 'false';
+    tr.dataset.initialAgo = initialAgo;
+    tr.dataset.fetchedAt = fetchedAt;
+    tr.dataset.ageSeconds = initialAgo;
+    tr.dataset.raw = device.raw || '';
 
     tr.innerHTML = `
       <td>
         <div class="ble-device-addr">${this._escapeHtml(addr)}</div>
-        <div class="ble-device-name">${this._escapeHtml(name)}${rssi ? ' <small>' + rssi + '</small>' : ''}</div>
+        <div class="ble-device-name">${this._escapeHtml(name)}<small>${rssi ? ' ' + rssi + ' ·' : ''} <span class="ble-age-span">${ageDisplay}</span>s</small></div>
       </td>
-      <td><select class="ble-field-select form-select">${optionsHtml}</select></td>
+      <td>${selectHtml}</td>
       <td><button class="btn btn-small command-inline-btn test" onclick="deviceManager._testBleEmit(this, '${this._escapeAttr(hciName)}')">Test</button></td>
       <td><input type="checkbox" class="ble-import-check" onchange="deviceManager._updateBleImportBtn()"></td>
       <td><input type="text" class="ble-import-name form-input" placeholder="Import as…"></td>
     `;
 
     tbody.appendChild(tr);
+    this._sortScannerTable();
     this._applyBleFilters();
+  }
+
+  _sortScannerTable() {
+    const tbody = document.getElementById('bleScannerBody');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => parseFloat(a.dataset.ageSeconds || 9999) - parseFloat(b.dataset.ageSeconds || 9999));
+    rows.forEach(tr => tbody.appendChild(tr));
+  }
+
+  _updateAgeDisplays() {
+    const now = Date.now();
+    document.querySelectorAll('#bleScannerBody tr').forEach(tr => {
+      const initialAgo = parseFloat(tr.dataset.initialAgo || 0);
+      const fetchedAt = parseInt(tr.dataset.fetchedAt || now);
+      const currentAgo = initialAgo + (now - fetchedAt) / 1000;
+      tr.dataset.ageSeconds = currentAgo;
+      const span = tr.querySelector('.ble-age-span');
+      if (span) span.textContent = Math.round(currentAgo);
+    });
+    // Do NOT re-sort here — sorting moves DOM nodes and breaks open <select> dropdowns.
+    // Sorting only happens when new rows arrive (_appendScannerRow calls _sortScannerTable).
   }
 
   async _testBleEmit(btn, hciName) {
@@ -1751,12 +1867,14 @@ class DeviceManager extends Component {
 
   _applyBleFilters() {
     const hideConsumer = document.getElementById('bleConsumerFilter')?.checked;
+    const hideEmpty = document.getElementById('bleHideEmptyFilter')?.checked;
     const addrFilter = (document.getElementById('bleAddressFilter')?.value || '').toLowerCase();
     const rows = document.querySelectorAll('#bleScannerBody tr');
 
     rows.forEach(tr => {
       let hidden = false;
       if (hideConsumer && tr.dataset.consumer === 'true') hidden = true;
+      if (hideEmpty && tr.dataset.hasData === 'false') hidden = true;
       if (addrFilter && !tr.dataset.address.includes(addrFilter)) hidden = true;
       tr.style.display = hidden ? 'none' : '';
     });
@@ -1788,10 +1906,13 @@ class DeviceManager extends Component {
         payload = JSON.parse(select.value);
       } catch (e) { return; }
 
+      // Use raw advertisement bytes when available; fall back to data_hex
+      const code = tr.dataset.raw || payload.data_hex;
+
       this.tempCommands[cmdName] = {
         type: 'button',
         values: {
-          code: JSON.stringify(payload)
+          code
         },
         props: {
           color: '#2196f3',
