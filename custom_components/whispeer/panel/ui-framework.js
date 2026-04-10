@@ -37,7 +37,8 @@ class Component {
     let html = this.templates[name];
     Object.entries(data).forEach(([key, value]) => {
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-      html = html.replace(regex, value);
+      // Use a function replacer so HTML/$ in value is never interpreted as a special pattern
+      html = html.replace(regex, () => (value == null ? '' : String(value)));
     });
     
     return html;

@@ -219,6 +219,65 @@ body {
   font-size: 1.2rem;
   font-weight: 500;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.automation-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-color);
+  color: #fff;
+  border-radius: 50%;
+  min-width: 22px;
+  height: 22px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0 4px;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.device-automations-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.device-automations-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.device-automations-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.automation-list-item {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+}
+
+.automation-list-item:last-child {
+  border-bottom: none;
+}
+
+.automation-link {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.automation-link:hover {
+  text-decoration: underline;
 }
 
 .device-type-badge {

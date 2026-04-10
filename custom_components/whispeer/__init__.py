@@ -517,14 +517,19 @@ class WhispeerRemoveDeviceView(HomeAssistantView):
                 }, status=400)
             
             _LOGGER.info(f"Removing device '{device_id}' from backend")
-            
-            # Here you would implement the actual device removal logic
-            # For now, we'll simulate success
-            result = {
-                "status": "success",
-                "message": f"Device '{device_id}' removed successfully"
-            }
-            
+
+            hass = request.app["hass"]
+            domain_data = hass.data.get(DOMAIN, {})
+            coordinator = None
+            for entry_data in domain_data.values():
+                if hasattr(entry_data, 'api'):
+                    coordinator = entry_data
+                    break
+
+            if not coordinator:
+                return web.json_response({"error": "No coordinator found"}, status=500)
+
+            result = await coordinator.api.async_remove_device(device_id)
             return web.json_response(result)
             
         except Exception as e:
@@ -690,6 +695,106 @@ class WhispeerStoredCodesView(HomeAssistantView):
             return web.json_response({"error": str(e)}, status=500)
 
 
+class WhispeerAutomationsView(HomeAssistantView):
+    """Return automation configs mapped to whispeer device IDs."""
+
+    url = "/api/whispeer/automations"
+    name = "api:whispeer:automations"
+    requires_auth = False
+    cors_allowed = True
+
+    async def get(self, request):
+        """Return device_automations: dict of device_id -> list of automations."""
+        import json as _json
+
+        try:
+            hass = request.app["hass"]
+            domain_data = hass.data.get(DOMAIN, {})
+            coordinator = None
+            for entry_data in domain_data.values():
+                if hasattr(entry_data, "api"):
+                    coordinator = entry_data
+                    break
+
+            if not coordinator:
+                return web.json_response({"automations": [], "device_automations": {}})
+
+            devices = await coordinator.api.async_get_devices()
+            device_ids = [str(d["id"]) for d in devices]
+
+            # Build map: entity registry UUID -> whispeer device_id
+            # Automations store the registry UUID, not the entity_id string.
+            entity_registry = er.async_get(hass)
+            uuid_to_device_id: dict = {}
+            for entry in entity_registry.entities.values():
+                uid = entry.unique_id or ""
+                if not uid.startswith("whispeer_"):
+                    continue
+                parts = uid.split("_", 2)
+                if len(parts) < 3:
+                    continue
+                did = parts[1]
+                if did in device_ids:
+                    uuid_to_device_id[entry.id] = did
+
+            # Read automation configs from automations.yaml (primary) and HA storage
+            config_dir = hass.config.config_dir
+            storage_path = os.path.join(config_dir, ".storage", "core.automation")
+
+            def _read_automation_configs():
+                configs = []
+                yaml_path = os.path.join(config_dir, "automations.yaml")
+                try:
+                    import yaml
+                    with open(yaml_path, "r", encoding="utf-8") as fh:
+                        yaml_data = yaml.safe_load(fh) or []
+                    if isinstance(yaml_data, list):
+                        configs.extend(yaml_data)
+                except Exception:
+                    pass
+                try:
+                    with open(storage_path, "r", encoding="utf-8") as fh:
+                        raw = _json.load(fh)
+                    for item in raw.get("data", {}).get("items", []):
+                        auto_id = str(item.get("id", "")).strip()
+                        if auto_id and not any(str(c.get("id", "")) == auto_id for c in configs):
+                            configs.append(item)
+                except Exception:
+                    pass
+                return configs
+
+            automation_configs = await hass.async_add_executor_job(_read_automation_configs)
+
+            device_automations: dict = {did: [] for did in device_ids}
+            automation_by_id: dict = {}
+
+            for cfg in automation_configs:
+                auto_id = str(cfg.get("id", "")).strip()
+                if not auto_id:
+                    continue
+                info = {
+                    "id": auto_id,
+                    "name": cfg.get("alias") or f"Automation {auto_id}",
+                }
+                automation_by_id[auto_id] = info
+
+                # Serialise the automation and look for any whispeer entity registry UUID
+                cfg_str = _json.dumps(cfg)
+                matched_devices: set = set()
+                for reg_uuid, did in uuid_to_device_id.items():
+                    if reg_uuid in cfg_str and did not in matched_devices:
+                        device_automations[did].append(info)
+                        matched_devices.add(did)
+
+            return web.json_response({
+                "automations": list(automation_by_id.values()),
+                "device_automations": device_automations,
+            })
+        except Exception as exc:
+            _LOGGER.error(f"Error getting whispeer automations: {exc}")
+            return web.json_response({"error": str(exc)}, status=500)
+
+
 class WhispeerClearDevicesView(HomeAssistantView):
     """View to clear all devices."""
 
@@ -712,10 +817,20 @@ class WhispeerClearDevicesView(HomeAssistantView):
                     break
 
             if coordinator:
+                # Remove all whispeer entity registry entries immediately
+                entity_registry = er.async_get(hass)
+                whispeer_entities = [
+                    entry.entity_id
+                    for entry in entity_registry.entities.values()
+                    if entry.platform == DOMAIN
+                ]
+                for eid in whispeer_entities:
+                    entity_registry.async_remove(eid)
+
                 # Clear persisted devices
                 result = await coordinator.api.async_clear_devices()
 
-                # Reload the integration's config entry to remove HA entities
+                # Reload the integration's config entry to re-initialise platforms
                 if entry_id:
                     try:
                         await hass.config_entries.async_reload(entry_id)
@@ -750,6 +865,7 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerSyncView())
         hass.http.register_view(WhispeerRemoveDeviceView())
         hass.http.register_view(WhispeerClearDevicesView())
+        hass.http.register_view(WhispeerAutomationsView())
         hass.http.register_view(WhispeerStoredCodesView())
         hass.http.register_view(WhispeerSendStoredCodeView())
         hass.http.register_view(WhispeerInterfacesView())
@@ -791,6 +907,7 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerSyncView())
     hass.http.register_view(WhispeerRemoveDeviceView())
     hass.http.register_view(WhispeerClearDevicesView())
+    hass.http.register_view(WhispeerAutomationsView())
     hass.http.register_view(WhispeerStoredCodesView())
     hass.http.register_view(WhispeerSendStoredCodeView())
     hass.http.register_view(WhispeerInterfacesView())
@@ -798,7 +915,7 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerCheckLearnedCommandView())
     hass.http.register_view(WhispeerBleScanView())
     hass.http.register_view(WhispeerBleEmitView())
-    
+
     return True
 
 

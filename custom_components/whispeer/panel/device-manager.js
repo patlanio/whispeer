@@ -12,7 +12,6 @@ class DeviceManager extends Component {
   init() {
     this.setupTemplates();
     this.bindEvents();
-    this.loadDevices();
   }
 
   setupTemplates() {
@@ -20,7 +19,7 @@ class DeviceManager extends Component {
       deviceCard: `
         <div class="device-card" data-device-id="{{id}}">
           <div class="device-header">
-            <div class="device-name">{{name}}</div>
+            <div class="device-name">{{automationBadge}}<span>{{name}}</span></div>
             <div class="device-header-right">
               <span class="device-type-badge {{badgeClass}}">{{type}}</span>
               <button class="pill-edit" onclick="deviceManager.configureDevice('{{id}}')">⚙️</button>
@@ -55,6 +54,7 @@ class DeviceManager extends Component {
             </div>
           </div>
         </form>
+        {{automationsSection}}
       `,
 
       commandButton: `
@@ -83,7 +83,10 @@ class DeviceManager extends Component {
   }
 
   async loadDevices() {
-    await DataManager.loadDevices();
+    await Promise.all([
+      DataManager.loadDevices(),
+      DataManager.loadAutomations()
+    ]);
     this.renderDevices();
   }
 
@@ -120,15 +123,20 @@ class DeviceManager extends Component {
   renderDeviceCard(device) {
     const { id, name, type, commands = {} } = device;
     const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[type] || { label: type, badge: 'type-ble' };
-    
+
     const commandsHTML = this.renderDeviceCommands(device);
+    const automations = DataManager.getDeviceAutomations(id);
+    const automationBadge = automations.length > 0
+      ? `<span class="automation-count-badge" title="${automations.length} automation(s)">${automations.length}</span>`
+      : '';
 
     return this.template('deviceCard', {
       id,
       name,
       type: deviceTypeConfig.label,
       badgeClass: deviceTypeConfig.badge,
-      commands: commandsHTML
+      commands: commandsHTML,
+      automationBadge
     });
   }
 
@@ -254,6 +262,27 @@ class DeviceManager extends Component {
     } catch (e) {
       return null;
     }
+  }
+
+  _renderAutomationsSection(deviceId) {
+    const automations = DataManager.getDeviceAutomations(deviceId);
+    if (!automations || automations.length === 0) return '';
+
+    const items = automations.map(a => {
+      const href = a.id ? `/config/automation/edit/${a.id}` : null;
+      const label = this._escapeHtml(a.name || a.entity_id || a.id);
+      const content = href
+        ? `<a class="automation-link" href="${href}" target="_top">${label}</a>`
+        : `<span>${label}</span>`;
+      return `<li class="automation-list-item">${content}</li>`;
+    }).join('');
+
+    return `
+      <div class="device-automations-section">
+        <h4 class="device-automations-title">Automations using this device</h4>
+        <ul class="device-automations-list">${items}</ul>
+      </div>
+    `;
   }
 
   _escapeHtml(str) {
@@ -554,22 +583,40 @@ class DeviceManager extends Component {
     this.currentDevice = device;
     this.tempCommands = Utils.deepClone(device.commands || {});
     this.showDeviceModal('Edit Device', device);
+
+    // Refresh automations in background and update the section if it has changed
+    DataManager.loadAutomations().then(() => {
+      const section = document.querySelector('.device-automations-section');
+      const modalBody = document.querySelector('.device-modal .modal-body');
+      if (!modalBody) return;
+
+      const newSection = this._renderAutomationsSection(deviceId);
+
+      if (section) {
+        section.outerHTML = newSection || '';
+      } else if (newSection) {
+        modalBody.insertAdjacentHTML('beforeend', newSection);
+      }
+    }).catch(() => {});
   }
 
   showDeviceModal(title, device = {}) {
     const isEdit = !!device.id;
     const formFields = this.buildDeviceForm(device);
     const commandsList = this.renderCommandsList(this.tempCommands);
-    
-    const deleteButton = isEdit ? 
+
+    const deleteButton = isEdit ?
       '<button type="button" class="btn btn-delete" onclick="deviceManager.deleteDevice()">Delete Device</button>' : '';
+
+    const automationsSection = isEdit ? this._renderAutomationsSection(device.id) : '';
 
     const modalContent = this.template('deviceForm', {
       title,
       formFields,
       commandsList,
       deleteButton,
-      saveButtonText: isEdit ? 'Save Changes' : 'Save'
+      saveButtonText: isEdit ? 'Save Changes' : 'Save',
+      automationsSection
     });
 
     if (!this.deviceModal) {

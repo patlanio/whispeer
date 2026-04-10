@@ -55,6 +55,7 @@ const APP_CONFIG = {
 
 class DataManager {
   static devices = {};
+  static automations = {};
   static settings = {
     theme: 'auto',
     language: 'en'
@@ -161,6 +162,28 @@ class DataManager {
 
   static getAllDevices() {
     return Object.values(DataManager.devices);
+  }
+
+  static async loadAutomations() {
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      const response = await Utils.api.get('/api/whispeer/automations', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (response && response.device_automations) {
+        DataManager.automations = response.device_automations;
+      } else {
+        DataManager.automations = {};
+      }
+    } catch (error) {
+      console.error('Failed to load automations:', error);
+      DataManager.automations = {};
+    }
+    return DataManager.automations;
+  }
+
+  static getDeviceAutomations(deviceId) {
+    return DataManager.automations[String(deviceId)] || [];
   }
 
   static loadSettings() {
