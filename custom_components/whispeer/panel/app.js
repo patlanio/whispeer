@@ -57,7 +57,30 @@ class WhispeerApp {
       onclick: () => this.clearDevices()
     });
 
+    const exportBtn = Utils.createElement('button', {
+      className: 'btn btn-small btn-outlined',
+      innerHTML: '⬇️ Export',
+      onclick: () => this.exportDevices()
+    });
+
+    const importBtn = Utils.createElement('button', {
+      className: 'btn btn-small btn-outlined',
+      innerHTML: '⬆️ Import',
+      onclick: () => this.importDevices()
+    });
+
+    // Hidden file input for import
+    this._importInput = Utils.createElement('input', {
+      type: 'file',
+      accept: '.json,application/json'
+    });
+    this._importInput.style.display = 'none';
+    this._importInput.addEventListener('change', (e) => this._handleImportFile(e));
+    document.body.appendChild(this._importInput);
+
     header.appendChild(refreshBtn);
+    header.appendChild(exportBtn);
+    header.appendChild(importBtn);
     header.appendChild(clearBtn);
     header.appendChild(settingsBtn);
   }
@@ -175,6 +198,103 @@ class WhispeerApp {
     } catch (error) {
       Notification.error('Failed to clear devices');
       console.error('Clear error:', error);
+      this.deviceManager.renderDevices();
+    } finally {
+      this.hideLoadingState();
+    }
+  }
+
+  exportDevices() {
+    const devices = DataManager.getAllDevices();
+    if (devices.length === 0) {
+      Notification.warning('No devices to export');
+      return;
+    }
+
+    const payload = {
+      version: 1,
+      exported_at: new Date().toISOString(),
+      devices: devices.map(d => ({ ...d }))
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `whispeer-devices-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    Notification.success(`Exported ${devices.length} device(s)`);
+  }
+
+  importDevices() {
+    if (this._importInput) {
+      this._importInput.value = '';
+      this._importInput.click();
+    }
+  }
+
+  async _handleImportFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    let payload;
+    try {
+      const text = await file.text();
+      payload = JSON.parse(text);
+    } catch (err) {
+      Notification.error('Invalid JSON file');
+      return;
+    }
+
+    // Accept either a wrapped export { devices: [...] } or a bare array
+    let incoming = [];
+    if (Array.isArray(payload)) {
+      incoming = payload;
+    } else if (payload && Array.isArray(payload.devices)) {
+      incoming = payload.devices;
+    } else {
+      Notification.error('Unrecognised format: expected a devices array');
+      return;
+    }
+
+    if (incoming.length === 0) {
+      Notification.warning('No devices found in file');
+      return;
+    }
+
+    this.showLoadingState();
+    try {
+      const existing = DataManager.getAllDevices();
+      const existingByName = {};
+      existing.forEach(d => { existingByName[d.name] = d; });
+
+      let created = 0;
+      let updated = 0;
+
+      for (const imported of incoming) {
+        const match = existingByName[imported.name];
+
+        if (match) {
+          // Merge commands: imported commands overwrite existing ones, missing ones are added
+          const mergedCommands = { ...(match.commands || {}), ...(imported.commands || {}) };
+          await DataManager.updateDevice(match.id, { ...imported, id: match.id, commands: mergedCommands });
+          updated++;
+        } else {
+          // New device — strip id so backend assigns a fresh one
+          const { id: _ignored, ...rest } = imported;
+          await DataManager.addDevice(rest);
+          created++;
+        }
+      }
+
+      await this.deviceManager.loadDevices();
+      Notification.success(`Import complete: ${created} created, ${updated} updated`);
+    } catch (err) {
+      Notification.error(`Import failed: ${err.message}`);
+      console.error('Import error:', err);
       this.deviceManager.renderDevices();
     } finally {
       this.hideLoadingState();
