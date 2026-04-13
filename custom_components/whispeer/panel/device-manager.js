@@ -338,7 +338,7 @@ class DeviceManager extends Component {
   renderButtonCommand(deviceId, commandName, command) {
     const { props = {} } = command;
     const color = props.color || '#03a9f4';
-    const icon = props.icon || '💡';
+    const icon = props.icon || '';
     const display = props.display || 'both';
     
     let buttonContent = '';

@@ -47,9 +47,9 @@ const APP_CONFIG = {
   },
   EMOJIS: ['🏠', '🛋️', '🛏️', '🚪', '🚗', '💡', '🖥️', '🧊', '🌀', '🔌'],
   DEVICE_TYPES: {
-    ir: { label: 'Infrared', badge: 'type-ir' },
-    rf: { label: 'Radio Frequency', badge: 'type-rf' },
-    ble: { label: 'Bluetooth LE', badge: 'type-ble' }
+    ir: { label: 'IR', badge: 'type-ir' },
+    rf: { label: 'RF', badge: 'type-rf' },
+    ble: { label: 'BLE', badge: 'type-ble' }
   }
 };
 
