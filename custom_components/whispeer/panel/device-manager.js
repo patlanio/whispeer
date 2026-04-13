@@ -46,12 +46,12 @@ class DeviceManager extends Component {
             </div>
             <div class="commands-list" id="commandsList">{{commandsList}}</div>
           </div>
-          <div class="modal-controls" style="display: flex; justify-content: space-between; margin-top: 20px;">
-            <button type="button" class="btn btn-outlined" onclick="deviceManager.closeDeviceModal()">Cancel</button>
-            <div>
+          <div class="modal-controls">
+            <div class="modal-controls-left">
+              <button type="button" class="btn btn-outlined" onclick="deviceManager.closeDeviceModal()">Cancel</button>
               {{deleteButton}}
-              <button type="submit" class="btn">{{saveButtonText}}</button>
             </div>
+            <button type="submit" class="btn">{{saveButtonText}}</button>
           </div>
         </form>
         {{automationsSection}}
@@ -635,40 +635,80 @@ class DeviceManager extends Component {
   }
 
   buildDeviceForm(device = {}) {
-    const form = FormBuilder.create()
-      .input('name', {
-        label: 'Device Name',
-        value: device.name || '',
-        required: true,
-        placeholder: 'Enter device name'
-      })
-      .row([
-        { 
-          type: 'select', 
-          options: { 
-            name: 'type',
-            label: 'Device Type',
-            value: device.type || 'ir',
-            options: [
-              { value: 'ir', label: 'Infrared' },
-              { value: 'rf', label: 'Radio Frequency' },
-              { value: 'ble', label: 'Bluetooth LE' }
-            ]
-          }
-        },
-        { 
-          type: 'select', 
-          options: { 
-            name: 'interface',
-            label: 'Interface',
-            value: device.interface || '',
-            options: []
-          }
-        }
-      ])
-      .hidden('id', device.id || '');
+    const deviceType = device.type || 'ir';
 
-    return form.build().innerHTML;
+    const typeOptions = [
+      { value: 'ir', label: 'Infrared' },
+      { value: 'rf', label: 'Radio Frequency' },
+      { value: 'ble', label: 'Bluetooth LE' }
+    ].map(opt =>
+      `<option value="${opt.value}"${opt.value === deviceType ? ' selected' : ''}>${opt.label}</option>`
+    ).join('');
+
+    const emitInterval = (device.emit_interval !== undefined && device.emit_interval !== null && device.emit_interval !== '')
+      ? device.emit_interval : '';
+
+    const hasLearnedCommands = deviceType === 'rf' && Object.values(device.commands || {}).some(cmd =>
+      cmd.values && Object.values(cmd.values).some(v => v && String(v).length > 0)
+    );
+
+    const frequencyField = hasLearnedCommands ? `
+      <div class="device-field-group" id="frequencyField" data-field="frequency">
+        <div class="input-group">
+          <div class="input-group-prepend">
+            <div class="input-group-text">Frequency</div>
+          </div>
+          <input type="number" name="frequency" class="form-input" step="any"
+                 value="${this._escapeAttr(String(device.frequency || ''))}" disabled>
+        </div>
+      </div>
+    ` : '';
+
+    return `
+      <div class="device-fields-wrap">
+        <div class="device-field-group">
+          <div class="input-group">
+            <div class="input-group-prepend">
+              <div class="input-group-text">Name</div>
+            </div>
+            <input type="text" name="name" class="form-input" placeholder="Device name"
+                   value="${this._escapeAttr(device.name || '')}" required>
+          </div>
+        </div>
+        <div class="device-field-group">
+          <div class="input-group">
+            <div class="input-group-prepend">
+              <div class="input-group-text">Type</div>
+            </div>
+            <select name="type" class="form-select">
+              ${typeOptions}
+            </select>
+          </div>
+        </div>
+        <div class="device-field-group">
+          <div class="input-group">
+            <div class="input-group-prepend">
+              <div class="input-group-text">Learn/Send from</div>
+            </div>
+            <select name="interface" class="form-select">
+              <option value="">&#8987; Loading...</option>
+            </select>
+          </div>
+        </div>
+        <div class="device-field-group" data-field="emit_interval">
+          <div class="input-group">
+            <div class="input-group-prepend">
+              <div class="input-group-text">Emit interval</div>
+            </div>
+            <input type="number" name="emit_interval" class="form-input"
+                   placeholder="0.0" step="any" min="0"
+                   value="${this._escapeAttr(String(emitInterval))}">
+          </div>
+        </div>
+        ${frequencyField}
+      </div>
+      <input type="hidden" name="id" value="${this._escapeAttr(device.id || '')}">
+    `;
   }
 
   renderCommandsList(commands) {
@@ -722,7 +762,6 @@ class DeviceManager extends Component {
     const props = command?.props || {};
     
     const id = Utils.generateId();
-    const buttonText = isExisting ? 'Save' : 'Add';
     const deleteButton = isExisting ? 
       `<button type="button" class="command-inline-btn delete" onclick="deviceManager.deleteCommand('${name}')">Delete</button>` : '';
 
@@ -776,37 +815,37 @@ class DeviceManager extends Component {
         );
         
         filteredOptions.forEach(([key, value]) => {
-          const learnButton = `<button type="button" class="command-inline-btn learn" 
-                    onclick="deviceManager.learnOptionCommand(this, '${key}')">Learn</button>`;
-          
+          const learnButton = `<button type="button" class="command-inline-btn learn"
+                    onclick="deviceManager.learnOptionCommand(this)">Learn</button>`;
+
           optionsHtml += `
             <div class="option-field">
-              <input type="${type === 'numeric' ? 'number' : 'text'}" 
-                     placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
+              <input type="${type === 'numeric' ? 'number' : 'text'}"
+                     placeholder="${type === 'numeric' ? 'Number' : 'Option'}"
                      value="${key}" class="command-inline-input" data-option-key>
               <input type="text" placeholder="Command code" value="${value}" class="command-inline-input" data-option-value>
               ${learnButton}
-              <button type="button" class="command-inline-btn test" 
+              <button type="button" class="command-inline-btn test"
                       onclick="deviceManager.testOptionCommand(this, '${key}')">Test</button>
-              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
+              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">Delete</button>
             </div>
           `;
         });
-        
+
         if (filteredOptions.length === 0) {
-          const learnButton = `<button type="button" class="command-inline-btn learn" 
+          const learnButton = `<button type="button" class="command-inline-btn learn"
                     onclick="deviceManager.learnOptionCommand(this)">Learn</button>`;
-          
+
           optionsHtml += `
             <div class="option-field">
-              <input type="${type === 'numeric' ? 'number' : 'text'}" 
-                     placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
+              <input type="${type === 'numeric' ? 'number' : 'text'}"
+                     placeholder="${type === 'numeric' ? 'Number' : 'Option'}"
                      value="" class="command-inline-input" data-option-key>
               <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
               ${learnButton}
-              <button type="button" class="command-inline-btn test" 
+              <button type="button" class="command-inline-btn test"
                       onclick="deviceManager.testOptionCommand(this)">Test</button>
-              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
+              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">Delete</button>
             </div>
           `;
         }
@@ -835,8 +874,6 @@ class DeviceManager extends Component {
                  placeholder="Command name" value="${name}">
           ${isExisting && name ? `<input type="hidden" class="original-command-name" value="${name}">` : ''}
           ${codeField}
-          <button type="button" class="command-inline-btn save" 
-                  onclick="deviceManager.saveInlineCommand(this)">${buttonText}</button>
           ${deleteButton}
         </div>
         ${optionsSection}
@@ -928,6 +965,39 @@ class DeviceManager extends Component {
       interfaceSelect.innerHTML = '<option value="">⚠️ Error loading interfaces</option>';
       Notification.error('Failed to load interfaces');
     }
+
+    this._updateFrequencyField(deviceType);
+  }
+
+  _updateFrequencyField(deviceType) {
+    const hasLearnedCommands = Object.values(this.tempCommands).some(cmd =>
+      cmd.values && Object.values(cmd.values).some(v => v && String(v).length > 0)
+    );
+    const showFrequency = deviceType === 'rf' && hasLearnedCommands;
+    let freqField = document.getElementById('frequencyField');
+
+    if (showFrequency) {
+      if (!freqField) {
+        const emitIntervalGroup = document.querySelector('.device-field-group[data-field="emit_interval"]');
+        if (emitIntervalGroup) {
+          const freq = this.currentDevice?.frequency || '';
+          const freqHtml = `
+            <div class="device-field-group" id="frequencyField" data-field="frequency">
+              <div class="input-group">
+                <div class="input-group-prepend">
+                  <div class="input-group-text">Frequency</div>
+                </div>
+                <input type="number" name="frequency" class="form-input" step="any"
+                       value="${this._escapeAttr(String(freq))}" disabled>
+              </div>
+            </div>
+          `;
+          emitIntervalGroup.insertAdjacentHTML('afterend', freqHtml);
+        }
+      }
+    } else if (freqField) {
+      freqField.remove();
+    }
   }
 
   async handleDeviceFormSubmit(e) {
@@ -938,6 +1008,13 @@ class DeviceManager extends Component {
     const formData = new FormData(e.target);
     const deviceData = Object.fromEntries(formData.entries());
     deviceData.commands = this.tempCommands;
+
+    // Convert emit_interval to number if present
+    if (deviceData.emit_interval !== undefined && deviceData.emit_interval !== '') {
+      deviceData.emit_interval = parseFloat(deviceData.emit_interval);
+    } else {
+      delete deviceData.emit_interval;
+    }
 
     // Add emitter information based on device type and interface
     const deviceType = deviceData.type;
@@ -1336,15 +1413,18 @@ class DeviceManager extends Component {
 
   addOptionField(button, type) {
     const optionsList = button.closest('.command-options-section').querySelector('.options-list');
+    const learnButton = `<button type="button" class="command-inline-btn learn"
+              onclick="deviceManager.learnOptionCommand(this)">Learn</button>`;
     const newField = `
       <div class="option-field">
-        <input type="${type === 'numeric' ? 'number' : 'text'}" 
-               placeholder="${type === 'numeric' ? 'Number' : 'Option'}" 
+        <input type="${type === 'numeric' ? 'number' : 'text'}"
+               placeholder="${type === 'numeric' ? 'Number' : 'Option'}"
                value="" class="command-inline-input" data-option-key>
         <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
-        <button type="button" class="command-inline-btn test" 
+        ${learnButton}
+        <button type="button" class="command-inline-btn test"
                 onclick="deviceManager.testOptionCommand(this)">Test</button>
-        <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">❌</button>
+        <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">Delete</button>
       </div>
     `;
     optionsList.insertAdjacentHTML('beforeend', newField);
@@ -1435,13 +1515,8 @@ class DeviceManager extends Component {
     const nameInput = commandForm.querySelector('input.command-inline-input.name');
     const codeInput = commandForm.querySelector('input.command-inline-input.code');
 
-    if (!nameInput.value.trim()) {
-      Notification.error('Please enter a command name first');
-      nameInput.focus();
-      return;
-    }
-
-    await this.performLearnCommand(deviceInfo, nameInput.value.trim(), codeInput);
+    const commandName = nameInput?.value.trim() || `cmd_${Date.now()}`;
+    await this.performLearnCommand(deviceInfo, commandName, codeInput);
   }
 
   async learnOptionCommand(buttonElement, optionKey = null) {
@@ -1450,19 +1525,14 @@ class DeviceManager extends Component {
       Notification.error('Please save the device first');
       return;
     }
-    
+
     const commandContainer = buttonElement.closest('.command-container');
     const nameInput = commandContainer.querySelector('.command-inline-input.name');
-    
-    if (!nameInput.value.trim()) {
-      Notification.error('Please enter a command name first');
-      nameInput.focus();
-      return;
-    }
+    const commandBaseName = nameInput?.value.trim() || `cmd_${Date.now()}`;
 
     const optionField = buttonElement.closest('.option-field');
     let keyInput, valueInput;
-    
+
     if (optionKey) {
       // For predefined options like 'on'/'off'
       valueInput = optionField.querySelector(`input[data-option="${optionKey}"]`);
@@ -1470,32 +1540,30 @@ class DeviceManager extends Component {
       // For dynamic options
       keyInput = optionField.querySelector('input[data-option-key]');
       valueInput = optionField.querySelector('input[data-option-value]');
-      
-      if (keyInput && !keyInput.value.trim()) {
-        Notification.error('Please enter an option name first');
-        keyInput.focus();
-        return;
-      }
-      
-      optionKey = keyInput ? keyInput.value.trim() : 'option';
+      optionKey = keyInput?.value.trim() || `opt_${Date.now()}`;
     }
 
-    const commandName = `${nameInput.value.trim()}_${optionKey}`;
+    const commandName = `${commandBaseName}_${optionKey}`;
     await this.performLearnCommand(deviceInfo, commandName, valueInput);
   }
 
   async performLearnCommand(deviceInfo, commandName, codeInput) {
     // Interface should already be an object from getCurrentDeviceInfo()
     const interfaceObject = deviceInfo.interface;
-    
+
     if (!interfaceObject || typeof interfaceObject !== 'object') {
       console.error('No valid interface object:', interfaceObject);
       Notification.error('Please select an interface first');
       return;
     }
 
+    if (!codeInput) {
+      Notification.error('Could not find the code input field');
+      return;
+    }
+
     // Show learning modal
-    const originalButton = codeInput.parentElement.querySelector('.command-inline-btn.learn');
+    const originalButton = codeInput.parentElement?.querySelector('.command-inline-btn.learn');
     if (originalButton) {
       originalButton.disabled = true;
       originalButton.textContent = '⏳ Preparing...';
