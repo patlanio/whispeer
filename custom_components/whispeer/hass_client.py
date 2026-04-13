@@ -444,22 +444,18 @@ def _ensure_base64(data: str) -> str:
     """
     stripped = data.strip()
 
-    # Quick check: if it already decodes as base64 → return as-is.
-    try:
-        raw = base64.b64decode(stripped, validate=True)
-        if len(raw) > 4:
-            return stripped
-    except Exception:
-        pass
+    # Check hex first: hex strings only use 0-9 a-f and have even length.
+    # This must come before the base64 check because hex chars are a strict
+    # subset of valid base64 chars, causing hex strings to pass b64decode.
+    _HEX_CHARS = frozenset("0123456789abcdefABCDEF")
+    if len(stripped) % 2 == 0 and all(c in _HEX_CHARS for c in stripped):
+        try:
+            raw = bytes.fromhex(stripped)
+            return base64.b64encode(raw).decode("ascii")
+        except ValueError:
+            pass
 
-    # Assume hex
-    try:
-        raw = bytes.fromhex(stripped)
-        return base64.b64encode(raw).decode("ascii")
-    except ValueError:
-        pass
-
-    # Fallback — return as-is and let the service handle it.
+    # Already base64 — return as-is.
     return stripped
 
 
