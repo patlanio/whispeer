@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CMD_TYPE_BUTTON,
+    CMD_TYPE_GROUP,
     DOMAIN,
     SIGNAL_WHISPEER_DATA_UPDATED,
     SIGNAL_WHISPEER_NEW_DEVICE,
@@ -35,11 +36,22 @@ async def async_setup_entry(
     def _entities_from_device(device: dict[str, Any]) -> list[WhispeerButton]:
         result: list[WhispeerButton] = []
         for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
-            if cmd_cfg.get("type") == CMD_TYPE_BUTTON:
+            cmd_type = cmd_cfg.get("type")
+            if cmd_type == CMD_TYPE_BUTTON:
                 uid = f"whispeer_{device['id']}_{cmd_name}"
                 if uid not in registered:
                     result.append(WhispeerButton(device, cmd_name, cmd_cfg, api))
                     registered.add(uid)
+            elif cmd_type == CMD_TYPE_GROUP:
+                for option_key, option_code in (cmd_cfg.get("values") or {}).items():
+                    uid = f"whispeer_{device['id']}_{cmd_name}_{option_key}"
+                    if uid not in registered:
+                        result.append(
+                            WhispeerGroupButton(
+                                device, cmd_name, cmd_cfg, option_key, option_code, api
+                            )
+                        )
+                        registered.add(uid)
         return result
 
     devices = await api.async_get_devices()
@@ -88,4 +100,38 @@ class WhispeerButton(WhispeerBaseEntity, ButtonEntity):
         code = self._command_cfg.get("values", {}).get("code", "")
         if code:
             await self._async_send_code(code)
+
+
+class WhispeerGroupButton(WhispeerBaseEntity, ButtonEntity):
+    """One ButtonEntity representing a single option inside a 'group' command.
+
+    A 'group' command groups multiple IR/RF codes visually in the panel.
+    Each option is exposed as an independent ButtonEntity in Home Assistant.
+    """
+
+    def __init__(
+        self,
+        device_data: dict[str, Any],
+        command_name: str,
+        command_cfg: dict[str, Any],
+        option_key: str,
+        option_code: str,
+        api_client: Any,
+    ) -> None:
+        super().__init__(device_data, command_name, command_cfg, api_client)
+        self._option_key = option_key
+        self._option_code = option_code
+        self._attr_unique_id = f"whispeer_{device_data['id']}_{command_name}_{option_key}"
+        self._attr_name = f"{command_name} {option_key}"
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Suggest an entity object_id with whispeer prefix and device name."""
+        device_name = self._device_data.get("name", self._device_data["id"])
+        return f"whispeer_{device_name}_{self._command_name}_{self._option_key}"
+
+    async def async_press(self) -> None:
+        """Send the code for this option."""
+        if self._option_code:
+            await self._async_send_code(self._option_code)
 

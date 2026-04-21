@@ -34,13 +34,19 @@ const APP_CONFIG = {
     },
     numeric: {
       icon: '🔢',
-      title: 'Numeric',
+      title: 'Numeric Range',
       fields: [],
       hasOptions: true
     },
     group: {
       icon: '📁',
       title: 'Group',
+      fields: [],
+      hasOptions: true
+    },
+    options: {
+      icon: '📋',
+      title: 'Options',
       fields: [],
       hasOptions: true
     }

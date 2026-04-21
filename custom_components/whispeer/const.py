@@ -20,12 +20,15 @@ SIGNAL_WHISPEER_DATA_UPDATED = f"{DOMAIN}_data_updated"
 CMD_TYPE_BUTTON = "button"
 CMD_TYPE_SWITCH = "switch"
 CMD_TYPE_LIGHT = "light"
-# "numeric" is also rendered as a SelectEntity (non-linear step sets).
+# "numeric" renders as a NumberEntity (stepper/range).
 CMD_TYPE_NUMERIC = "numeric"
+# "group" renders as individual ButtonEntities — one per option value.
 CMD_TYPE_GROUP = "group"
+# "options" renders as a SelectEntity.
+CMD_TYPE_OPTIONS = "options"
 
 # Platforms
-PLATFORMS = ["switch", "button", "light", "select"]
+PLATFORMS = ["switch", "button", "light", "select", "number"]
 
 # Configuration and options
 CONF_ENABLED = "enabled"

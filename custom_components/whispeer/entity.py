@@ -47,6 +47,12 @@ class WhispeerBaseEntity(RestoreEntity):
         self._attr_name = command_name
 
     @property
+    def suggested_object_id(self) -> str:
+        """Suggest an entity object_id with whispeer prefix and device name."""
+        device_name = self._device_data.get("name", self._device_data["id"])
+        return f"whispeer_{device_name}_{self._command_name}"
+
+    @property
     def device_info(self) -> DeviceInfo:
         """Return DeviceInfo shared by every entity of the same physical device."""
         device_id = self._device_data["id"]

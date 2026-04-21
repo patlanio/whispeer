@@ -576,6 +576,12 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface-color);
+  padding: 8px 0;
+  margin-top: -8px;
 }
 
 .commands-header-actions {

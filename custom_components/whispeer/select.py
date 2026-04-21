@@ -1,14 +1,11 @@
 """Select platform for Whispeer.
 
-Handles both command types that produce a fixed option set:
+Handles command type that produces a fixed option set:
 
-- ``type: "group"``   — named options (e.g. ``warm``, ``neutral``, ``cold``).
-- ``type: "numeric"`` — step-based values (e.g. ``0``, ``1``, ``2``, ``6``).
+- ``type: "options"``  — named options (e.g. ``warm``, ``neutral``, ``cold``).
 
-Using SelectEntity for numeric commands intentionally avoids exposing a
-continuous slider for what is actually a set of discrete, non-linear IR codes.
-It also enables the built-in ``select.select_next`` / ``select.select_previous``
-services for free.
+Using SelectEntity enables the built-in ``select.select_next`` /
+``select.select_previous`` services for free.
 """
 from __future__ import annotations
 
@@ -22,8 +19,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    CMD_TYPE_GROUP,
-    CMD_TYPE_NUMERIC,
+    CMD_TYPE_OPTIONS,
     DOMAIN,
     SIGNAL_WHISPEER_DATA_UPDATED,
     SIGNAL_WHISPEER_NEW_DEVICE,
@@ -32,8 +28,8 @@ from .entity import WhispeerBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-# Both of these command types are rendered as a SelectEntity.
-_SELECT_TYPES = {CMD_TYPE_GROUP, CMD_TYPE_NUMERIC}
+# Only the "options" command type is rendered as a SelectEntity.
+_SELECT_TYPES = {CMD_TYPE_OPTIONS}
 
 
 async def async_setup_entry(

@@ -341,6 +341,7 @@ class DeviceManager extends Component {
       case 'numeric':
         return this.renderNumericCommand(deviceId, commandName, command);
       case 'group':
+      case 'options':
         return this.renderGroupCommand(deviceId, commandName, command);
       default:
         return this.renderButtonCommand(deviceId, commandName, command);
@@ -448,7 +449,7 @@ class DeviceManager extends Component {
         commandCode = command.values?.code;
       } else if (command.type === 'light' || command.type === 'switch') {
         commandCode = subCmd === 'on' ? command.values?.on : command.values?.off;
-      } else if (command.type === 'numeric' || command.type === 'group') {
+      } else if (command.type === 'numeric' || command.type === 'options' || command.type === 'group') {
         commandCode = command.values?.[subCmd];
       } else {
         commandCode = command.values?.code || subCmd;
@@ -460,7 +461,7 @@ class DeviceManager extends Component {
 
       await DataManager.sendCommand(deviceId, device.type, cmd, commandCode, subCmd);
       
-      if (command.type === 'numeric' || command.type === 'group') {
+      if (command.type === 'numeric' || command.type === 'options' || command.type === 'group') {
         this.updateGroupCommandState(deviceId, cmd, subCmd);
       }
       
@@ -833,7 +834,7 @@ class DeviceManager extends Component {
                     onclick="deviceManager.testOptionCommand(this, 'off')">Test</button>
           </div>
         `;
-      } else if (type === 'numeric' || type === 'group') {
+      } else if (type === 'numeric' || type === 'options' || type === 'group') {
         const filteredOptions = Object.entries(options).filter(([key, value]) => 
           key !== 'type' && key !== 'props' && key !== 'name'
         );
@@ -880,7 +881,7 @@ class DeviceManager extends Component {
           <div class="options-list">
             ${optionsHtml}
           </div>
-          ${(type === 'numeric' || type === 'group') ? 
+          ${(type === 'numeric' || type === 'options' || type === 'group') ? 
             `<button type="button" class="btn btn-small" onclick="deviceManager.addOptionField(this, '${type}')">+ Add Option</button>` : ''}
         </div>
       `;
@@ -1882,8 +1883,10 @@ class DeviceManager extends Component {
 
         if (!learnBtn) break;
 
-        // Scroll the button into view
+        // Scroll the button into view and focus the associated code input
         learnBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const focusInput = this._getLearnBtnCodeInput(learnBtn);
+        if (focusInput) focusInput.focus();
 
         // Trigger learning and wait for it to complete or fail
         const learned = await this._fastLearnOne(learnBtn);
