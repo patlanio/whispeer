@@ -447,8 +447,7 @@ class Toast {
   static init() {
     if (!Toast.container) {
       Toast.container = Utils.createElement('div', {
-        className: 'toast-container',
-        style: 'position: fixed; top: 20px; right: 20px; z-index: 10000;'
+        className: 'toast-container'
       });
       document.body.appendChild(Toast.container);
     }
@@ -462,20 +461,8 @@ class Toast {
       innerHTML: `
         <div class="toast-content">
           <span class="toast-message">${Utils.sanitizeHTML(message)}</span>
-          <button class="toast-close">&times;</button>
+          <button class="toast-close" title="Dismiss">&#x2715;</button>
         </div>
-      `,
-      style: `
-        background: var(--surface-color);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        padding: 12px 16px;
-        margin-bottom: 8px;
-        box-shadow: var(--shadow);
-        transform: translateX(100%);
-        transition: transform 0.3s ease;
-        max-width: 300px;
-        word-wrap: break-word;
       `
     });
 
@@ -487,14 +474,13 @@ class Toast {
     };
 
     if (typeColors[type]) {
-      toast.style.borderLeftColor = typeColors[type];
-      toast.style.borderLeftWidth = '4px';
+      toast.dataset.toastType = type;
     }
 
     Toast.container.appendChild(toast);
 
     setTimeout(() => {
-      toast.style.transform = 'translateX(0)';
+      toast.classList.add('toast-visible');
     }, 10);
 
     const closeBtn = toast.querySelector('.toast-close');
@@ -515,7 +501,7 @@ class Toast {
   }
 
   static remove(toast) {
-    toast.style.transform = 'translateX(100%)';
+    toast.classList.remove('toast-visible');
     setTimeout(() => {
       if (toast.parentNode) {
         toast.parentNode.removeChild(toast);

@@ -26,6 +26,7 @@ from .api import WhispeerApiClient
 from .api import WhispeerInterfacesView
 from .api import WhispeerPrepareToLearnView
 from .api import WhispeerCheckLearnedCommandView
+from .api import WhispeerFindFrequencyView
 from .const import DOMAIN
 from .const import PLATFORMS
 from .const import STARTUP_MESSAGE
@@ -871,6 +872,7 @@ async def register_panel(hass):
         hass.http.register_view(WhispeerInterfacesView())
         hass.http.register_view(WhispeerPrepareToLearnView())
         hass.http.register_view(WhispeerCheckLearnedCommandView())
+        hass.http.register_view(WhispeerFindFrequencyView())
         hass.http.register_view(WhispeerBleScanView())
         hass.http.register_view(WhispeerBleEmitView())
         
@@ -913,6 +915,7 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.http.register_view(WhispeerInterfacesView())
     hass.http.register_view(WhispeerPrepareToLearnView())
     hass.http.register_view(WhispeerCheckLearnedCommandView())
+    hass.http.register_view(WhispeerFindFrequencyView())
     hass.http.register_view(WhispeerBleScanView())
     hass.http.register_view(WhispeerBleEmitView())
 
