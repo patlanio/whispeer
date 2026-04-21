@@ -8,6 +8,8 @@ class DeviceManager extends Component {
     this.storedCodes = null;
     this._storedCodesFlat = [];
     this._detectedFrequency = null;
+    this._fastLearning = false;
+    this._fastLearnStop = false;
   }
 
   init() {
@@ -43,7 +45,11 @@ class DeviceManager extends Component {
           <div class="commands-section">
             <div class="commands-header">
               <h4>Commands</h4>
-              <button type="button" class="btn btn-small" onclick="deviceManager.addInlineCommand()">+ Add Command</button>
+              <div class="commands-header-actions">
+                <button type="button" class="btn btn-small btn-outlined" id="fastLearnBtn" style="display:none" onclick="deviceManager.startFastLearn()">⚡ Fast Learn</button>
+                <button type="button" class="btn btn-small btn-danger" id="fastLearnStopBtn" style="display:none" onclick="deviceManager.stopFastLearn()">⏹ Stop</button>
+                <button type="button" class="btn btn-small" onclick="deviceManager.addInlineCommand()">+ Add Command</button>
+              </div>
             </div>
             <div class="commands-list" id="commandsList">{{commandsList}}</div>
           </div>
@@ -922,10 +928,15 @@ class DeviceManager extends Component {
   async onDeviceTypeChange(preserveSelection = false) {
     const typeSelect = Utils.$('#deviceForm select[name="type"]');
     const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
-    
+
     if (!typeSelect || !interfaceSelect) return;
 
     const deviceType = typeSelect.value;
+
+    const fastLearnBtn = document.getElementById('fastLearnBtn');
+    if (fastLearnBtn) {
+      fastLearnBtn.style.display = (deviceType === 'ir' || deviceType === 'rf') ? '' : 'none';
+    }
     const currentDevice = this.currentDevice;
     
     // Clear current interfaces and show loading
@@ -1052,7 +1063,7 @@ class DeviceManager extends Component {
 
   async handleDeviceFormSubmit(e) {
     e.preventDefault();
-    
+    this.stopFastLearn();
     this.saveAllInlineCommands();
     
     const formData = new FormData(e.target);
@@ -1523,6 +1534,7 @@ class DeviceManager extends Component {
   }
 
   closeDeviceModal() {
+    this.stopFastLearn();
     if (this.deviceModal) {
       this.deviceModal.close();
     }
@@ -1714,6 +1726,10 @@ class DeviceManager extends Component {
         await new Promise(resolve => setTimeout(resolve, pollInterval));
         elapsed += pollInterval;
 
+        if (this._fastLearnStop) {
+          break;
+        }
+
         try {
           const checkResult = await CommandManager.checkLearnedCommand(sessionId, deviceInfo.type);
 
@@ -1804,8 +1820,131 @@ class DeviceManager extends Component {
     }
   }
 
-  async findFrequency() {
-    const deviceInfo = this.getCurrentDeviceInfo();
+  stopFastLearn() {
+    this._fastLearnStop = true;
+    this._fastLearning = false;
+    const btn = document.getElementById('fastLearnBtn');
+    const stopBtn = document.getElementById('fastLearnStopBtn');
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Fast Learn'; }
+    if (stopBtn) { stopBtn.style.display = 'none'; }
+  }
+
+  _getLearnBtnCodeInput(learnBtn) {
+    // Option field (light/switch use data-option, numeric/group use data-option-value)
+    const optionField = learnBtn.closest('.option-field');
+    if (optionField) {
+      return optionField.querySelector('input[data-option]') ||
+             optionField.querySelector('input[data-option-value]');
+    }
+    // Button type: code input inside the command-inline-form
+    const form = learnBtn.closest('.command-inline-form');
+    return form ? form.querySelector('input[data-field="code"]') : null;
+  }
+
+  _findNextEmptyLearnButton() {
+    const commandsList = Utils.$('#commandsList');
+    if (!commandsList) return null;
+
+    for (const btn of commandsList.querySelectorAll('.command-inline-btn.learn')) {
+      const codeInput = this._getLearnBtnCodeInput(btn);
+      if (codeInput && codeInput.value.trim() === '') {
+        return btn;
+      }
+    }
+    return null;
+  }
+
+  async startFastLearn() {
+    if (this._fastLearning) return;
+
+    const deviceType = this._getCurrentDeviceType();
+    if (deviceType !== 'ir' && deviceType !== 'rf') return;
+
+    this._fastLearning = true;
+    this._fastLearnStop = false;
+
+    const btn = document.getElementById('fastLearnBtn');
+    const stopBtn = document.getElementById('fastLearnStopBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⚡ Fast learning...'; }
+    if (stopBtn) { stopBtn.style.display = ''; }
+
+    try {
+      while (!this._fastLearnStop) {
+        let learnBtn = this._findNextEmptyLearnButton();
+
+        if (!learnBtn) {
+          // No empty slot found — add a new command row
+          this.addInlineCommand();
+          // Wait a tick for DOM to update
+          await new Promise(resolve => setTimeout(resolve, 50));
+          learnBtn = this._findNextEmptyLearnButton();
+        }
+
+        if (!learnBtn) break;
+
+        // Scroll the button into view
+        learnBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        // Trigger learning and wait for it to complete or fail
+        const learned = await this._fastLearnOne(learnBtn);
+
+        if (!learned) {
+          // Timeout or error — stop fast learn
+          break;
+        }
+      }
+    } finally {
+      this.stopFastLearn();
+    }
+  }
+
+  async _fastLearnOne(learnButton) {
+    return new Promise((resolve) => {
+      const deviceInfo = this.getCurrentDeviceInfo();
+      if (!deviceInfo) { resolve(false); return; }
+
+      const commandContainer = learnButton.closest('.command-container');
+      const commandForm = commandContainer?.querySelector('.command-inline-form');
+      const nameInput = commandForm?.querySelector('input.command-inline-input.name');
+
+      // Auto-generate a name if empty
+      if (nameInput && !nameInput.value.trim()) {
+        nameInput.value = `cmd_${Date.now()}`;
+      }
+      const baseName = nameInput?.value.trim() || `cmd_${Date.now()}`;
+
+      let commandName;
+      let codeInput;
+
+      const optionField = learnButton.closest('.option-field');
+      if (optionField) {
+        // light/switch: data-option holds the key ('on'/'off')
+        // numeric/group: data-option-value holds the code, data-option-key holds the key
+        const byOption = optionField.querySelector('input[data-option]');
+        const byOptionValue = optionField.querySelector('input[data-option-value]');
+        const optionKey = byOption
+          ? byOption.dataset.option
+          : (optionField.querySelector('input[data-option-key]')?.value.trim() || `opt_${Date.now()}`);
+        commandName = `${baseName}_${optionKey}`;
+        codeInput = byOption || byOptionValue;
+      } else {
+        commandName = baseName;
+        codeInput = commandForm?.querySelector('input[data-field="code"]');
+      }
+
+      if (!codeInput) { resolve(false); return; }
+
+      const originalValue = codeInput.value;
+
+      this.performLearnCommand(deviceInfo, commandName, codeInput).then(() => {
+        resolve(codeInput.value.trim() !== '' && codeInput.value.trim() !== originalValue);
+      }).catch(() => {
+        resolve(false);
+      });
+    });
+  }
+
+  async findFrequency() {    const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo || !deviceInfo.interface) {
       Notification.error('Please select an interface first');
       return;
