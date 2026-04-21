@@ -49,7 +49,9 @@ class LearnSession:
         self.command_type = command_type
         self.hub_entity_id = hub_entity_id
         self.status = "preparing"  # preparing | learning | completed | error | timeout
+        self.phase = "sweeping" if command_type.lower() == "rf" else "capturing"
         self.command_data: Optional[str] = None
+        self.detected_frequency: Optional[float] = None
         self.error_message: Optional[str] = None
         self.created_at = time.time()
 
@@ -204,6 +206,10 @@ class WhispeerApiClient:
             "emitter": device_data.get("emitter") or {},
             "commands": device_data.get("commands") or {},
         }
+        if device_data.get("frequency") is not None:
+            info["frequency"] = device_data["frequency"]
+        if device_data.get("emit_interval") is not None:
+            info["emit_interval"] = device_data["emit_interval"]
         devices[str(device_id)] = info
         await self._save_devices(devices)
 
@@ -361,6 +367,7 @@ class WhispeerApiClient:
                 "label": f"{h['name']} ({h['entity_id']})",
                 "entity_id": h["entity_id"],
                 "model": h.get("model", ""),
+                "manufacturer": h.get("manufacturer", ""),
                 "capabilities": h.get("capabilities", []),
                 "source": "homeassistant",
             })
@@ -379,6 +386,7 @@ class WhispeerApiClient:
         device_type: str,
         entity_id: str,
         frequency: float = 433.92,
+        fast_sweep: bool = False,
     ) -> dict:
         """Create a learning session and kick off remote.learn_command in background."""
         if not entity_id or not entity_id.startswith("remote."):
@@ -390,9 +398,12 @@ class WhispeerApiClient:
 
         session.update_status("learning")
 
-        # Fire-and-forget background task that calls remote.learn_command
-        # and waits for the event.
-        asyncio.ensure_future(self._background_learn(session))
+        if fast_sweep and device_type.lower() == "rf" and frequency:
+            session.phase = "capturing"
+            session.detected_frequency = frequency
+            asyncio.ensure_future(self._background_fast_rf_learn(session, frequency))
+        else:
+            asyncio.ensure_future(self._background_learn(session))
 
         return _ok(
             f"Learning session started on {entity_id}",
@@ -403,24 +414,230 @@ class WhispeerApiClient:
 
     async def _background_learn(self, session: LearnSession) -> None:
         """Background coroutine that performs the actual learning."""
+        is_rf = session.command_type.lower() == "rf"
+        per_phase_timeout = 45 if is_rf else 30
+        phase_task = None
         try:
-            _LOGGER.info("Starting background learn for session %s on %s", session.session_id, session.hub_entity_id)
-            # RF learning uses two phases (frequency sweep + command capture),
-            # each up to `timeout` seconds, so use a longer per-phase timeout.
-            per_phase_timeout = 45 if session.command_type.lower() == "rf" else 30
+            _LOGGER.info(
+                "Starting background learn for session %s on %s (%s)",
+                session.session_id, session.hub_entity_id, session.command_type,
+            )
+            if is_rf:
+                phase_task = asyncio.ensure_future(self._rf_phase_timer(session))
+
             code = await self._hass_client.async_learn_command(
                 entity_id=session.hub_entity_id,
                 command="default_command",
                 command_type=session.command_type,
                 timeout=per_phase_timeout,
             )
+
+            if is_rf and code:
+                freq = await self._hass_client._async_read_stored_frequency(
+                    session.hub_entity_id, "default_device", "default_command"
+                )
+                session.detected_frequency = freq
+
             if code:
+                session.phase = "completed"
                 session.update_status("completed", command_data=code)
             else:
                 session.update_status("timeout", error_message="No code received within timeout")
         except Exception as exc:
             _LOGGER.exception("Background learn failed for session %s", session.session_id)
             session.update_status("error", error_message=str(exc))
+        finally:
+            if phase_task and not phase_task.done():
+                phase_task.cancel()
+
+    async def _background_fast_rf_learn(self, session: LearnSession, frequency: float) -> None:
+        """Fast RF learning: skip sweep, go directly to find_rf_packet with known frequency.
+
+        Uses the Broadlink device directly via broadlink library to call
+        find_rf_packet(frequency) then poll check_data(), bypassing HA's
+        two-phase remote.learn_command flow.
+        """
+        try:
+            _LOGGER.info(
+                "Starting fast RF learn for session %s on %s at %.2f MHz",
+                session.session_id, session.hub_entity_id, frequency,
+            )
+            from .whispeer_broadlink import connect_to_device
+            from homeassistant.helpers import entity_registry as er, device_registry as dr
+
+            entry = er.async_get(self._hass).async_get(session.hub_entity_id)
+            if not entry or not entry.device_id:
+                session.update_status("error", error_message="Cannot resolve device for entity")
+                return
+
+            dev = dr.async_get(self._hass).async_get(entry.device_id)
+            if not dev:
+                session.update_status("error", error_message="Device not found in registry")
+                return
+
+            ip_address = None
+            mac_address = None
+            for con_type, con_val in dev.connections:
+                if con_type == "mac":
+                    mac_address = con_val.replace(":", "").replace("-", "")
+            if not mac_address:
+                for _domain, ident_val in dev.identifiers:
+                    clean = ident_val.replace(":", "").replace("-", "")
+                    if len(clean) == 12:
+                        mac_address = clean
+                        break
+
+            config_entries = self._hass.config_entries.async_entries()
+            for ce in config_entries:
+                if ce.domain == "broadlink" and ce.data.get("host"):
+                    ce_mac = ce.unique_id or ""
+                    if ce_mac.replace(":", "").replace("-", "").lower() == (mac_address or "").lower():
+                        ip_address = ce.data["host"]
+                        break
+
+            if not ip_address:
+                state = self._hass.states.get(session.hub_entity_id)
+                if state:
+                    ip_address = state.attributes.get("host") or state.attributes.get("ip_address")
+
+            if not ip_address:
+                session.update_status("error", error_message="Cannot determine Broadlink device IP")
+                return
+
+            def _do_fast_rf_learn():
+                import time
+                device = connect_to_device(ip_address, mac_address)
+                if not device:
+                    return None
+                device.find_rf_packet(frequency)
+                for _ in range(30):
+                    time.sleep(1)
+                    try:
+                        packet = device.check_data()
+                        if packet:
+                            return packet.hex()
+                    except Exception:
+                        continue
+                return None
+
+            code = await self._hass.async_add_executor_job(_do_fast_rf_learn)
+
+            if code:
+                session.phase = "completed"
+                session.update_status("completed", command_data=code)
+            else:
+                session.update_status("timeout", error_message="No RF code received within timeout")
+        except Exception as exc:
+            _LOGGER.exception("Fast RF learn failed for session %s", session.session_id)
+            session.update_status("error", error_message=str(exc))
+
+    async def _background_find_frequency(self, session: LearnSession) -> None:
+        """Sweep-only: detect the RF frequency without learning a command."""
+        try:
+            _LOGGER.info(
+                "Starting frequency sweep for session %s on %s",
+                session.session_id, session.hub_entity_id,
+            )
+            from .whispeer_broadlink import connect_to_device
+            from homeassistant.helpers import entity_registry as er, device_registry as dr
+
+            entry = er.async_get(self._hass).async_get(session.hub_entity_id)
+            if not entry or not entry.device_id:
+                session.update_status("error", error_message="Cannot resolve device for entity")
+                return
+
+            dev = dr.async_get(self._hass).async_get(entry.device_id)
+            if not dev:
+                session.update_status("error", error_message="Device not found in registry")
+                return
+
+            ip_address = None
+            mac_address = None
+            for con_type, con_val in dev.connections:
+                if con_type == "mac":
+                    mac_address = con_val.replace(":", "").replace("-", "")
+            if not mac_address:
+                for _domain, ident_val in dev.identifiers:
+                    clean = ident_val.replace(":", "").replace("-", "")
+                    if len(clean) == 12:
+                        mac_address = clean
+                        break
+
+            config_entries = self._hass.config_entries.async_entries()
+            for ce in config_entries:
+                if ce.domain == "broadlink" and ce.data.get("host"):
+                    ce_mac = ce.unique_id or ""
+                    if ce_mac.replace(":", "").replace("-", "").lower() == (mac_address or "").lower():
+                        ip_address = ce.data["host"]
+                        break
+
+            if not ip_address:
+                state = self._hass.states.get(session.hub_entity_id)
+                if state:
+                    ip_address = state.attributes.get("host") or state.attributes.get("ip_address")
+
+            if not ip_address:
+                session.update_status("error", error_message="Cannot determine Broadlink device IP")
+                return
+
+            def _do_sweep():
+                import time
+                device = connect_to_device(ip_address, mac_address)
+                if not device:
+                    return None
+                device.sweep_frequency()
+                for _ in range(30):
+                    time.sleep(1)
+                    try:
+                        found, freq = device.check_frequency()
+                        if found:
+                            return freq
+                    except Exception:
+                        continue
+                return None
+
+            freq = await self._hass.async_add_executor_job(_do_sweep)
+
+            if freq:
+                session.detected_frequency = freq
+                session.phase = "completed"
+                session.update_status("completed")
+            else:
+                session.update_status("timeout", error_message="No frequency detected within timeout")
+        except Exception as exc:
+            _LOGGER.exception("Frequency sweep failed for session %s", session.session_id)
+            session.update_status("error", error_message=str(exc))
+
+    async def async_find_frequency(
+        self,
+        entity_id: str,
+    ) -> dict:
+        """Start a sweep-only session to detect RF frequency."""
+        if not entity_id or not entity_id.startswith("remote."):
+            return _err("A valid remote.* entity_id is required")
+
+        session_id = uuid.uuid4().hex
+        session = LearnSession(session_id, "rf", entity_id)
+        session.phase = "sweeping"
+        LEARNING_SESSIONS[session_id] = session
+        session.update_status("learning")
+
+        asyncio.ensure_future(self._background_find_frequency(session))
+
+        return _ok(
+            f"Frequency sweep started on {entity_id}",
+            session_id=session_id,
+        )
+
+    async def _rf_phase_timer(self, session: LearnSession, sweep_timeout: int = 30) -> None:
+        """Transition RF session from sweeping→capturing after sweep_timeout seconds."""
+        await asyncio.sleep(sweep_timeout)
+        if session.status == "learning" and session.phase == "sweeping":
+            session.phase = "capturing"
+            _LOGGER.info(
+                "RF session %s: sweep phase ended, transitioning to capturing",
+                session.session_id,
+            )
 
     async def async_check_learned_command(self, session_id: str, device_type: str) -> dict:
         """Poll the status of an existing learning session."""
@@ -429,13 +646,17 @@ class WhispeerApiClient:
             return _err(f"Session {session_id} not found or expired")
 
         if session.status == "completed":
-            return _ok(
+            result = _ok(
                 f"{session.command_type.upper()} command learned",
                 command_data=session.command_data,
                 command_type=session.command_type,
                 session_id=session_id,
                 learning_status="completed",
+                phase="completed",
             )
+            if session.detected_frequency is not None:
+                result["detected_frequency"] = session.detected_frequency
+            return result
         if session.status == "error":
             return _err(
                 session.error_message or "Learning failed",
@@ -449,11 +670,12 @@ class WhispeerApiClient:
                 learning_status="timeout",
             )
 
-        # Still in progress
+        # Still in progress — return current phase
         return _ok(
-            "Learning in progress — press a button on the remote",
+            "Learning in progress",
             session_id=session_id,
             learning_status="learning",
+            phase=session.phase,
             device_type=session.command_type,
         )
 
@@ -682,14 +904,50 @@ class WhispeerPrepareToLearnView(HomeAssistantView):
                     {"status": "error", "message": "Whispeer coordinator not found"}, status=500
                 )
 
+            fast_sweep = bool(data.get("fast_sweep", False))
+            frequency = emitter.get("frequency", 433.92)
+
             result = await coord.api.async_prepare_to_learn(
                 device_type,
                 entity_id,
-                emitter.get("frequency", 433.92),
+                frequency,
+                fast_sweep=fast_sweep,
             )
             return web.json_response(result)
         except Exception as exc:
             _LOGGER.error("Error preparing to learn: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+
+class WhispeerFindFrequencyView(HomeAssistantView):
+    """POST /api/services/whispeer/find_frequency"""
+
+    url = "/api/services/whispeer/find_frequency"
+    name = "api:whispeer:find_frequency"
+    requires_auth = False
+
+    async def post(self, request):
+        try:
+            data = await request.json()
+            emitter = data.get("emitter") or {}
+
+            entity_id = emitter.get("entity_id") or ""
+            if not entity_id.startswith("remote."):
+                return web.json_response(
+                    {"status": "error", "message": "A remote.* entity_id is required in emitter"},
+                    status=400,
+                )
+
+            coord = _get_coordinator(request)
+            if not coord:
+                return web.json_response(
+                    {"status": "error", "message": "Whispeer coordinator not found"}, status=500
+                )
+
+            result = await coord.api.async_find_frequency(entity_id)
+            return web.json_response(result)
+        except Exception as exc:
+            _LOGGER.error("Error finding frequency: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
 

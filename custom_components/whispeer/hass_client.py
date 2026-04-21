@@ -227,6 +227,45 @@ class HassClient:
 
         return await self._hass.async_add_executor_job(_read)
 
+    async def _async_read_stored_frequency(self, entity_id: str, device: str, command: str) -> float | None:
+        """Read the RF frequency stored alongside a learned command in HA storage."""
+        import json
+        import os
+
+        entry = er.async_get(self._hass).async_get(entity_id)
+        manufacturer = ""
+        if entry and entry.device_id:
+            dev = dr.async_get(self._hass).async_get(entry.device_id)
+            if dev:
+                manufacturer = (dev.manufacturer or "").lower()
+
+        prefix = _get_storage_file_prefix(manufacturer)
+        if not prefix:
+            return None
+
+        storage_dir = self._hass.config.path(".storage")
+
+        def _read_freq() -> float | None:
+            try:
+                files = os.listdir(storage_dir)
+            except OSError:
+                return None
+            for fname in sorted(files):
+                if not fname.startswith(prefix) or not fname.endswith("_codes"):
+                    continue
+                fpath = os.path.join(storage_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    freq = data.get("data", {}).get(device, {}).get("frequency")
+                    if freq is not None:
+                        return float(freq)
+                except Exception:
+                    continue
+            return None
+
+        return await self._hass.async_add_executor_job(_read_freq)
+
     async def async_get_stored_codes(self) -> list[dict]:
         """Return all learned codes found in HA storage across known remote integrations.
 

@@ -7,6 +7,7 @@ class DeviceManager extends Component {
     this.commandModal = null;
     this.storedCodes = null;
     this._storedCodesFlat = [];
+    this._detectedFrequency = null;
   }
 
   init() {
@@ -58,8 +59,13 @@ class DeviceManager extends Component {
       `,
 
       commandButton: `
-        <button class="btn btn-small command-btn" 
-                onclick="deviceManager.executeCommand('{{deviceId}}', '{{commandName}}')"
+        <button class="btn btn-small command-btn"
+                onmousedown="deviceManager.startLongPress('{{deviceId}}', '{{commandName}}')"
+                onmouseup="deviceManager.stopLongPress()"
+                onmouseleave="deviceManager.stopLongPress()"
+                ontouchstart="deviceManager.startLongPress('{{deviceId}}', '{{commandName}}')"
+                ontouchend="deviceManager.stopLongPress()"
+                ontouchcancel="deviceManager.stopLongPress()"
                 style="{{buttonStyle}}">
           {{buttonContent}}
         </button>
@@ -648,21 +654,22 @@ class DeviceManager extends Component {
     const emitInterval = (device.emit_interval !== undefined && device.emit_interval !== null && device.emit_interval !== '')
       ? device.emit_interval : '';
 
-    const hasLearnedCommands = deviceType === 'rf' && Object.values(device.commands || {}).some(cmd =>
-      cmd.values && Object.values(cmd.values).some(v => v && String(v).length > 0)
-    );
+    const frequency = (device.frequency !== undefined && device.frequency !== null && device.frequency !== '')
+      ? device.frequency : '';
 
-    const frequencyField = hasLearnedCommands ? `
-      <div class="device-field-group" id="frequencyField" data-field="frequency">
+    const showFrequency = deviceType === 'rf' && frequency !== '';
+
+    const frequencyField = `
+      <div class="device-field-group" id="frequencyField" data-field="frequency"${showFrequency ? '' : ' style="display:none"'}>
         <div class="input-group">
           <div class="input-group-prepend">
             <div class="input-group-text">Frequency</div>
           </div>
           <input type="number" name="frequency" class="form-input" step="any"
-                 value="${this._escapeAttr(String(device.frequency || ''))}" disabled>
+                 value="${this._escapeAttr(String(frequency))}" disabled>
         </div>
       </div>
-    ` : '';
+    `;
 
     return `
       <div class="device-fields-wrap">
@@ -695,17 +702,27 @@ class DeviceManager extends Component {
             </select>
           </div>
         </div>
-        <div class="device-field-group" data-field="emit_interval">
-          <div class="input-group">
-            <div class="input-group-prepend">
-              <div class="input-group-text">Emit interval</div>
+        <div class="device-field-row" id="rfToolsRow" style="display:none">
+          ${frequencyField}
+          <div class="device-field-group" data-field="emit_interval">
+            <div class="input-group">
+              <div class="input-group-prepend">
+                <div class="input-group-text">Emit interval</div>
+              </div>
+              <input type="number" name="emit_interval" class="form-input"
+                     placeholder="0.4" step="any" min="0"
+                     value="${this._escapeAttr(String(emitInterval))}">
             </div>
-            <input type="number" name="emit_interval" class="form-input"
-                   placeholder="0.0" step="any" min="0"
-                   value="${this._escapeAttr(String(emitInterval))}">
           </div>
         </div>
-        ${frequencyField}
+        <div class="device-field-row" id="broadlinkToolsRow" style="display:none">
+          <button type="button" class="btn btn-small btn-outlined" id="findFrequencyBtn"
+                  onclick="deviceManager.findFrequency()">📡 Find frequency</button>
+          <label class="fast-sweep-toggle" id="fastSweepLabel">
+            <input type="checkbox" id="fastSweepCheckbox" name="fast_sweep">
+            <span>Use 'fast sweep'</span>
+          </label>
+        </div>
       </div>
       <input type="hidden" name="id" value="${this._escapeAttr(device.id || '')}">
     `;
@@ -762,8 +779,9 @@ class DeviceManager extends Component {
     const props = command?.props || {};
     
     const id = Utils.generateId();
-    const deleteButton = isExisting ? 
-      `<button type="button" class="command-inline-btn delete" onclick="deviceManager.deleteCommand('${name}')">Delete</button>` : '';
+    const deleteButton = isExisting
+      ? `<button type="button" class="command-inline-btn delete" onclick="deviceManager.deleteCommand('${this._escapeAttr(name)}')">Delete</button>`
+      : `<button type="button" class="command-inline-btn delete" onclick="this.closest('.command-container').remove()">Delete</button>`;
 
     let codeField = '';
     if (type === 'button') {
@@ -894,6 +912,11 @@ class DeviceManager extends Component {
       // Initial load should preserve selection for edit mode
       this.onDeviceTypeChange(true);
     }
+
+    const interfaceSelect = deviceForm.querySelector('select[name="interface"]');
+    if (interfaceSelect) {
+      interfaceSelect.addEventListener('change', () => this._updateBroadlinkToolsVisibility());
+    }
   }
 
   async onDeviceTypeChange(preserveSelection = false) {
@@ -958,45 +981,72 @@ class DeviceManager extends Component {
       }
     } catch (error) {
       console.error('Failed to load interfaces:', error);
-      
+
       // Clear loading state
       interfaceSelect.disabled = false;
-      
+
       interfaceSelect.innerHTML = '<option value="">⚠️ Error loading interfaces</option>';
       Notification.error('Failed to load interfaces');
     }
 
     this._updateFrequencyField(deviceType);
+    // Update broadlink tools after interfaces are loaded (selected option now has data)
+    this._updateBroadlinkToolsVisibility();
   }
 
   _updateFrequencyField(deviceType) {
-    const hasLearnedCommands = Object.values(this.tempCommands).some(cmd =>
-      cmd.values && Object.values(cmd.values).some(v => v && String(v).length > 0)
-    );
-    const showFrequency = deviceType === 'rf' && hasLearnedCommands;
-    let freqField = document.getElementById('frequencyField');
+    const freqField = document.getElementById('frequencyField');
+    const rfToolsRow = document.getElementById('rfToolsRow');
+    const broadlinkToolsRow = document.getElementById('broadlinkToolsRow');
 
-    if (showFrequency) {
-      if (!freqField) {
-        const emitIntervalGroup = document.querySelector('.device-field-group[data-field="emit_interval"]');
-        if (emitIntervalGroup) {
-          const freq = this.currentDevice?.frequency || '';
-          const freqHtml = `
-            <div class="device-field-group" id="frequencyField" data-field="frequency">
-              <div class="input-group">
-                <div class="input-group-prepend">
-                  <div class="input-group-text">Frequency</div>
-                </div>
-                <input type="number" name="frequency" class="form-input" step="any"
-                       value="${this._escapeAttr(String(freq))}" disabled>
-              </div>
-            </div>
-          `;
-          emitIntervalGroup.insertAdjacentHTML('afterend', freqHtml);
-        }
+    if (rfToolsRow) {
+      rfToolsRow.style.display = (deviceType === 'rf' || deviceType === 'ir') ? '' : 'none';
+    }
+
+    // Show frequency field if value exists or device is RF
+    const freq = this.currentDevice?.frequency || this._detectedFrequency || '';
+    if (freqField) {
+      const show = freq !== '' && freq != null;
+      freqField.style.display = show ? '' : 'none';
+      if (show) {
+        const freqInput = freqField.querySelector('input[name="frequency"]');
+        if (freqInput) freqInput.value = freq;
       }
-    } else if (freqField) {
-      freqField.remove();
+    }
+
+    // Show broadlink tools only when interface is broadlink
+    this._updateBroadlinkToolsVisibility();
+  }
+
+  _updateBroadlinkToolsVisibility() {
+    const broadlinkToolsRow = document.getElementById('broadlinkToolsRow');
+    if (!broadlinkToolsRow) return;
+
+    const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
+    const typeSelect = Utils.$('#deviceForm select[name="type"]');
+    const deviceType = typeSelect ? typeSelect.value : '';
+
+    let isBroadlink = false;
+    if (interfaceSelect) {
+      const selectedOpt = interfaceSelect.options[interfaceSelect.selectedIndex];
+      if (selectedOpt && selectedOpt.dataset.interface) {
+        try {
+          const ifaceObj = JSON.parse(selectedOpt.dataset.interface.replace(/&quot;/g, '"'));
+          isBroadlink = (ifaceObj.manufacturer || '').toLowerCase().includes('broadlink');
+        } catch (_) {}
+      }
+    }
+
+    const show = isBroadlink && (deviceType === 'rf');
+    broadlinkToolsRow.style.display = show ? '' : 'none';
+
+    // Auto-check fast sweep when frequency is available
+    const fastSweepCb = document.getElementById('fastSweepCheckbox');
+    if (fastSweepCb) {
+      const hasFreq = !!(this.currentDevice?.frequency || this._detectedFrequency);
+      if (hasFreq) {
+        fastSweepCb.checked = true;
+      }
     }
   }
 
@@ -1009,11 +1059,27 @@ class DeviceManager extends Component {
     const deviceData = Object.fromEntries(formData.entries());
     deviceData.commands = this.tempCommands;
 
-    // Convert emit_interval to number if present
+    // Convert emit_interval to number if present and validate positive
     if (deviceData.emit_interval !== undefined && deviceData.emit_interval !== '') {
-      deviceData.emit_interval = parseFloat(deviceData.emit_interval);
+      const parsed = parseFloat(deviceData.emit_interval);
+      if (isNaN(parsed) || parsed < 0) {
+        Notification.error('Emit interval must be a positive number');
+        return;
+      }
+      deviceData.emit_interval = parsed;
     } else {
       delete deviceData.emit_interval;
+    }
+
+    // Remove transient fields that shouldn't be persisted
+    delete deviceData.fast_sweep;
+
+    // Read frequency from disabled field (FormData skips disabled inputs)
+    const freqInput = e.target.querySelector('input[name="frequency"]');
+    if (freqInput && freqInput.value !== '') {
+      deviceData.frequency = parseFloat(freqInput.value);
+    } else if (this._detectedFrequency != null) {
+      deviceData.frequency = this._detectedFrequency;
     }
 
     // Add emitter information based on device type and interface
@@ -1064,19 +1130,21 @@ class DeviceManager extends Component {
 
   saveAllInlineCommands() {
     const commandContainers = document.querySelectorAll('#commandsList .command-container');
-    
     commandContainers.forEach(container => {
-      const saveButton = container.querySelector('.command-inline-btn.save');
-      if (saveButton) {
-        this.saveInlineCommandSilent(saveButton);
-      }
+      this._saveContainerSilent(container);
     });
   }
 
   saveInlineCommandSilent(button) {
     const container = button.closest('.command-container');
+    this._saveContainerSilent(container);
+  }
+
+  _saveContainerSilent(container) {
+    if (!container) return;
     const form = container.querySelector('.command-inline-form');
-    
+    if (!form) return;
+
     const typeSelect = form.querySelector('.command-inline-select');
     const nameInput = form.querySelector('.command-inline-input.name');
     const originalNameInput = form.querySelector('.original-command-name');
@@ -1460,11 +1528,12 @@ class DeviceManager extends Component {
     }
     this.currentDevice = null;
     this.tempCommands = {};
+    this._detectedFrequency = null;
   }
 
   handleCommandResult(result) {
     const { deviceId, commandName, success, error } = result;
-    
+
     if (success) {
       const device = DataManager.getDevice(deviceId);
       if (device) {
@@ -1472,6 +1541,29 @@ class DeviceManager extends Component {
       }
     } else {
       console.error(`Command ${commandName} failed:`, error);
+    }
+  }
+
+  startLongPress(deviceId, commandName) {
+    // Always fire once immediately
+    this.executeCommand(deviceId, commandName);
+
+    const device = DataManager.getDevice(deviceId);
+    const interval = parseFloat(device?.emit_interval);
+
+    // If interval is 0 or not set, don't repeat
+    if (!interval || interval <= 0) return;
+
+    const ms = Math.max(interval * 1000, 100);
+    this._longPressTimer = setInterval(() => {
+      this.executeCommand(deviceId, commandName);
+    }, ms);
+  }
+
+  stopLongPress() {
+    if (this._longPressTimer) {
+      clearInterval(this._longPressTimer);
+      this._longPressTimer = null;
     }
   }
 
@@ -1571,14 +1663,27 @@ class DeviceManager extends Component {
 
     let sessionId = null;
     let learningToast = null;
+    const isRF = deviceInfo.type === 'rf';
+
+    // Check fast sweep flag
+    const fastSweepCb = document.getElementById('fastSweepCheckbox');
+    const fastSweep = isRF && fastSweepCb && fastSweepCb.checked;
+    const freqInput = document.querySelector('#frequencyField input[name="frequency"]');
+    const knownFrequency = freqInput ? parseFloat(freqInput.value) : null;
 
     try {
       // Step 1: Prepare for learning
       Notification.info(`Preparing ${deviceInfo.type.toUpperCase()} device for learning...`);
-      
+
+      const emitterData = { ...interfaceObject };
+      if (fastSweep && knownFrequency) {
+        emitterData.frequency = knownFrequency;
+      }
+
       const prepareResult = await CommandManager.learnCommand(
         deviceInfo.type,
-        interfaceObject  // Send the complete interface object as emitter
+        emitterData,
+        fastSweep,
       );
 
       if (prepareResult.status !== 'prepared') {
@@ -1587,19 +1692,23 @@ class DeviceManager extends Component {
 
       sessionId = prepareResult.session_id;
 
-      // Step 2: Device is ready, show permanent toast and start polling
+      // Step 2: Show phase-appropriate toast
       if (originalButton) {
-        originalButton.textContent = '📡 Ready to Learn';
+        originalButton.textContent = '📡 Learning...';
       }
 
-      // Show permanent toast asking user to press remote button
-      learningToast = Notification.permanent('Press a button on the remote control');
+      if (isRF && !fastSweep) {
+        learningToast = Notification.permanent('Hold a button on the remote to identify the frequency');
+      } else {
+        learningToast = Notification.permanent('Press a button on the remote control');
+      }
 
       // Step 3: Poll for learned command
-      const timeout = 30000; // 30 seconds
-      const pollInterval = 1000; // 1 second
+      const timeout = 90000; // 90s for RF (2 phases), 30s effectively for IR
+      const pollInterval = 1000;
       let elapsed = 0;
       let commandLearned = false;
+      let currentPhase = isRF ? 'sweeping' : 'capturing';
 
       while (elapsed < timeout && !commandLearned) {
         await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -1607,26 +1716,37 @@ class DeviceManager extends Component {
 
         try {
           const checkResult = await CommandManager.checkLearnedCommand(sessionId, deviceInfo.type);
-          
+
+          // Handle phase transitions for RF
+          if (checkResult.phase && checkResult.phase !== currentPhase) {
+            currentPhase = checkResult.phase;
+            if (currentPhase === 'capturing') {
+              if (learningToast) { learningToast.close(); learningToast = null; }
+              learningToast = Notification.permanent('Frequency detected! Release the button, then press the desired button briefly...');
+              // Give user time to release and press the correct button
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              if (learningToast) { learningToast.close(); learningToast = null; }
+              learningToast = Notification.permanent('Press a button on the remote control');
+            }
+          }
+
           if (checkResult.status === 'success') {
             if (checkResult.learning_status === 'completed' && checkResult.command_data) {
-              // Command learned successfully!
               const commandCode = checkResult.command_data;
               codeInput.value = commandCode;
-              
-              // Close permanent toast and show success
-              if (learningToast) {
-                learningToast.close();
-                learningToast = null;
+
+              if (learningToast) { learningToast.close(); learningToast = null; }
+
+              Notification.success('Command learned successfully!');
+
+              if (isRF && checkResult.detected_frequency != null) {
+                this._setDetectedFrequency(checkResult.detected_frequency);
               }
-              
-              Notification.success(`Command "${commandName}" learned successfully!`);
-              Notification.info(`Code: ${commandCode.substring(0, 20)}...`);
+
               commandLearned = true;
-              break; // Exit the polling loop immediately
-              
+              break;
+
             } else if (checkResult.learning_status === 'learning') {
-              // Still learning, continue polling
               continue;
             } else if (checkResult.learning_status === 'error') {
               throw new Error(checkResult.message || 'Learning failed');
@@ -1636,49 +1756,123 @@ class DeviceManager extends Component {
           } else if (checkResult.status === 'error') {
             throw new Error(checkResult.message || 'Learning failed');
           }
-          
+
         } catch (pollError) {
           console.error('Polling error:', pollError);
-          // Only continue polling for expected errors (like storage full)
           const errorMessage = pollError.message || '';
-          if (errorMessage.includes('session not found') || 
+          if (errorMessage.includes('session not found') ||
               errorMessage.includes('timed out') ||
               errorMessage.includes('Learning failed') ||
               errorMessage.includes('Learning session timed out')) {
             throw pollError;
           }
-          // For other errors (like storage full), continue polling silently
         }
       }
 
-      // If we exit the loop without learning a command, it's a timeout
       if (!commandLearned) {
-        throw new Error('Learning timed out - no button press detected within 30 seconds');
+        throw new Error('Learning timed out - no button press detected within timeout');
       }
 
     } catch (error) {
       console.error('Learn command error:', error);
-      
-      // Close permanent toast if it exists
-      if (learningToast) {
-        learningToast.close();
-        learningToast = null;
-      }
-      
-      // Show error toast
+      if (learningToast) { learningToast.close(); learningToast = null; }
       Notification.error(`Failed to learn command: ${error.message}`);
-      
+
     } finally {
-      // Restore button
       if (originalButton) {
         originalButton.disabled = false;
         originalButton.textContent = 'Learn';
       }
-      
-      // Clean up any remaining toast
-      if (learningToast) {
-        learningToast.close();
+      if (learningToast) { learningToast.close(); }
+    }
+  }
+
+  _setDetectedFrequency(frequency) {
+    this._detectedFrequency = frequency;
+
+    const freqField = document.getElementById('frequencyField');
+    if (freqField) {
+      freqField.style.display = '';
+      const freqInput = freqField.querySelector('input[name="frequency"]');
+      if (freqInput) freqInput.value = frequency;
+    }
+
+    // Auto-check fast sweep
+    const fastSweepCb = document.getElementById('fastSweepCheckbox');
+    if (fastSweepCb) {
+      fastSweepCb.checked = true;
+    }
+  }
+
+  async findFrequency() {
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo || !deviceInfo.interface) {
+      Notification.error('Please select an interface first');
+      return;
+    }
+
+    const findBtn = document.getElementById('findFrequencyBtn');
+    if (findBtn) {
+      findBtn.disabled = true;
+      findBtn.textContent = '📡 Sweeping...';
+    }
+
+    let learningToast = null;
+
+    try {
+      const token = DataManager.getHomeAssistantToken();
+      const response = await Utils.api.post('/api/services/whispeer/find_frequency', {
+        emitter: deviceInfo.interface
+      }, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+
+      if (response.status !== 'success') {
+        throw new Error(response.message || 'Failed to start frequency sweep');
       }
+
+      const sessionId = response.session_id;
+      learningToast = Notification.permanent('Hold a button on the remote to identify the frequency...');
+
+      const timeout = 45000;
+      const pollInterval = 1000;
+      let elapsed = 0;
+      let found = false;
+
+      while (elapsed < timeout && !found) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        elapsed += pollInterval;
+
+        const checkResult = await CommandManager.checkLearnedCommand(sessionId, 'rf');
+
+        if (checkResult.status === 'success' && checkResult.learning_status === 'completed') {
+          if (checkResult.detected_frequency != null) {
+            this._setDetectedFrequency(checkResult.detected_frequency);
+            if (learningToast) { learningToast.close(); learningToast = null; }
+            Notification.success(`Frequency detected: ${checkResult.detected_frequency} MHz`);
+            found = true;
+          } else {
+            throw new Error('Sweep completed but no frequency detected');
+          }
+        } else if (checkResult.learning_status === 'error' || checkResult.learning_status === 'timeout') {
+          throw new Error(checkResult.message || 'Frequency sweep failed');
+        }
+      }
+
+      if (!found) {
+        throw new Error('Frequency sweep timed out');
+      }
+
+    } catch (error) {
+      console.error('Find frequency error:', error);
+      if (learningToast) { learningToast.close(); learningToast = null; }
+      Notification.error(`Failed to find frequency: ${error.message}`);
+    } finally {
+      if (findBtn) {
+        findBtn.disabled = false;
+        findBtn.textContent = '📡 Find frequency';
+      }
+      if (learningToast) { learningToast.close(); }
     }
   }
 

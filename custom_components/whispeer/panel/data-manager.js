@@ -418,15 +418,19 @@ class CommandManager {
     `;
   }
 
-  static async learnCommand(deviceType, emitterData) {
+  static async learnCommand(deviceType, emitterData, fastSweep = false) {
     try {
       const token = DataManager.getHomeAssistantToken();
       const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
       // First, prepare the device for learning
-      const prepareResponse = await Utils.api.post('/api/services/whispeer/prepare_to_learn', {
+      const payload = {
         device_type: deviceType,
         emitter: emitterData
-      }, {
+      };
+      if (fastSweep) {
+        payload.fast_sweep = true;
+      }
+      const prepareResponse = await Utils.api.post('/api/services/whispeer/prepare_to_learn', payload, {
         headers: authHeaders
       });
       
