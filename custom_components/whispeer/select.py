@@ -135,4 +135,11 @@ class WhispeerSelect(WhispeerBaseEntity, SelectEntity):
             await self._async_send_code(code)
         self._attr_current_option = option
         self.async_write_ha_state()
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": self._command_name,
+            "state": option,
+            "type": "select",
+        })
 

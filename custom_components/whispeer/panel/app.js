@@ -143,20 +143,33 @@ class WhispeerApp {
       this.handleError(e.detail);
     });
 
-    // Bidirectional state sync: reflect toggle/light state changes triggered
-    // from HA Lovelace cards or automations.
+    // Bidirectional state sync: reflect state changes triggered
+    // from HA Lovelace cards or automations back to our panel.
     WSManager.onReady(() => {
       WSManager.subscribe('whispeer_state_update', (event) => {
-        const { device_id, command_name, state } = event.data || {};
-        if (!device_id || !command_name || !state) return;
-        const wrapper = document.querySelector(
-          `[data-entity="${device_id}:${command_name}"]`
-        );
-        if (wrapper) {
-          const toggle = wrapper.querySelector('.command-toggle');
-          if (toggle) {
-            toggle.classList.toggle('on', state === 'on');
-            toggle.classList.toggle('off', state !== 'on');
+        const { device_id, command_name, state, type } = event.data || {};
+        if (!device_id || !command_name || state === undefined) return;
+
+        const isToggle = state === 'on' || state === 'off'
+          || type === 'switch' || type === 'light';
+
+        if (isToggle) {
+          const wrapper = document.querySelector(
+            `[data-entity="${device_id}:${command_name}"]`
+          );
+          if (wrapper) {
+            const toggle = wrapper.querySelector('.command-toggle');
+            if (toggle) {
+              toggle.classList.toggle('on', state === 'on');
+              toggle.classList.toggle('off', state !== 'on');
+            }
+          }
+        } else {
+          // select / number / options: highlight the active button.
+          if (window.deviceManager) {
+            window.deviceManager.updateGroupCommandState(
+              String(device_id), command_name, state
+            );
           }
         }
       });

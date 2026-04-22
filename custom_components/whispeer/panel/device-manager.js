@@ -130,6 +130,37 @@ class DeviceManager extends Component {
     }
 
     this._renderStoredCodesIntoSection(this.storedCodes);
+
+    // Sync toggle states from HA (source of truth) after DOM is ready.
+    this._syncEntityStates();
+  }
+
+  async _syncEntityStates() {
+    try {
+      const result = await WSManager.call('whispeer/get_entity_states');
+      const states = result?.states || {};
+      for (const [key, state] of Object.entries(states)) {
+        // Toggles (switch / light) have a [data-entity] wrapper.
+        const wrapper = document.querySelector(`[data-entity="${key}"]`);
+        if (wrapper) {
+          const toggle = wrapper.querySelector('.command-toggle');
+          if (toggle) {
+            toggle.classList.toggle('on', state === 'on');
+            toggle.classList.toggle('off', state !== 'on');
+            continue;
+          }
+        }
+
+        // Options / select / numeric: highlight the active button.
+        const colonIdx = key.indexOf(':');
+        if (colonIdx === -1) continue;
+        const deviceId = key.substring(0, colonIdx);
+        const commandName = key.substring(colonIdx + 1);
+        this.updateGroupCommandState(deviceId, commandName, state);
+      }
+    } catch (e) {
+      console.warn('[DeviceManager] Failed to sync entity states:', e);
+    }
   }
 
   renderDeviceCard(device) {
@@ -453,11 +484,7 @@ class DeviceManager extends Component {
       }
 
       await DataManager.sendCommand(deviceId, device.type, cmd, commandCode, subCmd);
-      
-      if (command.type === 'numeric' || command.type === 'options' || command.type === 'group') {
-        this.updateGroupCommandState(deviceId, cmd, subCmd);
-      }
-      
+
       Notification.success(`Command "${commandName}" executed successfully`);
       Utils.events.emit('commandExecuted', { deviceId, commandName, success: true });
     } catch (error) {
@@ -488,7 +515,6 @@ class DeviceManager extends Component {
       }
 
       await DataManager.sendCommand(deviceId, device.type, commandName, commandCode, subCommand);
-      toggleElement.classList.toggle('on');
       Notification.success(`${commandName} turned ${currentState}`);
     } catch (error) {
       Notification.error(`Failed to toggle ${commandName}: ${error.message}`);

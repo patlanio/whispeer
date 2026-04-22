@@ -162,6 +162,83 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         connection: websocket_api.ActiveConnection,
         msg: dict,
     ) -> None:
+        sub_command = msg.get("sub_command")
+
+        # Route on/off sub-commands through the HA entity service so that:
+        # 1. HA entity state is updated and visible in dashboards / automations.
+        # 2. The entity fires whispeer_state_update which syncs the panel toggle.
+        if sub_command in ("on", "off"):
+            uid = f"whispeer_{msg['device_id']}_{msg['command_name']}"
+            entity_reg = er.async_get(hass)
+            target_entity_id = None
+            target_domain = None
+            for reg_entry in entity_reg.entities.values():
+                if reg_entry.platform == DOMAIN and reg_entry.unique_id == uid:
+                    target_entity_id = reg_entry.entity_id
+                    target_domain = reg_entry.domain
+                    break
+
+            if target_entity_id and target_domain in ("switch", "light"):
+                service = "turn_on" if sub_command == "on" else "turn_off"
+                try:
+                    await hass.services.async_call(
+                        target_domain,
+                        service,
+                        {"entity_id": target_entity_id},
+                        blocking=True,
+                    )
+                    connection.send_result(msg["id"], {"status": "success"})
+                    return
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "Failed to call %s.%s for %s, falling back to direct send: %s",
+                        target_domain, service, target_entity_id, exc,
+                    )
+
+        # Route select/number option selections through the HA entity service.
+        elif sub_command is not None:
+            uid = f"whispeer_{msg['device_id']}_{msg['command_name']}"
+            entity_reg = er.async_get(hass)
+            target_entity_id = None
+            target_domain = None
+            for reg_entry in entity_reg.entities.values():
+                if reg_entry.platform == DOMAIN and reg_entry.unique_id == uid:
+                    target_entity_id = reg_entry.entity_id
+                    target_domain = reg_entry.domain
+                    break
+
+            if target_entity_id and target_domain == "select":
+                try:
+                    await hass.services.async_call(
+                        "select",
+                        "select_option",
+                        {"entity_id": target_entity_id, "option": sub_command},
+                        blocking=True,
+                    )
+                    connection.send_result(msg["id"], {"status": "success"})
+                    return
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "Failed to call select.select_option for %s, falling back: %s",
+                        target_entity_id, exc,
+                    )
+            elif target_entity_id and target_domain == "number":
+                try:
+                    native_value = float(sub_command)
+                    await hass.services.async_call(
+                        "number",
+                        "set_value",
+                        {"entity_id": target_entity_id, "value": native_value},
+                        blocking=True,
+                    )
+                    connection.send_result(msg["id"], {"status": "success"})
+                    return
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "Failed to call number.set_value for %s, falling back: %s",
+                        target_entity_id, exc,
+                    )
+
         api = _get_api(hass)
         if not api:
             connection.send_error(msg["id"], "not_found", "Whispeer not initialized")
@@ -422,6 +499,48 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
             session_id = result.get("session_id")
             hass.async_create_task(_watch_frequency_session(hass, session_id))
 
+    @websocket_api.websocket_command({
+        vol.Required("type"): "whispeer/get_entity_states",
+    })
+    @websocket_api.async_response
+    async def ws_get_entity_states(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        """Return current HA state for all whispeer switch/light/select/number entities.
+
+        Response: {"states": {"<device_id>:<command_name>": "<state>", ...}}
+        """
+        entity_reg = er.async_get(hass)
+        states: dict[str, str] = {}
+        for reg_entry in entity_reg.entities.values():
+            if reg_entry.platform != DOMAIN:
+                continue
+            if reg_entry.domain not in ("switch", "light", "select", "number"):
+                continue
+            uid = reg_entry.unique_id or ""
+            if not uid.startswith("whispeer_"):
+                continue
+            rest = uid[len("whispeer_"):]
+            try:
+                sep = rest.index("_")
+            except ValueError:
+                continue
+            device_id = rest[:sep]
+            command_name = rest[sep + 1:]
+            state_obj = hass.states.get(reg_entry.entity_id)
+            if state_obj is None:
+                continue
+            raw = state_obj.state
+            if reg_entry.domain == "number":
+                try:
+                    raw = str(int(float(raw)))
+                except (ValueError, TypeError):
+                    pass
+            states[f"{device_id}:{command_name}"] = raw
+        connection.send_result(msg["id"], {"states": states})
+
     for _handler in [
         ws_get_devices,
         ws_add_device,
@@ -437,6 +556,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         ws_ble_emit,
         ws_prepare_to_learn,
         ws_find_frequency,
+        ws_get_entity_states,
     ]:
         websocket_api.async_register_command(hass, _handler)
 
