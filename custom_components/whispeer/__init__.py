@@ -119,7 +119,7 @@ class WhispeerPanelView(HomeAssistantView):
                     // Try from localStorage
                     const storedToken = localStorage.getItem('ha_access_token');
                     if (storedToken && storedToken !== 'undefined' && storedToken !== '' && storedToken !== 'null') {{
-                        console.log('Using stored token from localStorage');
+                        // console.log('Using stored token from localStorage');
                         return storedToken;
                     }}
                     

@@ -1609,6 +1609,7 @@ class DeviceManager extends Component {
   }
 
   async learnCommand(buttonElement) {
+    console.log(`[${new Date().toISOString()}] [Learn] "Learn" button clicked`);
     const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo) {
       Notification.error('Please save the device first');
@@ -1627,6 +1628,7 @@ class DeviceManager extends Component {
   }
 
   async learnOptionCommand(buttonElement, optionKey = null) {
+    console.log(`[${new Date().toISOString()}] [Learn] "Learn" button clicked (option)`);
     const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo) {
       Notification.error('Please save the device first');
@@ -1675,7 +1677,7 @@ class DeviceManager extends Component {
     const originalButton = codeInput.parentElement?.querySelector('.command-inline-btn.learn');
     if (originalButton) {
       originalButton.disabled = true;
-      originalButton.textContent = '⏳ Preparing...';
+      originalButton.textContent = 'Preparing';
     }
 
     let sessionId = null;
@@ -1708,10 +1710,6 @@ class DeviceManager extends Component {
       }
 
       sessionId = prepareResult.session_id;
-
-      if (originalButton) {
-        originalButton.textContent = '📡 Learning...';
-      }
 
       // Step 2 + 3: Poll loop.
       // First poll silently while showing "Preparing..." — only switch to "Press a button"
@@ -1746,12 +1744,14 @@ class DeviceManager extends Component {
               await new Promise(resolve => setTimeout(resolve, 3000));
               if (learningToast) { learningToast.close(); learningToast = null; }
               deviceReady = true;
+              if (originalButton) originalButton.textContent = 'Learning';
               learningToast = Notification.permanent('Press a button on the remote control');
             }
           }
 
           if (checkResult.status === 'success') {
             if (checkResult.learning_status === 'completed' && checkResult.command_data) {
+              console.log(`[${new Date().toISOString()}] [Learn] Command learned successfully, data length=${checkResult.command_data.length}`);
               codeInput.value = checkResult.command_data;
 
               if (learningToast) { learningToast.close(); learningToast = null; }
@@ -1765,10 +1765,10 @@ class DeviceManager extends Component {
               break;
 
             } else if (checkResult.learning_status === 'learning') {
-              // First 'learning' response means the device is actively listening — prompt now
               if (!deviceReady) {
                 deviceReady = true;
                 if (learningToast) { learningToast.close(); learningToast = null; }
+                if (originalButton) originalButton.textContent = 'Learning';
                 if (isRF && !fastSweep) {
                   learningToast = Notification.permanent('Hold a button on the remote to identify the frequency');
                 } else {

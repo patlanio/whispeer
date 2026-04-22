@@ -420,9 +420,12 @@ class WhispeerApiClient:
         session = LearnSession(session_id, device_type, entity_id)
         LEARNING_SESSIONS[session_id] = session
 
-        session.update_status("learning")
-
+        # Do NOT mark as "learning" here — background tasks set it only after
+        # the hardware command (enter_learning / find_rf_packet) actually returns,
+        # so the frontend only prompts the user when the device is truly ready.
         if fast_sweep and device_type.lower() == "rf" and frequency:
+            # Keep phase = "capturing" so the frontend currentPhase stays aligned,
+            # but status remains "preparing" until find_rf_packet() completes.
             session.phase = "capturing"
             session.detected_frequency = frequency
             asyncio.ensure_future(self._background_fast_rf_learn(session, frequency))
@@ -437,42 +440,81 @@ class WhispeerApiClient:
         )
 
     async def _background_learn(self, session: LearnSession) -> None:
-        """Background coroutine that performs the actual learning."""
+        """Background coroutine: direct Broadlink calls so we set learning/phase
+        only after the hardware command has been acknowledged by the device."""
         is_rf = session.command_type.lower() == "rf"
-        per_phase_timeout = 45 if is_rf else 30
-        phase_task = None
         try:
             _LOGGER.info(
                 "Starting background learn for session %s on %s (%s)",
                 session.session_id, session.hub_entity_id, session.command_type,
             )
-            if is_rf:
-                phase_task = asyncio.ensure_future(self._rf_phase_timer(session))
 
-            code = await self._hass_client.async_learn_command(
-                entity_id=session.hub_entity_id,
-                command="default_command",
-                command_type=session.command_type,
-                timeout=per_phase_timeout,
-            )
+            ip_address, mac_address = await self._resolve_broadlink_connection(session)
+            if not ip_address:
+                return
 
-            if is_rf and code:
-                freq = await self._hass_client._async_read_stored_frequency(
-                    session.hub_entity_id, "default_device", "default_command"
-                )
-                session.detected_frequency = freq
+            def _do_learn():
+                import time as _time
+                device = _broadlink_connect(ip_address, mac_address)
+                if not device:
+                    session.update_status("error", error_message="Failed to connect to Broadlink device")
+                    return None
+
+                if is_rf:
+                    # Phase 1: sweep to identify frequency.
+                    device.sweep_frequency()
+                    # Hardware is sweeping — signal frontend to prompt user to hold button.
+                    session.update_status("learning")
+                    # session.phase is already "sweeping" from LearnSession.__init__
+
+                    freq = None
+                    for _ in range(60):
+                        _time.sleep(1)
+                        try:
+                            found, detected_freq = device.check_frequency()
+                            if found:
+                                freq = detected_freq
+                                break
+                        except Exception:
+                            continue
+
+                    if freq is None:
+                        session.update_status("timeout", error_message="No frequency detected within timeout")
+                        return None
+
+                    session.detected_frequency = freq
+
+                    # Phase 2: enter RF capture mode with known frequency.
+                    # find_rf_packet() is synchronous — device is ready when it returns.
+                    device.find_rf_packet(freq)
+                    session.phase = "capturing"
+                else:
+                    # IR: enter_learning() is synchronous — device LED blinks when it returns.
+                    device.enter_learning()
+                    session.update_status("learning")
+                    session.phase = "capturing"
+
+                # Poll for the captured command (up to 90 s).
+                for _ in range(90):
+                    _time.sleep(1)
+                    try:
+                        packet = device.check_data()
+                        if packet:
+                            return packet.hex()
+                    except Exception:
+                        continue
+                return None
+
+            code = await self._hass.async_add_executor_job(_do_learn)
 
             if code:
                 session.phase = "completed"
                 session.update_status("completed", command_data=code)
-            else:
+            elif session.status not in ("error", "timeout"):
                 session.update_status("timeout", error_message="No code received within timeout")
         except Exception as exc:
             _LOGGER.exception("Background learn failed for session %s", session.session_id)
             session.update_status("error", error_message=str(exc))
-        finally:
-            if phase_task and not phase_task.done():
-                phase_task.cancel()
 
     async def _resolve_broadlink_connection(self, session: "LearnSession") -> tuple[str | None, str | None]:
         """Resolve (ip_address, mac_address) for the Broadlink hub backing *session*.
@@ -546,7 +588,10 @@ class WhispeerApiClient:
                 device = _broadlink_connect(ip_address, mac_address)
                 if not device:
                     return None
+                # find_rf_packet() is synchronous — device is in capture mode when it returns.
                 device.find_rf_packet(frequency)
+                session.update_status("learning")
+                # session.phase is already "capturing" (set in async_prepare_to_learn)
                 for _ in range(30):
                     time.sleep(1)
                     try:
@@ -670,11 +715,12 @@ class WhispeerApiClient:
                 learning_status="timeout",
             )
 
-        # Still in progress — return current phase
+        # Still in progress — return actual status so the frontend can distinguish
+        # "hardware being set up" (preparing) from "hardware ready" (learning).
         return _ok(
             "Learning in progress",
             session_id=session_id,
-            learning_status="learning",
+            learning_status=session.status,
             phase=session.phase,
             device_type=session.command_type,
         )

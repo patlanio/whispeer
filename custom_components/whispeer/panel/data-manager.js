@@ -470,7 +470,7 @@ class CommandManager {
       }, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
-      
+      console.log(`[${new Date().toISOString()}] [check_learned_command] response=`, JSON.stringify(response));
       return response;
     } catch (error) {
       console.error('Failed to check learned command:', error);
