@@ -1,14 +1,5 @@
 const APP_CONFIG = {
   API_BASE: '',
-  ENDPOINTS: {
-    DEVICES: '/api/whispeer/devices',
-    SEND_COMMAND: '/api/services/whispeer/send_command',
-    SYNC_DEVICES: '/api/services/whispeer/sync_devices',
-    REMOVE_DEVICE: '/api/services/whispeer/remove_device',
-    INTERFACES: '/api/services/whispeer/get_interfaces',
-    BLE_SCAN: '/api/whispeer/ble/scan',
-    BLE_EMIT: '/api/whispeer/ble/emit'
-  },
   STORAGE_KEYS: {
     DEVICES: 'whispeer_devices',
     SETTINGS: 'whispeer_settings'
@@ -69,23 +60,16 @@ class DataManager {
 
   static async loadDevices() {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      console.log('[Whispeer] Loading devices from backend...', { tokenPresent: !!token });
-      const response = await Utils.api.get(APP_CONFIG.ENDPOINTS.DEVICES, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      console.log('[Whispeer] Devices GET response:', response);
-      const list = (response && response.devices) ? response.devices : [];
-      // Normalize to id -> device map
+      const result = await WSManager.call('whispeer/get_devices');
+      const list = result?.devices || [];
       DataManager.devices = {};
       list.forEach(d => {
         const id = String(d.id);
         DataManager.devices[id] = { ...d, id };
       });
-      console.log('[Whispeer] Devices normalized:', DataManager.devices);
       return DataManager.devices;
     } catch (error) {
-      console.error('Failed to load devices from backend:', error);
+      console.error('[DataManager] Failed to load devices:', error);
       DataManager.devices = {};
       return DataManager.devices;
     }
@@ -97,21 +81,17 @@ class DataManager {
 
   static async addDevice(device) {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.DEVICES, device, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      if (response && response.status === 'success') {
-        const id = String(response.id);
+      const result = await WSManager.call('whispeer/add_device', { device });
+      if (result?.status === 'success') {
+        const id = String(result.id);
         DataManager.devices[id] = { id, ...device };
         await DataManager.syncWithBackend();
-        // Emit event so UI refreshes immediately
         Utils.events.emit('deviceUpdated', { deviceId: id });
         return id;
       }
-      throw new Error(response?.error || 'Failed to add device');
+      throw new Error(result?.message || 'Failed to add device');
     } catch (error) {
-      console.error('Failed to add device:', error);
+      console.error('[DataManager] Failed to add device:', error);
       throw error;
     }
   }
@@ -128,10 +108,7 @@ class DataManager {
 
   static async deleteDevice(id) {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      await Utils.api.post(APP_CONFIG.ENDPOINTS.REMOVE_DEVICE, { device_id: id }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
+      await WSManager.call('whispeer/remove_device', { device_id: String(id) });
       if (DataManager.devices[id]) {
         delete DataManager.devices[id];
       }
@@ -139,27 +116,16 @@ class DataManager {
       Utils.events.emit('deviceDeleted', { deviceId: id });
       return true;
     } catch (error) {
-      console.error('Failed to delete device:', error);
+      console.error('[DataManager] Failed to delete device:', error);
       return false;
     }
   }
 
   static async clearDevices() {
-    try {
-      const token = DataManager.getHomeAssistantToken();
-      // Prefer GET with token as query for iframe compatibility
-      const url = token 
-        ? `/api/whispeer/clear_devices?access_token=${encodeURIComponent(token)}`
-        : '/api/whispeer/clear_devices';
-      const response = await Utils.api.get(url);
-      DataManager.devices = {};
-      Utils.events.emit('deviceUpdated', {});
-      return response;
-    } catch (error) {
-      console.error('Failed to clear devices:', error);
-      // Do not attempt POST fallback; endpoint supports GET for iframe contexts
-      throw error;
-    }
+    const result = await WSManager.call('whispeer/clear_devices');
+    DataManager.devices = {};
+    Utils.events.emit('deviceUpdated', {});
+    return result;
   }
 
   static getDevice(id) {
@@ -172,17 +138,10 @@ class DataManager {
 
   static async loadAutomations() {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.get('/api/whispeer/automations', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      if (response && response.device_automations) {
-        DataManager.automations = response.device_automations;
-      } else {
-        DataManager.automations = {};
-      }
+      const result = await WSManager.call('whispeer/get_automations');
+      DataManager.automations = result?.device_automations || {};
     } catch (error) {
-      console.error('Failed to load automations:', error);
+      console.error('[DataManager] Failed to load automations:', error);
       DataManager.automations = {};
     }
     return DataManager.automations;
@@ -208,14 +167,9 @@ class DataManager {
 
   static async syncWithBackend() {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      await Utils.api.post(APP_CONFIG.ENDPOINTS.SYNC_DEVICES, {
-        devices: DataManager.devices
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
+      await WSManager.call('whispeer/sync_devices', { devices: DataManager.devices });
     } catch (error) {
-      console.error('Failed to sync with backend:', error);
+      console.error('[DataManager] Failed to sync with backend:', error);
     }
   }
 
@@ -232,74 +186,34 @@ class DataManager {
 
   static async loadInterfaces(deviceType) {
     try {
-      console.log(`Loading interfaces for device type: ${deviceType}`);
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.INTERFACES, {
-        type: deviceType
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      
-      console.log(`Interface response for ${deviceType}:`, response);
-      
-      if (response.status !== 'success') {
-        console.error(`Failed to load interfaces: ${response.message}`);
+      const result = await WSManager.call('whispeer/get_interfaces', { device_type: deviceType });
+      if (result?.status !== 'success') {
+        console.error('[DataManager] Failed to load interfaces:', result?.message);
         return [];
       }
-      
-      const interfaces = response.interfaces || [];
-      
-      // Validar que todos los elementos sean objetos con label
-      const validInterfaces = interfaces.filter(iface => {
-        if (typeof iface !== 'object' || !iface.label) {
-          console.error('Invalid interface format, missing label:', iface);
-          return false;
-        }
-        return true;
-      });
-      
-      console.log(`Loaded ${validInterfaces.length} valid interfaces for ${deviceType}:`, validInterfaces);
-      return validInterfaces;
-      
+      return (result?.interfaces || []).filter(
+        iface => typeof iface === 'object' && iface.label
+      );
     } catch (error) {
-      console.error(`Failed to load interfaces for ${deviceType}:`, error);
+      console.error(`[DataManager] Failed to load interfaces for ${deviceType}:`, error);
       return [];
     }
   }
 
   static async sendCommand(deviceId, deviceType, commandName, commandCode, subCommand = null) {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
       const payload = {
-        device_id: deviceId,
+        device_id: String(deviceId),
         device_type: deviceType,
         command_name: commandName,
-        command_code: commandCode
+        command_code: commandCode,
       };
-
-      if (subCommand) {
-        payload.sub_command = subCommand;
-      }
-
-      // Include emitter data so backend can resolve the hub entity
+      if (subCommand) payload.sub_command = subCommand;
       const device = DataManager.getDevice(deviceId);
-      if (device && device.emitter) {
-        payload.emitter = device.emitter;
-      }
-
-      const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.SEND_COMMAND, payload, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      return response;
+      if (device?.emitter) payload.emitter = device.emitter;
+      return await WSManager.call('whispeer/send_command', payload);
     } catch (error) {
-      console.error('Failed to send command:', error);
+      console.error('[DataManager] Failed to send command:', error);
       throw error;
     }
   }
@@ -426,86 +340,36 @@ class CommandManager {
 
   static async learnCommand(deviceType, emitterData) {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const payload = {
+      const result = await WSManager.call('whispeer/prepare_to_learn', {
         device_type: deviceType,
-        emitter: emitterData
-      };
-      const prepareResponse = await Utils.api.post('/api/services/whispeer/prepare_to_learn', payload, {
-        headers: authHeaders
+        emitter: emitterData,
       });
-      
-      if (prepareResponse.status !== 'success') {
-        throw new Error(prepareResponse.message || 'Failed to prepare device for learning');
+      if (result?.status !== 'success') {
+        throw new Error(result?.message || 'Failed to prepare device for learning');
       }
-      
-      const sessionId = prepareResponse.session_id;
-      console.log(`Learning session started: ${sessionId}`);
-      
-      // Return the session info for the UI to handle
       return {
         status: 'prepared',
-        session_id: sessionId,
+        session_id: result.session_id,
         device_type: deviceType,
-        message: 'Device prepared for learning'
       };
-      
     } catch (error) {
-      console.error('Failed to prepare for learning:', error);
-      throw error;
-    }
-  }
-
-  static async checkLearnedCommand(sessionId, deviceType) {
-    try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post('/api/services/whispeer/check_learned_command', {
-        session_id: sessionId,
-        device_type: deviceType
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      console.log(`[${new Date().toISOString()}] [check_learned_command] response=`, JSON.stringify(response));
-      return response;
-    } catch (error) {
-      console.error('Failed to check learned command:', error);
+      console.error('[CommandManager] Failed to prepare for learning:', error);
       throw error;
     }
   }
 
   static interfacesCache = {};
-  static CACHE_TIMEOUT = 30000; // 30 seconds
+  static CACHE_TIMEOUT = 30000;
 
   static async getInterfaces(deviceType) {
-    try {
-      // Check cache first
-      const cacheKey = deviceType;
-      const cached = this.interfacesCache[cacheKey];
-      
-      if (cached && (Date.now() - cached.timestamp) < this.CACHE_TIMEOUT) {
-        console.log(`Using cached interfaces for ${deviceType}`);
-        return cached.data;
-      }
-      
-      console.log(`Fetching fresh interfaces for ${deviceType}`);
-      const response = await Utils.api.post('/api/services/whispeer/get_interfaces', {
-        type: deviceType
-      });
-      
-      // Cache the response
-      if (response.status === 'success') {
-        this.interfacesCache[cacheKey] = {
-          data: response,
-          timestamp: Date.now()
-        };
-      }
-      
-      return response;
-    } catch (error) {
-      console.error(`Failed to get ${deviceType} interfaces:`, error);
-      throw error;
+    const cached = this.interfacesCache[deviceType];
+    if (cached && (Date.now() - cached.timestamp) < this.CACHE_TIMEOUT) {
+      return cached.data;
     }
+    const interfaces = await DataManager.loadInterfaces(deviceType);
+    const response = { status: 'success', interfaces };
+    this.interfacesCache[deviceType] = { data: response, timestamp: Date.now() };
+    return response;
   }
 
   static getInterfacesList(deviceType) {

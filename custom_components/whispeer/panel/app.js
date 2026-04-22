@@ -8,9 +8,10 @@ class WhispeerApp {
 
   init() {
     this.loadSettings();
+    WSManager.connect();
     this.initializeComponents();
     this.bindGlobalEvents();
-    this.startApplication();
+    WSManager.onReady(() => this.startApplication());
   }
 
   loadSettings() {
@@ -134,13 +135,31 @@ class WhispeerApp {
       }
     });
 
-    // On device updates, just re-render; syncing happens in DataManager
     Utils.events.on('deviceUpdated', () => {
       this.refreshDevices();
     });
 
     Utils.events.on('error', (e) => {
       this.handleError(e.detail);
+    });
+
+    // Bidirectional state sync: reflect toggle/light state changes triggered
+    // from HA Lovelace cards or automations.
+    WSManager.onReady(() => {
+      WSManager.subscribe('whispeer_state_update', (event) => {
+        const { device_id, command_name, state } = event.data || {};
+        if (!device_id || !command_name || !state) return;
+        const wrapper = document.querySelector(
+          `[data-entity="${device_id}:${command_name}"]`
+        );
+        if (wrapper) {
+          const toggle = wrapper.querySelector('.command-toggle');
+          if (toggle) {
+            toggle.classList.toggle('on', state === 'on');
+            toggle.classList.toggle('off', state !== 'on');
+          }
+        }
+      });
     });
   }
 

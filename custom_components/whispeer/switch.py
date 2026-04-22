@@ -115,6 +115,12 @@ class WhispeerSwitch(WhispeerBaseEntity, SwitchEntity):
             await self._async_send_code(code)
         self._attr_is_on = True
         self.async_write_ha_state()
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": self._command_name,
+            "state": "on",
+        })
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Send the OFF code and update state optimistically."""
@@ -123,4 +129,10 @@ class WhispeerSwitch(WhispeerBaseEntity, SwitchEntity):
             await self._async_send_code(code)
         self._attr_is_on = False
         self.async_write_ha_state()
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": self._command_name,
+            "state": "off",
+        })
 

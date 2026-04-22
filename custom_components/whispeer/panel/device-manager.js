@@ -78,7 +78,7 @@ class DeviceManager extends Component {
       `,
 
       commandToggle: `
-        <div class="command-toggle-full-width">
+        <div class="command-toggle-full-width" data-entity="{{deviceId}}:{{commandName}}">
           <span class="command-toggle-label">{{name}}</span>
           <div class="command-toggle {{state}}" 
                onclick="deviceManager.toggleCommand('{{deviceId}}', '{{commandName}}', '{{type}}')">
@@ -162,12 +162,8 @@ class DeviceManager extends Component {
       section.innerHTML = '<div class="stored-codes-loading">Loading stored codes…</div>';
     }
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const url = token
-        ? `/api/whispeer/stored_codes?access_token=${encodeURIComponent(token)}`
-        : '/api/whispeer/stored_codes';
-      const response = await Utils.api.get(url);
-      this.storedCodes = (response && response.codes) ? response.codes : [];
+      const result = await WSManager.call('whispeer/get_stored_codes');
+      this.storedCodes = result?.codes || [];
     } catch (e) {
       console.error('Failed to load stored codes:', e);
       this.storedCodes = [];
@@ -244,20 +240,17 @@ class DeviceManager extends Component {
 
   async executeStoredCommand(identifier, source, device, command, code) {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post('/api/whispeer/send_stored_code', {
+      const result = await WSManager.call('whispeer/send_stored_code', {
         identifier,
         source,
         device,
         command,
-        code
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        code,
       });
-      if (response && response.status === 'success') {
+      if (result?.status === 'success') {
         Notification.success(`Command "${command}" executed successfully`);
       } else {
-        throw new Error(response?.message || 'Command failed');
+        throw new Error(result?.message || 'Command failed');
       }
     } catch (error) {
       Notification.error(`Failed to execute command: ${error.message}`);
@@ -1358,33 +1351,30 @@ class DeviceManager extends Component {
 
     const deviceType = this._getCurrentDeviceType();
 
-    // BLE: send directly to the BLE emit endpoint — no saved device needed
-    if (deviceType === 'ble') {
-      const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
-      const selectedOpt = interfaceSelect?.options[interfaceSelect?.selectedIndex];
-      const ifaceDataStr = selectedOpt?.dataset?.interface;
-      let hciName = null;
-      if (ifaceDataStr) {
+// BLE: send directly via WebSocket
+      if (deviceType === 'ble') {
+        const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
+        const selectedOpt = interfaceSelect?.options[interfaceSelect?.selectedIndex];
+        const ifaceDataStr = selectedOpt?.dataset?.interface;
+        let hciName = null;
+        if (ifaceDataStr) {
+          try {
+            hciName = JSON.parse(ifaceDataStr.replace(/&quot;/g, '"')).hci_name;
+          } catch (_) {}
+        }
+        if (!hciName) {
+          Notification.error('Select a BLE adapter before testing');
+          return;
+        }
         try {
-          hciName = JSON.parse(ifaceDataStr.replace(/&quot;/g, '"')).hci_name;
-        } catch (_) {}
-      }
-      if (!hciName) {
-        Notification.error('Select a BLE adapter before testing');
-        return;
-      }
-      try {
-        const token = DataManager.getHomeAssistantToken();
-        const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.BLE_EMIT, {
-          adapter: hciName,
-          raw_hex: code
-        }, {
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-        });
-        if (response?.status === 'success') {
-          Notification.success(`Test "${name}" sent successfully`);
-        } else {
-          Notification.error(`Test failed: ${response?.message || 'Unknown error'}`);
+          const result = await WSManager.call('whispeer/ble_emit', {
+            adapter: hciName,
+            raw_hex: code,
+          });
+          if (result?.status === 'success') {
+            Notification.success(`Test "${name}" sent successfully`);
+          } else {
+            Notification.error(`Test failed: ${result?.message || 'Unknown error'}`);
         }
       } catch (error) {
         Notification.error(`Test failed: ${error.message}`);
@@ -1644,7 +1634,6 @@ class DeviceManager extends Component {
   }
 
   async performLearnCommand(deviceInfo, commandName, codeInput) {
-    // Interface should already be an object from getCurrentDeviceInfo()
     const interfaceObject = deviceInfo.interface;
 
     if (!interfaceObject || typeof interfaceObject !== 'object') {
@@ -1658,19 +1647,16 @@ class DeviceManager extends Component {
       return;
     }
 
-    // Show learning modal
     const originalButton = codeInput.parentElement?.querySelector('.command-inline-btn.learn');
     if (originalButton) {
       originalButton.disabled = true;
       originalButton.textContent = 'Preparing';
     }
 
-    let sessionId = null;
     let learningToast = null;
     const isRF = deviceInfo.type === 'rf';
     const isBroadlink = (interfaceObject?.manufacturer || '').toLowerCase().includes('broadlink');
 
-    // Pass known frequency so the backend can skip the sweep phase when applicable.
     const emitterData = { ...interfaceObject };
     if (isRF && isBroadlink) {
       const freqInput = document.querySelector('#frequencyField input[name="frequency"]');
@@ -1681,122 +1667,88 @@ class DeviceManager extends Component {
     }
 
     try {
-      // Step 1: Prepare for learning
       Notification.info(`Preparing ${deviceInfo.type.toUpperCase()} device for learning...`);
 
-      const prepareResult = await CommandManager.learnCommand(
-        deviceInfo.type,
-        emitterData,
-      );
-
+      const prepareResult = await CommandManager.learnCommand(deviceInfo.type, emitterData);
       if (prepareResult.status !== 'prepared') {
         throw new Error(prepareResult.message || 'Failed to prepare device for learning');
       }
 
-      sessionId = prepareResult.session_id;
-
-      // Step 2 + 3: Poll loop.
-      // The backend sets learning_status='learning' only after the hardware command
-      // has been acknowledged, so we never show 'Press a button' too early.
-      const timeout = 90000;
-      const pollInterval = 500;
-      let elapsed = 0;
-      let commandLearned = false;
+      const sessionId = prepareResult.session_id;
       let deviceReady = false;
-      // RF+Broadlink starts at sweeping; everything else goes straight to capturing.
       let currentPhase = (isRF && isBroadlink && !emitterData.frequency) ? 'sweeping' : 'capturing';
 
       learningToast = Notification.permanent('⏳ Preparing device, please wait…');
 
-      while (elapsed < timeout && !commandLearned) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        elapsed += pollInterval;
+      await new Promise((resolve, reject) => {
+        const timeoutHandle = setTimeout(() => {
+          unsubscribe();
+          reject(new Error('Learning timed out - no button press detected within timeout'));
+        }, 90000);
 
-        if (this._fastLearnStop) {
-          break;
-        }
+        const unsubscribe = WSManager.subscribe('whispeer_learn_update', (event) => {
+          const data = event.data;
+          if (data.session_id !== sessionId) return;
 
-        try {
-          const checkResult = await CommandManager.checkLearnedCommand(sessionId, deviceInfo.type);
+          const status = data.learning_status;
+          const phase = data.phase;
 
-          // Handle phase transitions for RF
-          if (checkResult.phase && checkResult.phase !== currentPhase) {
-            currentPhase = checkResult.phase;
-            if (currentPhase === 'capturing') {
+          if (phase && phase !== currentPhase) {
+            currentPhase = phase;
+            if (phase === 'capturing') {
               if (learningToast) { learningToast.close(); learningToast = null; }
               learningToast = Notification.permanent('Frequency detected! Release the button, then press the desired button briefly…');
-              await new Promise(resolve => setTimeout(resolve, 3000));
-              if (learningToast) { learningToast.close(); learningToast = null; }
-              deviceReady = true;
-              if (originalButton) originalButton.textContent = 'Learning';
-              learningToast = Notification.permanent('Press a button on the remote control');
-            }
-          }
-
-          if (checkResult.status === 'success') {
-            if (checkResult.learning_status === 'completed' && checkResult.command_data) {
-              console.log(`[${new Date().toISOString()}] [Learn] Command learned successfully, data length=${checkResult.command_data.length}`);
-              codeInput.value = checkResult.command_data;
-
-              if (learningToast) { learningToast.close(); learningToast = null; }
-              Notification.success('Command learned successfully!');
-
-              if (isRF && checkResult.detected_frequency != null) {
-                this._setDetectedFrequency(checkResult.detected_frequency);
-              }
-
-              commandLearned = true;
-              break;
-
-            } else if (checkResult.learning_status === 'learning') {
-              if (!deviceReady) {
-                deviceReady = true;
+              setTimeout(() => {
                 if (learningToast) { learningToast.close(); learningToast = null; }
+                deviceReady = true;
                 if (originalButton) originalButton.textContent = 'Learning';
-                // Use the phase reported by the backend to decide the correct prompt.
-                if (checkResult.phase === 'sweeping') {
-                  learningToast = Notification.permanent('Hold a button on the remote to identify the frequency');
-                } else {
-                  learningToast = Notification.permanent('Press a button on the remote control');
-                }
-              }
-              continue;
-            } else if (checkResult.learning_status === 'error') {
-              throw new Error(checkResult.message || 'Learning failed');
-            } else if (checkResult.learning_status === 'timeout') {
-              throw new Error('Learning session timed out');
+                learningToast = Notification.permanent('Press a button on the remote control');
+              }, 3000);
             }
-          } else if (checkResult.status === 'error') {
-            throw new Error(checkResult.message || 'Learning failed');
           }
 
-        } catch (pollError) {
-          console.error('Polling error:', pollError);
-          const errorMessage = pollError.message || '';
-          if (errorMessage.includes('session not found') ||
-              errorMessage.includes('timed out') ||
-              errorMessage.includes('Learning failed') ||
-              errorMessage.includes('Learning session timed out')) {
-            throw pollError;
+          if (status === 'completed' && data.command_data) {
+            clearTimeout(timeoutHandle);
+            unsubscribe();
+            codeInput.value = data.command_data;
+            if (learningToast) { learningToast.close(); learningToast = null; }
+            Notification.success('Command learned successfully!');
+            if (isRF && data.detected_frequency != null) {
+              this._setDetectedFrequency(data.detected_frequency);
+            }
+            resolve(true);
+          } else if (status === 'learning') {
+            if (!deviceReady && phase !== 'sweeping') {
+              deviceReady = true;
+              if (learningToast) { learningToast.close(); learningToast = null; }
+              if (originalButton) originalButton.textContent = 'Learning';
+              if (currentPhase === 'sweeping') {
+                learningToast = Notification.permanent('Hold a button on the remote to identify the frequency');
+              } else {
+                learningToast = Notification.permanent('Press a button on the remote control');
+              }
+            }
+          } else if (status === 'error' || status === 'timeout') {
+            clearTimeout(timeoutHandle);
+            unsubscribe();
+            reject(new Error(
+              data.message ||
+              (status === 'timeout' ? 'Learning session timed out' : 'Learning failed')
+            ));
           }
-        }
-      }
-
-      if (!commandLearned) {
-        throw new Error('Learning timed out - no button press detected within timeout');
-      }
+        });
+      });
 
     } catch (error) {
       console.error('Learn command error:', error);
       if (learningToast) { learningToast.close(); learningToast = null; }
       Notification.error(`Failed to learn command: ${error.message}`);
-
     } finally {
       if (originalButton) {
         originalButton.disabled = false;
         originalButton.textContent = 'Learn';
       }
-      if (learningToast) { learningToast.close(); }
+      if (learningToast) learningToast.close();
     }
   }
 
@@ -1938,9 +1890,16 @@ class DeviceManager extends Component {
     return codeInput.value.trim() !== '' && codeInput.value.trim() !== originalValue;
   }
 
-  async findFrequency() {    const deviceInfo = this.getCurrentDeviceInfo();
+  async findFrequency() {
+    const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo || !deviceInfo.interface) {
       Notification.error('Please select an interface first');
+      return;
+    }
+
+    const entityId = deviceInfo.interface?.entity_id;
+    if (!entityId) {
+      Notification.error('Please select a Broadlink interface first');
       return;
     }
 
@@ -1953,48 +1912,38 @@ class DeviceManager extends Component {
     let learningToast = null;
 
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post('/api/services/whispeer/find_frequency', {
-        emitter: deviceInfo.interface
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-
-      if (response.status !== 'success') {
-        throw new Error(response.message || 'Failed to start frequency sweep');
+      const result = await WSManager.call('whispeer/find_frequency', { entity_id: entityId });
+      if (result?.status !== 'success') {
+        throw new Error(result?.message || 'Failed to start frequency sweep');
       }
 
-      const sessionId = response.session_id;
+      const sessionId = result.session_id;
       learningToast = Notification.permanent('Hold a button on the remote to identify the frequency...');
 
-      const timeout = 45000;
-      const pollInterval = 1000;
-      let elapsed = 0;
-      let found = false;
+      await new Promise((resolve, reject) => {
+        const timeoutHandle = setTimeout(() => {
+          unsubscribe();
+          reject(new Error('Frequency sweep timed out'));
+        }, 45000);
 
-      while (elapsed < timeout && !found) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        elapsed += pollInterval;
+        const unsubscribe = WSManager.subscribe('whispeer_frequency_update', (event) => {
+          const data = event.data;
+          if (data.session_id !== sessionId) return;
 
-        const checkResult = await CommandManager.checkLearnedCommand(sessionId, 'rf');
-
-        if (checkResult.status === 'success' && checkResult.learning_status === 'completed') {
-          if (checkResult.detected_frequency != null) {
-            this._setDetectedFrequency(checkResult.detected_frequency);
+          if (data.status === 'completed' && data.frequency != null) {
+            clearTimeout(timeoutHandle);
+            unsubscribe();
             if (learningToast) { learningToast.close(); learningToast = null; }
-            Notification.success(`Frequency detected: ${checkResult.detected_frequency} MHz`);
-            found = true;
-          } else {
-            throw new Error('Sweep completed but no frequency detected');
+            Notification.success(`Frequency detected: ${data.frequency} MHz`);
+            this._setDetectedFrequency(data.frequency);
+            resolve(true);
+          } else if (data.status === 'error' || data.status === 'timeout') {
+            clearTimeout(timeoutHandle);
+            unsubscribe();
+            reject(new Error(data.message || 'Frequency sweep failed'));
           }
-        } else if (checkResult.learning_status === 'error' || checkResult.learning_status === 'timeout') {
-          throw new Error(checkResult.message || 'Frequency sweep failed');
-        }
-      }
-
-      if (!found) {
-        throw new Error('Frequency sweep timed out');
-      }
+        });
+      });
 
     } catch (error) {
       console.error('Find frequency error:', error);
@@ -2005,7 +1954,7 @@ class DeviceManager extends Component {
         findBtn.disabled = false;
         findBtn.textContent = 'Find';
       }
-      if (learningToast) { learningToast.close(); }
+      if (learningToast) learningToast.close();
     }
   }
 
@@ -2165,20 +2114,15 @@ class DeviceManager extends Component {
 
   async _fetchAndMergeBleScan(adapterMac, hciName) {
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const url = token
-        ? `${APP_CONFIG.ENDPOINTS.BLE_SCAN}?adapter_mac=${encodeURIComponent(adapterMac)}&access_token=${encodeURIComponent(token)}`
-        : `${APP_CONFIG.ENDPOINTS.BLE_SCAN}?adapter_mac=${encodeURIComponent(adapterMac)}`;
-      const response = await Utils.api.get(url);
-      const devices = (response && response.devices) ? response.devices : [];
-
+      const result = await WSManager.call('whispeer/ble_scan', { adapter_mac: adapterMac });
+      const devices = result?.devices || [];
       devices.forEach(d => {
         if (this._bleScanAddresses.has(d.address)) return;
         this._bleScanAddresses.add(d.address);
         this._appendScannerRow(d, hciName);
       });
     } catch (e) {
-      console.error('BLE scan fetch error:', e);
+      console.error('BLE scan error:', e);
     }
   }
 
@@ -2278,17 +2222,13 @@ class DeviceManager extends Component {
     btn.textContent = '…';
 
     try {
-      const token = DataManager.getHomeAssistantToken();
-      const response = await Utils.api.post(APP_CONFIG.ENDPOINTS.BLE_EMIT, {
+      const result = await WSManager.call('whispeer/ble_emit', {
         adapter: hciName,
         ad_type: payload.ad_type,
         field_id: payload.field_id,
-        data_hex: payload.data_hex
-      }, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        data_hex: payload.data_hex,
       });
-
-      if (response && response.status === 'success') {
+      if (result?.status === 'success') {
         btn.textContent = '✅';
         btn.classList.add('test-ok');
       } else {

@@ -100,6 +100,12 @@ class WhispeerButton(WhispeerBaseEntity, ButtonEntity):
         code = self._command_cfg.get("values", {}).get("code", "")
         if code:
             await self._async_send_code(code)
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": self._command_name,
+            "action": "press",
+        })
 
 
 class WhispeerGroupButton(WhispeerBaseEntity, ButtonEntity):
@@ -134,4 +140,11 @@ class WhispeerGroupButton(WhispeerBaseEntity, ButtonEntity):
         """Send the code for this option."""
         if self._option_code:
             await self._async_send_code(self._option_code)
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": self._command_name,
+            "option_key": self._option_key,
+            "action": "press",
+        })
 

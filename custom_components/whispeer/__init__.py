@@ -23,11 +23,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .api import WhispeerApiClient
-from .api import WhispeerInterfacesView
-from .api import WhispeerPrepareToLearnView
-from .api import WhispeerCheckLearnedCommandView
-from .api import WhispeerFindFrequencyView
 from .const import DOMAIN
+from .websocket import async_setup_websocket
 from .const import PLATFORMS
 from .const import STARTUP_MESSAGE
 from .const import SIGNAL_WHISPEER_DATA_UPDATED
@@ -85,6 +82,7 @@ class WhispeerPanelView(HomeAssistantView):
             
             # Update asset paths to use the API endpoints
             content = content.replace('href="styles.css"', 'href="/whispeer-assets/styles.css"')
+            content = content.replace('src="websocket-manager.js"', 'src="/whispeer-assets/websocket-manager.js"')
             content = content.replace('src="utils.js"', 'src="/whispeer-assets/utils.js"')
             content = content.replace('src="ui-framework.js"', 'src="/whispeer-assets/ui-framework.js"')
             content = content.replace('src="template-engine.js"', 'src="/whispeer-assets/template-engine.js"')
@@ -97,81 +95,52 @@ class WhispeerPanelView(HomeAssistantView):
             <script>
                 // Store the access token for the frontend
                 const injectedToken = '{access_token}';
-                
-                // Function to get Home Assistant token
+
                 function getHomeAssistantToken() {{
-                    // First try injected token from backend
+                    // 1. Token injected by the backend (only present when HA passes auth header)
                     if (injectedToken && injectedToken !== '' && injectedToken !== 'None') {{
-                        console.log('Using injected token from backend');
-                        localStorage.setItem('ha_access_token', injectedToken);
                         return injectedToken;
                     }}
-                    
-                    // Try from URL parameters
+
+                    // 2. URL query param (?access_token=...)
                     const urlParams = new URLSearchParams(window.location.search);
                     const urlToken = urlParams.get('access_token');
-                    if (urlToken) {{
-                        console.log('Using token from URL parameters');
-                        localStorage.setItem('ha_access_token', urlToken);
-                        return urlToken;
-                    }}
-                    
-                    // Try from localStorage
-                    const storedToken = localStorage.getItem('ha_access_token');
-                    if (storedToken && storedToken !== 'undefined' && storedToken !== '' && storedToken !== 'null') {{
-                        // console.log('Using stored token from localStorage');
-                        return storedToken;
-                    }}
-                    
-                    // Try to get from Home Assistant frontend context
+                    if (urlToken) return urlToken;
+
+                    // 3. HA hassConnection (modern HA, home-assistant-js-websocket)
                     try {{
-                        // Check if we're in Home Assistant's frontend context
-                        if (window.hassConnection || window.parent.hassConnection) {{
-                            const connection = window.hassConnection || window.parent.hassConnection;
-                            if (connection && connection.accessToken) {{
-                                console.log('Using token from HA connection');
-                                localStorage.setItem('ha_access_token', connection.accessToken);
-                                return connection.accessToken;
-                            }}
+                        const conn = window.hassConnection || window.parent?.hassConnection;
+                        const t = conn?.options?.auth?.accessToken;
+                        if (t) return t;
+                    }} catch (_) {{}}
+
+                    // 4. HA hassTokens in localStorage (set by HA frontend)
+                    try {{
+                        const raw = localStorage.getItem('hassTokens');
+                        if (raw) {{
+                            const parsed = JSON.parse(raw);
+                            if (parsed?.access_token) return parsed.access_token;
                         }}
-                        
-                        // Try to get from window.parent if we're in an iframe
-                        if (window.parent && window.parent !== window) {{
-                            try {{
-                                const parentAuth = window.parent.document.querySelector('home-assistant')?.hass?.auth?.accessToken;
-                                if (parentAuth) {{
-                                    console.log('Using token from parent HA instance');
-                                    localStorage.setItem('ha_access_token', parentAuth);
-                                    return parentAuth;
-                                }}
-                            }} catch (e) {{
-                                console.debug('Cannot access parent auth context (cross-origin):', e);
-                            }}
-                        }}
-                    }} catch (e) {{
-                        console.debug('Cannot access HA connection context:', e);
-                    }}
-                    
-                    console.warn('No Home Assistant access token found');
+                    }} catch (_) {{}}
+
+                    // 5. hass object on home-assistant element in parent
+                    try {{
+                        const parentEl = window.parent?.document?.querySelector('home-assistant');
+                        const t = parentEl?.__hass?.auth?.data?.access_token
+                               || parentEl?.hass?.auth?.data?.access_token;
+                        if (t) return t;
+                    }} catch (_) {{}}
+
+                    // 6. Legacy cached key in localStorage
+                    try {{
+                        const t = localStorage.getItem('ha_access_token');
+                        if (t && t !== 'undefined' && t !== 'null') return t;
+                    }} catch (_) {{}}
+
                     return null;
                 }}
-                
-                // Override the getHomeAssistantToken function in the panel
+
                 window.getHomeAssistantToken = getHomeAssistantToken;
-                
-                // Try to get token immediately when script loads
-                const initialToken = getHomeAssistantToken();
-                if (initialToken) {{
-                    console.log('Home Assistant token found and ready');
-                }} else {{
-                    console.warn('No Home Assistant token found - service calls may fail');
-                    // Show a warning to the user
-                    setTimeout(() => {{
-                        if (!getHomeAssistantToken()) {{
-                            console.error('Authentication required: Please ensure you are accessing this panel from within Home Assistant');
-                        }}
-                    }}, 1000);
-                }}
             </script>
             """
             
@@ -202,6 +171,7 @@ class WhispeerAssetsView(HomeAssistantView):
                 'utils.js': 'application/javascript',
                 'ui-framework.js': 'application/javascript',
                 'template-engine.js': 'application/javascript',
+                'websocket-manager.js': 'application/javascript',
                 'data-manager.js': 'application/javascript',
                 'device-manager.js': 'application/javascript',
                 'app.js': 'application/javascript'
@@ -853,42 +823,21 @@ class WhispeerClearDevicesView(HomeAssistantView):
 
 
 async def register_panel(hass):
-    """Register the Whispeer panel."""
+    """Register the Whispeer panel (HTML + static assets only)."""
     try:
-        # Register all the views first
-        _LOGGER.debug("Registering Whispeer HTTP views...")
         hass.http.register_view(WhispeerPanelView())
         hass.http.register_view(WhispeerAssetsView())
-        _LOGGER.debug("Registered WhispeerAssetsView")
-        hass.http.register_view(WhispeerApiView())
-        hass.http.register_view(WhispeerDeviceView())
-        hass.http.register_view(WhispeerCommandView())
-        hass.http.register_view(WhispeerSyncView())
-        hass.http.register_view(WhispeerRemoveDeviceView())
-        hass.http.register_view(WhispeerClearDevicesView())
-        hass.http.register_view(WhispeerAutomationsView())
-        hass.http.register_view(WhispeerStoredCodesView())
-        hass.http.register_view(WhispeerSendStoredCodeView())
-        hass.http.register_view(WhispeerInterfacesView())
-        hass.http.register_view(WhispeerPrepareToLearnView())
-        hass.http.register_view(WhispeerCheckLearnedCommandView())
-        hass.http.register_view(WhispeerFindFrequencyView())
-        hass.http.register_view(WhispeerBleScanView())
-        hass.http.register_view(WhispeerBleEmitView())
-        
-        # Register the panel using the frontend component
         frontend.async_register_built_in_panel(
             hass,
             component_name="iframe",
             sidebar_title="Whispeer",
-            sidebar_icon="mdi:microphone", 
+            sidebar_icon="mdi:microphone",
             frontend_url_path="whispeer",
             config={
                 "url": "/api/whispeer/panel",
-                "require_admin": False
-            }
+                "require_admin": False,
+            },
         )
-        
         _LOGGER.info("Whispeer panel registered successfully")
     except Exception as e:
         _LOGGER.error(f"Failed to register Whispeer panel: {e}")
@@ -897,28 +846,6 @@ async def register_panel(hass):
 
 async def async_setup(hass: HomeAssistant, config: Config):
     """Set up this integration using YAML is not supported."""
-    _LOGGER.debug("Setting up Whispeer integration - registering HTTP views")
-    
-    # Register HTTP views first, regardless of config entries
-    hass.http.register_view(WhispeerPanelView())
-    hass.http.register_view(WhispeerAssetsView())
-    _LOGGER.debug("Registered WhispeerAssetsView")
-    hass.http.register_view(WhispeerApiView())
-    hass.http.register_view(WhispeerDeviceView())
-    hass.http.register_view(WhispeerCommandView())
-    hass.http.register_view(WhispeerSyncView())
-    hass.http.register_view(WhispeerRemoveDeviceView())
-    hass.http.register_view(WhispeerClearDevicesView())
-    hass.http.register_view(WhispeerAutomationsView())
-    hass.http.register_view(WhispeerStoredCodesView())
-    hass.http.register_view(WhispeerSendStoredCodeView())
-    hass.http.register_view(WhispeerInterfacesView())
-    hass.http.register_view(WhispeerPrepareToLearnView())
-    hass.http.register_view(WhispeerCheckLearnedCommandView())
-    hass.http.register_view(WhispeerFindFrequencyView())
-    hass.http.register_view(WhispeerBleScanView())
-    hass.http.register_view(WhispeerBleEmitView())
-
     return True
 
 
@@ -1011,6 +938,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     # Register the panel after the platforms are set up.
     await register_panel(hass)
 
+    # Register WebSocket commands (idempotent — safe to call on every reload).
+    async_setup_websocket(hass)
+
     entry.add_update_listener(async_reload_entry)
     return True
 
@@ -1039,6 +969,12 @@ class WhispeerDataUpdateCoordinator(DataUpdateCoordinator):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle removal of an entry."""
+    # Remove the sidebar panel so re-registration on reload doesn't raise.
+    try:
+        frontend.async_remove_panel(hass, "whispeer")
+    except Exception:
+        pass
+
     coordinator = hass.data[DOMAIN][entry.entry_id]
     unloaded = all(
         await asyncio.gather(
