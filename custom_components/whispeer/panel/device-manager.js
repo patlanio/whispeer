@@ -664,7 +664,7 @@ class DeviceManager extends Component {
     const frequency = (device.frequency !== undefined && device.frequency !== null && device.frequency !== '')
       ? device.frequency : '';
 
-    const showFrequency = deviceType === 'rf' && frequency !== '';
+    const showFrequency = deviceType === 'rf';
 
     const frequencyField = `
       <div class="device-field-group" id="frequencyField" data-field="frequency"${showFrequency ? '' : ' style="display:none"'}>
@@ -673,7 +673,10 @@ class DeviceManager extends Component {
             <div class="input-group-text">Frequency</div>
           </div>
           <input type="number" name="frequency" class="form-input" step="any"
-                 value="${this._escapeAttr(String(frequency))}" disabled>
+                 placeholder="e.g. 433.92"
+                 value="${this._escapeAttr(String(frequency))}">
+          <button type="button" class="input-group-append-btn" id="findFrequencyBtn"
+                  onclick="deviceManager.findFrequency()">Find</button>
         </div>
       </div>
     `;
@@ -723,8 +726,6 @@ class DeviceManager extends Component {
           </div>
         </div>
         <div class="device-field-row" id="broadlinkToolsRow" style="display:none">
-          <button type="button" class="btn btn-small btn-outlined" id="findFrequencyBtn"
-                  onclick="deviceManager.findFrequency()">📡 Find frequency</button>
         </div>
       </div>
       <input type="hidden" name="id" value="${this._escapeAttr(device.id || '')}">
@@ -1011,12 +1012,12 @@ class DeviceManager extends Component {
       rfToolsRow.style.display = (deviceType === 'rf' || deviceType === 'ir') ? '' : 'none';
     }
 
-    // Show frequency field if value exists or device is RF
+    // Show frequency field whenever device type is RF
     const freq = this.currentDevice?.frequency || this._detectedFrequency || '';
     if (freqField) {
-      const show = freq !== '' && freq != null;
+      const show = deviceType === 'rf';
       freqField.style.display = show ? '' : 'none';
-      if (show) {
+      if (show && (freq !== '' && freq != null)) {
         const freqInput = freqField.querySelector('input[name="frequency"]');
         if (freqInput) freqInput.value = freq;
       }
@@ -1071,7 +1072,6 @@ class DeviceManager extends Component {
       delete deviceData.emit_interval;
     }
 
-    // Read frequency from disabled field (FormData skips disabled inputs)
     const freqInput = e.target.querySelector('input[name="frequency"]');
     if (freqInput && freqInput.value !== '') {
       deviceData.frequency = parseFloat(freqInput.value);
@@ -2003,7 +2003,7 @@ class DeviceManager extends Component {
     } finally {
       if (findBtn) {
         findBtn.disabled = false;
-        findBtn.textContent = '📡 Find frequency';
+        findBtn.textContent = 'Find';
       }
       if (learningToast) { learningToast.close(); }
     }

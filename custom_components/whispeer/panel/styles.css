@@ -860,6 +860,37 @@ body {
   flex: 1;
 }
 
+.input-group:has(.input-group-append-btn) .form-input,
+.input-group:has(.input-group-append-btn) .form-select {
+  border-radius: 0;
+}
+
+.input-group-append-btn {
+  background: linear-gradient(135deg, var(--accent-color) 0%, rgba(3, 169, 244, 0.8) 100%);
+  color: white;
+  border: 1px solid var(--border-color);
+  border-left: none;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 0 4px 4px 0;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: filter 0.15s;
+}
+
+.input-group-append-btn:hover {
+  filter: brightness(1.15);
+}
+
+.input-group-append-btn:active {
+  filter: brightness(0.9);
+}
+
 .input-group.name-field {
   flex: 3;
 }
