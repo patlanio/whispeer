@@ -80,6 +80,30 @@ def _err(message: str, **extra: Any) -> dict:
     return {"status": "error", "message": message, **extra}
 
 
+def _broadlink_connect(ip: str, mac: str | None = None, device_type: str | None = None):
+    """Connect and authenticate to a Broadlink device.
+
+    If *mac* and *device_type* are provided the connection is made directly
+    without a network discovery scan (fast path).  Returns the authenticated
+    device object or ``None`` on failure.
+    """
+    import broadlink
+
+    try:
+        if mac and device_type:
+            mac_bytes = bytes.fromhex(mac.replace(":", "").replace("-", ""))
+            device = broadlink.gendevice(int(device_type, 16), (ip, 80), mac_bytes)
+        else:
+            devices = broadlink.discover(timeout=5)
+            device = next((d for d in devices if d.host[0] == ip), None)
+            if not device:
+                return None
+
+        return device if device.auth() else None
+    except Exception:
+        return None
+
+
 # ------------------------------------------------------------------
 # Main API Client
 # ------------------------------------------------------------------
@@ -450,63 +474,76 @@ class WhispeerApiClient:
             if phase_task and not phase_task.done():
                 phase_task.cancel()
 
+    async def _resolve_broadlink_connection(self, session: "LearnSession") -> tuple[str | None, str | None]:
+        """Resolve (ip_address, mac_address) for the Broadlink hub backing *session*.
+
+        Returns ``(None, None)`` and marks the session as error if resolution fails.
+        """
+        from homeassistant.helpers import entity_registry as er, device_registry as dr
+
+        entry = er.async_get(self._hass).async_get(session.hub_entity_id)
+        if not entry or not entry.device_id:
+            session.update_status("error", error_message="Cannot resolve device for entity")
+            return None, None
+
+        dev = dr.async_get(self._hass).async_get(entry.device_id)
+        if not dev:
+            session.update_status("error", error_message="Device not found in registry")
+            return None, None
+
+        mac_address: str | None = None
+        for con_type, con_val in dev.connections:
+            if con_type == "mac":
+                mac_address = con_val.replace(":", "").replace("-", "")
+                break
+        if not mac_address:
+            for _domain, ident_val in dev.identifiers:
+                clean = ident_val.replace(":", "").replace("-", "")
+                if len(clean) == 12:
+                    mac_address = clean
+                    break
+
+        ip_address: str | None = None
+        for ce in self._hass.config_entries.async_entries():
+            if ce.domain == "broadlink" and ce.data.get("host"):
+                ce_mac = (ce.unique_id or "").replace(":", "").replace("-", "").lower()
+                if ce_mac == (mac_address or "").lower():
+                    ip_address = ce.data["host"]
+                    break
+
+        if not ip_address:
+            state = self._hass.states.get(session.hub_entity_id)
+            if state:
+                ip_address = (
+                    state.attributes.get("host")
+                    or state.attributes.get("ip_address")
+                )
+
+        if not ip_address:
+            session.update_status("error", error_message="Cannot determine Broadlink device IP")
+            return None, None
+
+        return ip_address, mac_address
+
     async def _background_fast_rf_learn(self, session: LearnSession, frequency: float) -> None:
         """Fast RF learning: skip sweep, go directly to find_rf_packet with known frequency.
 
-        Uses the Broadlink device directly via broadlink library to call
-        find_rf_packet(frequency) then poll check_data(), bypassing HA's
-        two-phase remote.learn_command flow.
+        Uses the broadlink library directly to call find_rf_packet(frequency)
+        then poll check_data(), bypassing HA's two-phase remote.learn_command flow.
         """
         try:
             _LOGGER.info(
                 "Starting fast RF learn for session %s on %s at %.2f MHz",
                 session.session_id, session.hub_entity_id, frequency,
             )
-            from .whispeer_broadlink import connect_to_device
-            from homeassistant.helpers import entity_registry as er, device_registry as dr
 
-            entry = er.async_get(self._hass).async_get(session.hub_entity_id)
-            if not entry or not entry.device_id:
-                session.update_status("error", error_message="Cannot resolve device for entity")
-                return
-
-            dev = dr.async_get(self._hass).async_get(entry.device_id)
-            if not dev:
-                session.update_status("error", error_message="Device not found in registry")
-                return
-
-            ip_address = None
-            mac_address = None
-            for con_type, con_val in dev.connections:
-                if con_type == "mac":
-                    mac_address = con_val.replace(":", "").replace("-", "")
-            if not mac_address:
-                for _domain, ident_val in dev.identifiers:
-                    clean = ident_val.replace(":", "").replace("-", "")
-                    if len(clean) == 12:
-                        mac_address = clean
-                        break
-
-            config_entries = self._hass.config_entries.async_entries()
-            for ce in config_entries:
-                if ce.domain == "broadlink" and ce.data.get("host"):
-                    ce_mac = ce.unique_id or ""
-                    if ce_mac.replace(":", "").replace("-", "").lower() == (mac_address or "").lower():
-                        ip_address = ce.data["host"]
-                        break
-
+            ip_address, mac_address = await self._resolve_broadlink_connection(session)
             if not ip_address:
-                state = self._hass.states.get(session.hub_entity_id)
-                if state:
-                    ip_address = state.attributes.get("host") or state.attributes.get("ip_address")
-
-            if not ip_address:
-                session.update_status("error", error_message="Cannot determine Broadlink device IP")
                 return
 
             def _do_fast_rf_learn():
                 import time
-                device = connect_to_device(ip_address, mac_address)
+                device = _broadlink_connect(ip_address, mac_address)
                 if not device:
                     return None
                 device.find_rf_packet(frequency)
@@ -538,51 +575,14 @@ class WhispeerApiClient:
                 "Starting frequency sweep for session %s on %s",
                 session.session_id, session.hub_entity_id,
             )
-            from .whispeer_broadlink import connect_to_device
-            from homeassistant.helpers import entity_registry as er, device_registry as dr
 
-            entry = er.async_get(self._hass).async_get(session.hub_entity_id)
-            if not entry or not entry.device_id:
-                session.update_status("error", error_message="Cannot resolve device for entity")
-                return
-
-            dev = dr.async_get(self._hass).async_get(entry.device_id)
-            if not dev:
-                session.update_status("error", error_message="Device not found in registry")
-                return
-
-            ip_address = None
-            mac_address = None
-            for con_type, con_val in dev.connections:
-                if con_type == "mac":
-                    mac_address = con_val.replace(":", "").replace("-", "")
-            if not mac_address:
-                for _domain, ident_val in dev.identifiers:
-                    clean = ident_val.replace(":", "").replace("-", "")
-                    if len(clean) == 12:
-                        mac_address = clean
-                        break
-
-            config_entries = self._hass.config_entries.async_entries()
-            for ce in config_entries:
-                if ce.domain == "broadlink" and ce.data.get("host"):
-                    ce_mac = ce.unique_id or ""
-                    if ce_mac.replace(":", "").replace("-", "").lower() == (mac_address or "").lower():
-                        ip_address = ce.data["host"]
-                        break
-
+            ip_address, mac_address = await self._resolve_broadlink_connection(session)
             if not ip_address:
-                state = self._hass.states.get(session.hub_entity_id)
-                if state:
-                    ip_address = state.attributes.get("host") or state.attributes.get("ip_address")
-
-            if not ip_address:
-                session.update_status("error", error_message="Cannot determine Broadlink device IP")
                 return
 
             def _do_sweep():
                 import time
-                device = connect_to_device(ip_address, mac_address)
+                device = _broadlink_connect(ip_address, mac_address)
                 if not device:
                     return None
                 device.sweep_frequency()

@@ -1615,6 +1615,8 @@ class DeviceManager extends Component {
       return;
     }
 
+    this._fastLearnStop = false;
+
     const commandContainer = buttonElement.closest('.command-container');
     const commandForm = commandContainer.querySelector('.command-inline-form');
     const nameInput = commandForm.querySelector('input.command-inline-input.name');
@@ -1630,6 +1632,8 @@ class DeviceManager extends Component {
       Notification.error('Please save the device first');
       return;
     }
+
+    this._fastLearnStop = false;
 
     const commandContainer = buttonElement.closest('.command-container');
     const nameInput = commandContainer.querySelector('.command-inline-input.name');
@@ -1705,23 +1709,22 @@ class DeviceManager extends Component {
 
       sessionId = prepareResult.session_id;
 
-      // Step 2: Show phase-appropriate toast
       if (originalButton) {
         originalButton.textContent = '📡 Learning...';
       }
 
-      if (isRF && !fastSweep) {
-        learningToast = Notification.permanent('Hold a button on the remote to identify the frequency');
-      } else {
-        learningToast = Notification.permanent('Press a button on the remote control');
-      }
-
-      // Step 3: Poll for learned command
-      const timeout = 90000; // 90s for RF (2 phases), 30s effectively for IR
-      const pollInterval = 1000;
+      // Step 2 + 3: Poll loop.
+      // First poll silently while showing "Preparing..." — only switch to "Press a button"
+      // once the backend confirms the session is active (learning_status: 'learning').
+      // This ensures the hardware is fully ready before the user is asked to press.
+      const timeout = 90000;
+      const pollInterval = 500;
       let elapsed = 0;
       let commandLearned = false;
+      let deviceReady = false;
       let currentPhase = (isRF && !fastSweep) ? 'sweeping' : 'capturing';
+
+      learningToast = Notification.permanent('⏳ Preparing device, please wait…');
 
       while (elapsed < timeout && !commandLearned) {
         await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -1739,21 +1742,19 @@ class DeviceManager extends Component {
             currentPhase = checkResult.phase;
             if (currentPhase === 'capturing') {
               if (learningToast) { learningToast.close(); learningToast = null; }
-              learningToast = Notification.permanent('Frequency detected! Release the button, then press the desired button briefly...');
-              // Give user time to release and press the correct button
+              learningToast = Notification.permanent('Frequency detected! Release the button, then press the desired button briefly…');
               await new Promise(resolve => setTimeout(resolve, 3000));
               if (learningToast) { learningToast.close(); learningToast = null; }
+              deviceReady = true;
               learningToast = Notification.permanent('Press a button on the remote control');
             }
           }
 
           if (checkResult.status === 'success') {
             if (checkResult.learning_status === 'completed' && checkResult.command_data) {
-              const commandCode = checkResult.command_data;
-              codeInput.value = commandCode;
+              codeInput.value = checkResult.command_data;
 
               if (learningToast) { learningToast.close(); learningToast = null; }
-
               Notification.success('Command learned successfully!');
 
               if (isRF && checkResult.detected_frequency != null) {
@@ -1764,6 +1765,16 @@ class DeviceManager extends Component {
               break;
 
             } else if (checkResult.learning_status === 'learning') {
+              // First 'learning' response means the device is actively listening — prompt now
+              if (!deviceReady) {
+                deviceReady = true;
+                if (learningToast) { learningToast.close(); learningToast = null; }
+                if (isRF && !fastSweep) {
+                  learningToast = Notification.permanent('Hold a button on the remote to identify the frequency');
+                } else {
+                  learningToast = Notification.permanent('Press a button on the remote control');
+                }
+              }
               continue;
             } else if (checkResult.learning_status === 'error') {
               throw new Error(checkResult.message || 'Learning failed');
@@ -1888,6 +1899,9 @@ class DeviceManager extends Component {
         const focusInput = this._getLearnBtnCodeInput(learnBtn);
         if (focusInput) focusInput.focus();
 
+        // Small cooldown so hardware is fully idle before the next prepare call
+        await new Promise(resolve => setTimeout(resolve, 400));
+
         // Trigger learning and wait for it to complete or fail
         const learned = await this._fastLearnOne(learnBtn);
 
@@ -1902,49 +1916,47 @@ class DeviceManager extends Component {
   }
 
   async _fastLearnOne(learnButton) {
-    return new Promise((resolve) => {
-      const deviceInfo = this.getCurrentDeviceInfo();
-      if (!deviceInfo) { resolve(false); return; }
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo) return false;
 
-      const commandContainer = learnButton.closest('.command-container');
-      const commandForm = commandContainer?.querySelector('.command-inline-form');
-      const nameInput = commandForm?.querySelector('input.command-inline-input.name');
+    const commandContainer = learnButton.closest('.command-container');
+    const commandForm = commandContainer?.querySelector('.command-inline-form');
+    const nameInput = commandForm?.querySelector('input.command-inline-input.name');
 
-      // Auto-generate a name if empty
-      if (nameInput && !nameInput.value.trim()) {
-        nameInput.value = `cmd_${Date.now()}`;
-      }
-      const baseName = nameInput?.value.trim() || `cmd_${Date.now()}`;
+    // Auto-generate a name if empty
+    if (nameInput && !nameInput.value.trim()) {
+      nameInput.value = `cmd_${Date.now()}`;
+    }
+    const baseName = nameInput?.value.trim() || `cmd_${Date.now()}`;
 
-      let commandName;
-      let codeInput;
+    let commandName;
+    let codeInput;
 
-      const optionField = learnButton.closest('.option-field');
-      if (optionField) {
-        // light/switch: data-option holds the key ('on'/'off')
-        // numeric/group: data-option-value holds the code, data-option-key holds the key
-        const byOption = optionField.querySelector('input[data-option]');
-        const byOptionValue = optionField.querySelector('input[data-option-value]');
-        const optionKey = byOption
-          ? byOption.dataset.option
-          : (optionField.querySelector('input[data-option-key]')?.value.trim() || `opt_${Date.now()}`);
-        commandName = `${baseName}_${optionKey}`;
-        codeInput = byOption || byOptionValue;
-      } else {
-        commandName = baseName;
-        codeInput = commandForm?.querySelector('input[data-field="code"]');
-      }
+    const optionField = learnButton.closest('.option-field');
+    if (optionField) {
+      const byOption = optionField.querySelector('input[data-option]');
+      const byOptionValue = optionField.querySelector('input[data-option-value]');
+      const optionKey = byOption
+        ? byOption.dataset.option
+        : (optionField.querySelector('input[data-option-key]')?.value.trim() || `opt_${Date.now()}`);
+      commandName = `${baseName}_${optionKey}`;
+      codeInput = byOption || byOptionValue;
+    } else {
+      commandName = baseName;
+      codeInput = commandForm?.querySelector('input[data-field="code"]');
+    }
 
-      if (!codeInput) { resolve(false); return; }
+    if (!codeInput) return false;
 
-      const originalValue = codeInput.value;
+    const originalValue = codeInput.value;
 
-      this.performLearnCommand(deviceInfo, commandName, codeInput).then(() => {
-        resolve(codeInput.value.trim() !== '' && codeInput.value.trim() !== originalValue);
-      }).catch(() => {
-        resolve(false);
-      });
-    });
+    try {
+      await this.performLearnCommand(deviceInfo, commandName, codeInput);
+    } catch (_) {
+      return false;
+    }
+
+    return codeInput.value.trim() !== '' && codeInput.value.trim() !== originalValue;
   }
 
   async findFrequency() {    const deviceInfo = this.getCurrentDeviceInfo();
