@@ -725,10 +725,6 @@ class DeviceManager extends Component {
         <div class="device-field-row" id="broadlinkToolsRow" style="display:none">
           <button type="button" class="btn btn-small btn-outlined" id="findFrequencyBtn"
                   onclick="deviceManager.findFrequency()">📡 Find frequency</button>
-          <label class="fast-sweep-toggle" id="fastSweepLabel">
-            <input type="checkbox" id="fastSweepCheckbox" name="fast_sweep">
-            <span>Use 'fast sweep'</span>
-          </label>
         </div>
       </div>
       <input type="hidden" name="id" value="${this._escapeAttr(device.id || '')}">
@@ -1052,14 +1048,6 @@ class DeviceManager extends Component {
     const show = isBroadlink && (deviceType === 'rf');
     broadlinkToolsRow.style.display = show ? '' : 'none';
 
-    // Auto-check fast sweep when frequency is available
-    const fastSweepCb = document.getElementById('fastSweepCheckbox');
-    if (fastSweepCb) {
-      const hasFreq = !!(this.currentDevice?.frequency || this._detectedFrequency);
-      if (hasFreq) {
-        fastSweepCb.checked = true;
-      }
-    }
   }
 
   async handleDeviceFormSubmit(e) {
@@ -1082,9 +1070,6 @@ class DeviceManager extends Component {
     } else {
       delete deviceData.emit_interval;
     }
-
-    // Remove transient fields that shouldn't be persisted
-    delete deviceData.fast_sweep;
 
     // Read frequency from disabled field (FormData skips disabled inputs)
     const freqInput = e.target.querySelector('input[name="frequency"]');
@@ -1683,26 +1668,25 @@ class DeviceManager extends Component {
     let sessionId = null;
     let learningToast = null;
     const isRF = deviceInfo.type === 'rf';
+    const isBroadlink = (interfaceObject?.manufacturer || '').toLowerCase().includes('broadlink');
 
-    // Check fast sweep flag
-    const fastSweepCb = document.getElementById('fastSweepCheckbox');
-    const fastSweep = isRF && fastSweepCb && fastSweepCb.checked;
-    const freqInput = document.querySelector('#frequencyField input[name="frequency"]');
-    const knownFrequency = freqInput ? parseFloat(freqInput.value) : null;
+    // Pass known frequency so the backend can skip the sweep phase when applicable.
+    const emitterData = { ...interfaceObject };
+    if (isRF && isBroadlink) {
+      const freqInput = document.querySelector('#frequencyField input[name="frequency"]');
+      const knownFrequency = freqInput ? parseFloat(freqInput.value) : NaN;
+      if (!isNaN(knownFrequency)) {
+        emitterData.frequency = knownFrequency;
+      }
+    }
 
     try {
       // Step 1: Prepare for learning
       Notification.info(`Preparing ${deviceInfo.type.toUpperCase()} device for learning...`);
 
-      const emitterData = { ...interfaceObject };
-      if (fastSweep && knownFrequency) {
-        emitterData.frequency = knownFrequency;
-      }
-
       const prepareResult = await CommandManager.learnCommand(
         deviceInfo.type,
         emitterData,
-        fastSweep,
       );
 
       if (prepareResult.status !== 'prepared') {
@@ -1712,15 +1696,15 @@ class DeviceManager extends Component {
       sessionId = prepareResult.session_id;
 
       // Step 2 + 3: Poll loop.
-      // First poll silently while showing "Preparing..." — only switch to "Press a button"
-      // once the backend confirms the session is active (learning_status: 'learning').
-      // This ensures the hardware is fully ready before the user is asked to press.
+      // The backend sets learning_status='learning' only after the hardware command
+      // has been acknowledged, so we never show 'Press a button' too early.
       const timeout = 90000;
       const pollInterval = 500;
       let elapsed = 0;
       let commandLearned = false;
       let deviceReady = false;
-      let currentPhase = (isRF && !fastSweep) ? 'sweeping' : 'capturing';
+      // RF+Broadlink starts at sweeping; everything else goes straight to capturing.
+      let currentPhase = (isRF && isBroadlink && !emitterData.frequency) ? 'sweeping' : 'capturing';
 
       learningToast = Notification.permanent('⏳ Preparing device, please wait…');
 
@@ -1769,7 +1753,8 @@ class DeviceManager extends Component {
                 deviceReady = true;
                 if (learningToast) { learningToast.close(); learningToast = null; }
                 if (originalButton) originalButton.textContent = 'Learning';
-                if (isRF && !fastSweep) {
+                // Use the phase reported by the backend to decide the correct prompt.
+                if (checkResult.phase === 'sweeping') {
                   learningToast = Notification.permanent('Hold a button on the remote to identify the frequency');
                 } else {
                   learningToast = Notification.permanent('Press a button on the remote control');
@@ -1823,12 +1808,6 @@ class DeviceManager extends Component {
       freqField.style.display = '';
       const freqInput = freqField.querySelector('input[name="frequency"]');
       if (freqInput) freqInput.value = frequency;
-    }
-
-    // Auto-check fast sweep
-    const fastSweepCb = document.getElementById('fastSweepCheckbox');
-    if (fastSweepCb) {
-      fastSweepCb.checked = true;
     }
   }
 
