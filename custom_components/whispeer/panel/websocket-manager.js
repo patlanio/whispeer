@@ -20,6 +20,10 @@ class WSManager {
   // _haSubIdToEventType: Map<number, string>
   static _haSubIdToEventType = new Map();
 
+  // -- Command subscriptions (subscribeMessage-style) --
+  // _commandSubs: Map<msgId, Function>
+  static _commandSubs = new Map();
+
   // -- Ready callbacks --
   static _onReadyCallbacks = [];
 
@@ -170,6 +174,14 @@ class WSManager {
     }
 
     if (type === 'event') {
+      const cmdCb = WSManager._commandSubs.get(id);
+      if (cmdCb) {
+        try { cmdCb(msg.event); } catch (e) {
+          console.error('[WSManager] Command subscription callback error:', e);
+        }
+        return;
+      }
+
       const eventType = WSManager._haSubIdToEventType.get(id);
       if (eventType) {
         const info = WSManager._eventSubs.get(eventType);
@@ -194,6 +206,7 @@ class WSManager {
     WSManager._pending.clear();
 
     WSManager._haSubIdToEventType.clear();
+    WSManager._commandSubs.clear();
     for (const info of WSManager._eventSubs.values()) {
       info.haSubId = null;
     }
@@ -250,6 +263,28 @@ class WSManager {
     return new Promise((resolve, reject) => {
       const id = WSManager._msgId++;
       WSManager._pending.set(id, { resolve, reject });
+      WSManager._rawSend({ type, id, ...data });
+    });
+  }
+
+  /**
+   * Send a command and stream subsequent events to *callback*.
+   * Returns a Promise that resolves to an unsubscribe function once the
+   * initial result arrives.
+   * @param {string} type - WS command type, e.g. 'bluetooth/subscribe_advertisements'
+   * @param {object} data - Additional payload fields
+   * @param {Function} callback - Called with each event object
+   */
+  static subscribeCommand(type, data, callback) {
+    return new Promise((resolve, reject) => {
+      const id = WSManager._msgId++;
+      WSManager._commandSubs.set(id, callback);
+      WSManager._pending.set(id, {
+        resolve: () => {
+          resolve(() => { WSManager._commandSubs.delete(id); });
+        },
+        reject,
+      });
       WSManager._rawSend({ type, id, ...data });
     });
   }

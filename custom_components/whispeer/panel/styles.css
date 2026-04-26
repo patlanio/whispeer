@@ -1447,115 +1447,207 @@ body {
 }
 
 /* ------------------------------------------------------------------
-   BLE Scanner Modal
+   BLE Advertisement Monitor (HA-native style)
    ------------------------------------------------------------------ */
 
 .ble-scanner-modal .modal-content {
   z-index: 1010;
+  max-width: 1100px;
 }
 
-.ble-scanner-header {
+.ble-adv-actions {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding-bottom: 12px;
+  gap: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.ble-scanner-status {
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.ble-scanner-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.ble-filter-bar {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
-.ble-filter-toggle {
+.ble-adv-actions-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ble-adv-import-group {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ble-adv-import-prepend {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
+  padding: 6px 10px;
+  background: var(--border-color);
   color: var(--text-secondary);
-  cursor: pointer;
+  font-size: 0.82rem;
   white-space: nowrap;
 }
 
-.ble-address-input {
-  max-width: 220px;
+.ble-adv-import-select {
+  border: none !important;
+  border-radius: 0 !important;
+  border-left: 1px solid var(--border-color) !important;
+  border-right: 1px solid var(--border-color) !important;
+  padding: 6px 8px !important;
+  font-size: 0.82rem !important;
+  min-width: 130px;
+}
+
+.ble-adv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.ble-adv-search {
+  flex: 1;
+  min-width: 180px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--surface-color);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.ble-adv-search:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.ble-adv-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ble-adv-select {
   padding: 6px 10px !important;
   font-size: 0.85rem !important;
 }
 
-.ble-scanner-table-wrap {
+.ble-adv-table-wrap {
   max-height: 60vh;
   overflow-y: auto;
 }
 
-.ble-scanner-table {
+.ble-adv-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
 
-.ble-scanner-table th {
+.ble-adv-table thead th {
   position: sticky;
   top: 0;
   background: var(--surface-color);
   text-align: left;
-  padding: 8px 6px;
-  border-bottom: 2px solid var(--border-color);
-  font-weight: 600;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 500;
   color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   z-index: 1;
+  white-space: nowrap;
 }
 
-.ble-scanner-table td {
-  padding: 8px 6px;
+.ble-adv-table td {
+  padding: 10px 8px;
   border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
 }
 
-.ble-device-addr {
+.ble-adv-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ble-adv-row:hover {
+  background: rgba(var(--primary-color-rgb, 33, 150, 243), 0.06);
+}
+
+.ble-adv-addr {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--primary-color);
+}
+
+.ble-adv-time {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.ble-adv-rssi {
   font-family: monospace;
   font-size: 0.8rem;
-  color: var(--text-primary);
+  text-align: right;
+  white-space: nowrap;
 }
 
-.ble-device-name {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+.ble-adv-test-col {
+  text-align: center;
+  white-space: nowrap;
 }
 
-.ble-field-select {
-  width: 100%;
-  padding: 4px 6px !important;
-  font-size: 0.8rem !important;
-  min-width: 160px;
-}
-
-.ble-import-check {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
+.ble-adv-import-col {
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .ble-import-name {
   padding: 4px 8px !important;
   font-size: 0.8rem !important;
-  min-width: 100px;
+  min-width: 110px;
+}
+
+.ble-adv-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 24px 8px !important;
+}
+
+.ble-adv-group-row {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ble-adv-group-row td {
+  background: var(--surface-color);
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  padding: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ble-adv-group-row:hover td {
+  background: rgba(var(--primary-color-rgb, 33, 150, 243), 0.04);
+}
+
+.ble-adv-group-arrow {
+  display: inline-block;
+  width: 16px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.ble-test-btn {
+  flex-shrink: 0;
 }
 
 .test-ok {
@@ -1568,13 +1660,55 @@ body {
   color: white !important;
 }
 
-@keyframes ble-row-highlight {
-  0% { background-color: rgba(33, 150, 243, 0.15); }
-  100% { background-color: transparent; }
+/* BLE Device Info Dialog */
+
+.ble-info-modal .modal-content {
+  z-index: 1020;
+  max-width: 600px;
 }
 
-.ble-row-new {
-  animation: ble-row-highlight 1.5s ease-out;
+.ble-info-section p {
+  margin: 0 0 12px;
+  line-height: 1.8;
+  font-size: 0.9rem;
+}
+
+.ble-info-section b {
+  color: var(--text-primary);
+}
+
+.ble-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.ble-info-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: top;
+}
+
+.ble-info-table td:first-child {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.ble-hex-data {
+  font-family: monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+.ble-info-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
 }
 
 /* ------------------------------------------------------------------

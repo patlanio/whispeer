@@ -48,6 +48,7 @@ class DeviceManager extends Component {
               <div class="commands-header-actions">
                 <button type="button" class="btn btn-small btn-outlined" id="fastLearnBtn" style="display:none" onclick="deviceManager.startFastLearn()">⚡ Fast Learn</button>
                 <button type="button" class="btn btn-small btn-danger" id="fastLearnStopBtn" style="display:none" onclick="deviceManager.stopFastLearn()">⏹ Stop</button>
+                <button type="button" class="btn btn-small btn-outlined" id="bulkLearnBtn" style="display:none" onclick="deviceManager.openBulkLearnModal()">📡 Bulk Learn</button>
                 <button type="button" class="btn btn-small" onclick="deviceManager.addInlineCommand()">+ Add Command</button>
               </div>
             </div>
@@ -778,16 +779,15 @@ class DeviceManager extends Component {
   }
 
   addInlineCommand() {
-    if (this._getCurrentDeviceType() === 'ble') {
-      this.openBleScannerModal();
-      return;
-    }
-
     const commandsList = Utils.$('#commandsList');
     if (!commandsList) return;
 
     const form = this.createInlineCommandForm();
     commandsList.insertAdjacentHTML('beforeend', form);
+  }
+
+  openBulkLearnModal() {
+    this.openBleScannerModal(false, null);
   }
 
   _getCurrentDeviceType() {
@@ -953,6 +953,10 @@ class DeviceManager extends Component {
     const fastLearnBtn = document.getElementById('fastLearnBtn');
     if (fastLearnBtn) {
       fastLearnBtn.style.display = (deviceType === 'ir' || deviceType === 'rf') ? '' : 'none';
+    }
+    const bulkLearnBtn = document.getElementById('bulkLearnBtn');
+    if (bulkLearnBtn) {
+      bulkLearnBtn.style.display = deviceType === 'ble' ? '' : 'none';
     }
     const currentDevice = this.currentDevice;
     
@@ -1349,11 +1353,23 @@ class DeviceManager extends Component {
   }
 
   deleteCommand(commandName) {
+    // Auto-save all other commands from the DOM before re-rendering
+    this._saveAllContainersSilent(commandName);
     if (this.tempCommands[commandName]) {
       delete this.tempCommands[commandName];
       Notification.success(`Command "${commandName}" deleted`);
       this.refreshCommandsList();
     }
+  }
+
+  _saveAllContainersSilent(excludeName) {
+    const containers = document.querySelectorAll('#commandsList .command-container');
+    containers.forEach(container => {
+      const nameInput = container.querySelector('.command-inline-input.name');
+      const name = nameInput?.value.trim();
+      if (!name || name === excludeName) return;
+      this._saveContainerSilent(container);
+    });
   }
 
   async testInlineCommand(button) {
@@ -1450,7 +1466,8 @@ class DeviceManager extends Component {
       return;
     }
 
-    const optionValueInput = optionField.querySelector(`[data-option-value]`);
+    const optionValueInput = optionField.querySelector(`[data-option-value]`)
+      || (finalOptionKey ? optionField.querySelector(`[data-option="${finalOptionKey}"]`) : null);
     const commandCode = optionValueInput?.value.trim();
     
     if (!commandCode) {
@@ -1617,6 +1634,16 @@ class DeviceManager extends Component {
       return;
     }
 
+    if (deviceInfo.type === 'ble') {
+      const commandContainer = buttonElement.closest('.command-container');
+      const commandForm = commandContainer?.querySelector('.command-inline-form');
+      const codeInput = commandForm?.querySelector('input.command-inline-input.code');
+      this.openBleScannerModal(true, (code) => {
+        if (codeInput) codeInput.value = code;
+      });
+      return;
+    }
+
     this._fastLearnStop = false;
 
     const commandContainer = buttonElement.closest('.command-container');
@@ -1636,22 +1663,30 @@ class DeviceManager extends Component {
       return;
     }
 
+    const optionField = buttonElement.closest('.option-field');
+    let valueInput;
+
+    if (optionKey) {
+      valueInput = optionField.querySelector(`input[data-option="${optionKey}"]`);
+    } else {
+      valueInput = optionField.querySelector('input[data-option-value]');
+    }
+
+    if (deviceInfo.type === 'ble') {
+      this.openBleScannerModal(true, (code) => {
+        if (valueInput) valueInput.value = code;
+      });
+      return;
+    }
+
     this._fastLearnStop = false;
 
     const commandContainer = buttonElement.closest('.command-container');
     const nameInput = commandContainer.querySelector('.command-inline-input.name');
     const commandBaseName = nameInput?.value.trim() || `cmd_${Date.now()}`;
 
-    const optionField = buttonElement.closest('.option-field');
-    let keyInput, valueInput;
-
-    if (optionKey) {
-      // For predefined options like 'on'/'off'
-      valueInput = optionField.querySelector(`input[data-option="${optionKey}"]`);
-    } else {
-      // For dynamic options
-      keyInput = optionField.querySelector('input[data-option-key]');
-      valueInput = optionField.querySelector('input[data-option-value]');
+    if (!optionKey) {
+      const keyInput = optionField.querySelector('input[data-option-key]');
       optionKey = keyInput?.value.trim() || `opt_${Date.now()}`;
     }
 
@@ -1985,20 +2020,10 @@ class DeviceManager extends Component {
   }
 
   // ------------------------------------------------------------------
-  // BLE Scanner Modal
+  // BLE Advertisement Monitor (HA-native style)
   // ------------------------------------------------------------------
 
-  // Known consumer manufacturer IDs to filter out by default
-  static BLE_CONSUMER_MFR_IDS = new Set([
-    '76',    // Apple (0x004C)
-    '224',   // Google (0x00E0)
-    '117',   // Samsung (0x0075)
-    '6',     // Microsoft (0x0006)
-    '7',     // Microsoft (0x0007)
-    '301',   // Xiaomi (0x012D)
-  ]);
-
-  openBleScannerModal() {
+  openBleScannerModal(pickMode = false, onPick = null) {
     const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
     if (!interfaceSelect) {
       Notification.error('No interface selected');
@@ -2018,241 +2043,501 @@ class DeviceManager extends Component {
       return;
     }
 
-    const adapterMac = ifaceData.mac;
-    const hciName = ifaceData.hci_name;
+    this._bleAdapter = ifaceData.hci_name;
+    this._blePickMode = pickMode;
+    this._blePickCallback = onPick;
+
+    this._closeBleScanner();
+
+    this._bleDevices = [];
+    this._bleSortCol = 'time';
+    this._bleSortAsc = false;
+    this._bleFilter = '';
+    this._bleGroupBy = 'source';
+    this._bleCollapsed = new Set();
+    this._bleListening = true;
+
+    const importSection = pickMode ? '' : `
+      <div class="ble-adv-import-group">
+        <span class="ble-adv-import-prepend">Import selected as</span>
+        <select class="form-select ble-adv-import-select" id="bleImportType" disabled onchange="deviceManager._updateBleImportType()">
+          <option value="button">Button</option>
+          <option value="switch">Switch</option>
+          <option value="light">Light</option>
+          <option value="numeric">Numeric Range</option>
+          <option value="options">Options</option>
+          <option value="group">Group</option>
+        </select>
+        <button class="input-group-append-btn" id="bleImportBtn" onclick="deviceManager.importSelectedBleCommands()" disabled>⬆ Import</button>
+      </div>`;
+
+    const lastColHeader = pickMode ? '<th></th>' : '<th>Import As</th>';
 
     const scannerHTML = `
-      <div class="ble-scanner-header">
-        <div class="ble-scanner-status">📡 Scanning on ${this._escapeHtml(hciName)}…</div>
-        <div class="ble-scanner-actions">
-          <button class="btn btn-small btn-outlined" id="bleStopBtn" onclick="deviceManager.stopBlePoll()">⏹ Stop Listening</button>
-          <button class="btn btn-small btn-outlined" id="bleClearBtn" onclick="deviceManager.clearBleTable()">🗑 Clear</button>
-          <button class="btn btn-small" id="bleImportBtn" onclick="deviceManager.importSelectedBleCommands()" disabled>Import Selected</button>
+      <div class="ble-adv-actions">
+        <div class="ble-adv-actions-left">
+          <button class="btn btn-small btn-outlined" id="bleListenBtn" onclick="deviceManager._toggleBleListening()">⏹ Stop Listening</button>
+          <button class="btn btn-small btn-outlined" onclick="deviceManager._clearBleTable()">🗑 Clear</button>
+        </div>
+        ${importSection}
+      </div>
+      <div class="ble-adv-toolbar">
+        <input type="text" class="ble-adv-search" id="bleAdvSearch" placeholder="Search…" oninput="deviceManager._onBleSearch(this.value)">
+        <div class="ble-adv-toolbar-actions">
+          <select class="form-select ble-adv-select" id="bleGroupSelect" onchange="deviceManager._onBleGroupChange(this.value)">
+            <option value="source">Group by Source</option>
+            <option value="">No grouping</option>
+          </select>
+          <select class="form-select ble-adv-select" id="bleSortSelect" onchange="deviceManager._onBleSortChange(this.value)">
+            <option value="time">Order by Updated</option>
+            <option value="address">Order by Address</option>
+            <option value="name">Order by Name</option>
+            <option value="rssi">Order by RSSI</option>
+          </select>
         </div>
       </div>
-      <div class="ble-filter-bar">
-        <label class="ble-filter-toggle">
-          <input type="checkbox" id="bleConsumerFilter" checked onchange="deviceManager._applyBleFilters()">
-          Hide consumer devices
-        </label>
-        <label class="ble-filter-toggle">
-          <input type="checkbox" id="bleHideEmptyFilter" checked onchange="deviceManager._applyBleFilters()">
-          Hide empty
-        </label>
-        <input type="text" id="bleAddressFilter" class="form-input ble-address-input" placeholder="Filter by address…" oninput="deviceManager._applyBleFilters()">
-      </div>
-      <div class="ble-scanner-table-wrap">
-        <table class="ble-scanner-table">
+      <div class="ble-adv-table-wrap">
+        <table class="ble-adv-table">
           <thead>
             <tr>
+              <th>Address</th>
+              <th>Name</th>
               <th>Device</th>
-              <th>Data Field</th>
+              <th>Source</th>
+              <th>Updated</th>
+              <th>RSSI</th>
               <th>Test</th>
-              <th>Import</th>
-              <th>Import As</th>
+              ${lastColHeader}
             </tr>
           </thead>
-          <tbody id="bleScannerBody"></tbody>
+          <tbody id="bleAdvBody"></tbody>
         </table>
       </div>
     `;
 
     this._bleScannerModal = new Modal({
-      title: 'BLE Advertisement Scanner',
+      title: 'Bluetooth Advertisement Monitor',
       content: scannerHTML,
       className: 'ble-scanner-modal'
     });
-    // Stop scanning when the modal is dismissed (close btn, backdrop, Escape)
     const origClose = this._bleScannerModal.close.bind(this._bleScannerModal);
     this._bleScannerModal.close = () => {
-      deviceManager.stopBlePoll();
+      this._closeBleScanner();
       return origClose();
     };
     this._bleScannerModal.open();
 
-    this.startBlePoll(adapterMac, hciName);
+    this._subscribeBleAdvertisements();
   }
 
-  startBlePoll(adapterMac, hciName) {
-    this._bleScanActive = true;
-    this._bleScanAddresses = new Set();
-    this._bleScanHciName = hciName;
-    this._bleScanAdapterMac = adapterMac;
-
-    this._blePollTimer = setInterval(() => {
-      if (this._bleScanActive) {
-        this._fetchAndMergeBleScan(adapterMac, hciName);
-      }
-    }, 2000);
-
-    this._bleAgeTimer = setInterval(() => this._updateAgeDisplays(), 1000);
-
-    // Fetch immediately
-    this._fetchAndMergeBleScan(adapterMac, hciName);
-  }
-
-  stopBlePoll() {
-    this._bleScanActive = false;
-    clearInterval(this._blePollTimer);
-    this._blePollTimer = null;
-    clearInterval(this._bleAgeTimer);
-    this._bleAgeTimer = null;
-
-    const statusEl = this._bleScannerModal?.element?.querySelector('.ble-scanner-status');
-    if (statusEl) statusEl.textContent = '⏹ Paused';
-
-    const stopBtn = document.getElementById('bleStopBtn');
-    if (stopBtn) {
-      stopBtn.textContent = '▶ Start Listening';
-      stopBtn.onclick = () => deviceManager.resumeBlePoll();
-    }
-  }
-
-  resumeBlePoll() {
-    const adapterMac = this._bleScanAdapterMac;
-    const hciName = this._bleScanHciName;
-    if (!adapterMac || !hciName) return;
-
-    this._bleScanActive = true;
-
-    const statusEl = this._bleScannerModal?.element?.querySelector('.ble-scanner-status');
-    if (statusEl) statusEl.textContent = `📡 Scanning on ${this._escapeHtml(hciName)}…`;
-
-    const stopBtn = document.getElementById('bleStopBtn');
-    if (stopBtn) {
-      stopBtn.textContent = '⏹ Stop Listening';
-      stopBtn.onclick = () => deviceManager.stopBlePoll();
-    }
-
-    this._blePollTimer = setInterval(() => {
-      if (this._bleScanActive) this._fetchAndMergeBleScan(adapterMac, hciName);
-    }, 2000);
-    this._bleAgeTimer = setInterval(() => this._updateAgeDisplays(), 1000);
-
-    this._fetchAndMergeBleScan(adapterMac, hciName);
-  }
-
-  clearBleTable() {
-    const tbody = document.getElementById('bleScannerBody');
-    if (tbody) tbody.innerHTML = '';
-    this._bleScanAddresses = new Set();
-  }
-
-  async _fetchAndMergeBleScan(adapterMac, hciName) {
+  async _subscribeBleAdvertisements() {
     try {
-      const result = await WSManager.call('whispeer/ble_scan', { adapter_mac: adapterMac });
-      const devices = result?.devices || [];
-      devices.forEach(d => {
-        if (this._bleScanAddresses.has(d.address)) return;
-        this._bleScanAddresses.add(d.address);
-        this._appendScannerRow(d, hciName);
-      });
+      this._bleUnsub = await WSManager.subscribeCommand(
+        'bluetooth/subscribe_advertisements', {},
+        (event) => this._handleBleAdvEvent(event)
+      );
     } catch (e) {
-      console.error('BLE scan error:', e);
+      console.error('Failed to subscribe to BLE advertisements:', e);
+      Notification.error('Failed to subscribe to Bluetooth advertisements');
+    }
+
+    this._bleTimeTimer = setInterval(() => this._updateBleRelativeTimes(), 1000);
+  }
+
+  _handleBleAdvEvent(event) {
+    if (!this._bleListening) return;
+    if (event.add) {
+      for (const entry of event.add) {
+        const idx = this._bleDevices.findIndex(d => d.address === entry.address);
+        if (idx === -1) {
+          this._bleDevices.push(entry);
+        } else {
+          this._bleDevices[idx] = entry;
+        }
+      }
+    }
+    if (event.remove) {
+      for (const entry of event.remove) {
+        const idx = this._bleDevices.findIndex(d => d.address === entry.address);
+        if (idx !== -1) this._bleDevices.splice(idx, 1);
+      }
+    }
+    this._renderBleTable();
+  }
+
+  _toggleBleListening() {
+    this._bleListening = !this._bleListening;
+    const btn = document.getElementById('bleListenBtn');
+    if (btn) {
+      btn.textContent = this._bleListening ? '⏹ Stop Listening' : '▶ Start Listening';
     }
   }
 
-  _appendScannerRow(device, hciName) {
-    const tbody = document.getElementById('bleScannerBody');
+  _clearBleTable() {
+    this._bleDevices = [];
+    this._renderBleTable();
+  }
+
+  _getBleFilteredAndSorted() {
+    let data = [...this._bleDevices];
+
+    if (this._bleFilter) {
+      const q = this._bleFilter.toLowerCase();
+      data = data.filter(d =>
+        (d.address || '').toLowerCase().includes(q) ||
+        (d.name || '').toLowerCase().includes(q) ||
+        (d.source || '').toLowerCase().includes(q)
+      );
+    }
+
+    const col = this._bleSortCol;
+    const dir = this._bleSortAsc ? 1 : -1;
+    data.sort((a, b) => {
+      let av, bv;
+      if (col === 'rssi') {
+        av = a.rssi ?? -999;
+        bv = b.rssi ?? -999;
+        return (av - bv) * dir;
+      }
+      if (col === 'time') {
+        av = a.time ?? 0;
+        bv = b.time ?? 0;
+        return (av - bv) * dir;
+      }
+      av = (a[col] || '').toLowerCase();
+      bv = (b[col] || '').toLowerCase();
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+
+    return data;
+  }
+
+  _renderBleTable() {
+    const tbody = document.getElementById('bleAdvBody');
     if (!tbody) return;
 
-    const addr = device.address || '';
-    const name = device.name || 'Unknown';
-    const rssi = device.rssi != null ? `${device.rssi} dBm` : '';
-    const initialAgo = device.last_seen_ago != null ? device.last_seen_ago : 9999;
-    const fetchedAt = Date.now();
+    const data = this._getBleFilteredAndSorted();
+    const groupBy = this._bleGroupBy;
+    let html = '';
 
-    // Determine if this is a consumer device
-    const mfrIds = Object.keys(device.manufacturer_data || {});
-    const isConsumer = mfrIds.some(id => DeviceManager.BLE_CONSUMER_MFR_IDS.has(id));
+const colspan = this._blePickMode ? 7 : 8;
 
-    // Build <select> options from manufacturer_data and service_data
-    let optionsHtml = '';
-    for (const [mfrId, dataHex] of Object.entries(device.manufacturer_data || {})) {
-      const preview = dataHex.length > 16 ? dataHex.substring(0, 16) + '…' : dataHex;
-      const val = JSON.stringify({ ad_type: 'manufacturer', field_id: parseInt(mfrId), data_hex: dataHex });
-      optionsHtml += `<option value='${this._escapeAttr(val)}'>Mfr 0x${parseInt(mfrId).toString(16).toUpperCase().padStart(4, '0')} — ${preview}</option>`;
+    if (groupBy) {
+      const groups = new Map();
+      for (const d of data) {
+        const key = d[groupBy] || 'Unknown';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(d);
+      }
+      for (const [groupName, items] of groups) {
+        const collapsed = this._bleCollapsed.has(groupName);
+        const arrow = collapsed ? '▶' : '▼';
+        html += `<tr class="ble-adv-group-row" onclick="deviceManager._toggleBleGroup('${this._escapeAttr(groupName)}')">
+          <td colspan="${colspan}"><span class="ble-adv-group-arrow">${arrow}</span> ${this._escapeHtml(groupName)} (${items.length})</td>
+        </tr>`;
+        if (!collapsed) {
+          for (const d of items) {
+            html += this._renderBleRow(d);
+          }
+        }
+      }
+    } else {
+      for (const d of data) {
+        html += this._renderBleRow(d);
+      }
     }
-    for (const [uuid, dataHex] of Object.entries(device.service_data || {})) {
-      const preview = dataHex.length > 16 ? dataHex.substring(0, 16) + '…' : dataHex;
-      const val = JSON.stringify({ ad_type: 'service', field_id: uuid, data_hex: dataHex });
-      optionsHtml += `<option value='${this._escapeAttr(val)}'>SVC ${uuid.length > 8 ? uuid.substring(0, 8) + '…' : uuid} — ${preview}</option>`;
+
+    if (data.length === 0) {
+      html = `<tr><td colspan="${colspan}" class="ble-adv-empty">No advertisements found</td></tr>`;
     }
 
-    const hasData = !!optionsHtml;
-    const selectHtml = hasData
-      ? `<select class="ble-field-select form-select">${optionsHtml}</select>`
-      : `<select class="ble-field-select form-select" disabled><option>No data fields</option></select>`;
+    tbody.innerHTML = html;
+  }
 
-    const ageDisplay = Math.round(initialAgo);
+  _renderBleRow(d) {
+    const addr = this._escapeHtml(d.address || '');
+    const name = this._escapeHtml(d.name || '');
+    const device = '';
+    const source = this._escapeHtml(d.source || '');
+    const relTime = this._formatRelativeTime(d.time);
+    const rssi = d.rssi != null ? d.rssi : '';
+    const addrAttr = this._escapeAttr(d.address || '');
 
-    const tr = document.createElement('tr');
-    tr.className = 'ble-row-new';
-    tr.dataset.address = addr.toLowerCase();
-    tr.dataset.consumer = isConsumer ? 'true' : 'false';
-    tr.dataset.hasData = hasData ? 'true' : 'false';
-    tr.dataset.initialAgo = initialAgo;
-    tr.dataset.fetchedAt = fetchedAt;
-    tr.dataset.ageSeconds = initialAgo;
-    tr.dataset.raw = device.raw || '';
+    const lastCol = this._blePickMode
+      ? `<td onclick="event.stopPropagation()"><button class="btn btn-small" onclick="deviceManager._onBleRowClick('${addrAttr}', event)">Use this</button></td>`
+      : `<td class="ble-adv-import-col" onclick="event.stopPropagation()"><input type="text" class="ble-import-name form-input" placeholder="Import as…" oninput="deviceManager._updateBleImportBtn()"></td>`;
 
-    tr.innerHTML = `
-      <td>
-        <div class="ble-device-addr">${this._escapeHtml(addr)}</div>
-        <div class="ble-device-name">${this._escapeHtml(name)}<small>${rssi ? ' ' + rssi + ' ·' : ''} <span class="ble-age-span">${ageDisplay}</span>s</small></div>
+    return `<tr class="ble-adv-row" data-address="${addrAttr}" onclick="deviceManager._onBleRowClick('${addrAttr}', event)">
+      <td class="ble-adv-addr">${addr}</td>
+      <td>${name}</td>
+      <td>${device}</td>
+      <td>${source}</td>
+      <td class="ble-adv-time" data-time="${d.time || 0}">${relTime}</td>
+      <td class="ble-adv-rssi">${rssi}</td>
+      <td class="ble-adv-test-col" onclick="event.stopPropagation()">
+        <button class="btn btn-small command-inline-btn test ble-test-btn" onclick="deviceManager._testBleRaw(this, '${addrAttr}')">Test</button>
       </td>
-      <td>${selectHtml}</td>
-      <td><button class="btn btn-small command-inline-btn test" onclick="deviceManager._testBleEmit(this, '${this._escapeAttr(hciName)}')">Test</button></td>
-      <td><input type="checkbox" class="ble-import-check" onchange="deviceManager._updateBleImportBtn()"></td>
-      <td><input type="text" class="ble-import-name form-input" placeholder="Import as…"></td>
+      ${lastCol}
+    </tr>`;
+  }
+
+  _formatRelativeTime(epochSeconds) {
+    if (!epochSeconds) return '';
+    const now = Date.now() / 1000;
+    const diff = Math.max(0, Math.round(now - epochSeconds));
+    if (diff < 1) return 'Now';
+    if (diff < 60) return `${diff} seconds ago`;
+    if (diff < 3600) {
+      const m = Math.floor(diff / 60);
+      return `${m} minute${m > 1 ? 's' : ''} ago`;
+    }
+    const h = Math.floor(diff / 3600);
+    return `${h} hour${h > 1 ? 's' : ''} ago`;
+  }
+
+  _updateBleRelativeTimes() {
+    const cells = document.querySelectorAll('#bleAdvBody .ble-adv-time');
+    cells.forEach(td => {
+      const t = parseFloat(td.dataset.time);
+      if (t) td.textContent = this._formatRelativeTime(t);
+    });
+  }
+
+  _onBleSearch(value) {
+    this._bleFilter = value;
+    this._renderBleTable();
+  }
+
+  _onBleGroupChange(value) {
+    this._bleGroupBy = value;
+    this._bleCollapsed.clear();
+    this._renderBleTable();
+  }
+
+  _onBleSortChange(value) {
+    this._bleSortCol = value;
+    this._bleSortAsc = value !== 'time' && value !== 'rssi';
+    this._renderBleTable();
+  }
+
+  _toggleBleGroup(groupName) {
+    if (this._bleCollapsed.has(groupName)) {
+      this._bleCollapsed.delete(groupName);
+    } else {
+      this._bleCollapsed.add(groupName);
+    }
+    this._renderBleTable();
+  }
+
+  _onBleRowClick(address, event) {
+    const entry = this._bleDevices.find(d => d.address === address);
+    if (!entry) return;
+
+    if (this._blePickMode) {
+      const code = entry.raw || '';
+      this._closeBleScanner();
+      if (this._blePickCallback) {
+        this._blePickCallback(code);
+        this._blePickCallback = null;
+      }
+      return;
+    }
+
+    // Don't open the info dialog if the click was on the import input
+    if (event?.target?.classList.contains('ble-import-name')) return;
+
+    this._openBleDeviceInfoDialog(entry);
+  }
+
+  _updateBleImportBtn() {
+    const btn = document.getElementById('bleImportBtn');
+    const typeSelect = document.getElementById('bleImportType');
+    if (!btn) return;
+    const filledCount = Array.from(
+      document.querySelectorAll('#bleAdvBody .ble-import-name')
+    ).filter(inp => inp.value.trim()).length;
+
+    btn.disabled = filledCount === 0;
+    if (typeSelect) {
+      typeSelect.disabled = filledCount === 0;
+      this._updateBleImportType(filledCount);
+    }
+  }
+
+  _updateBleImportType(filledCount) {
+    const typeSelect = document.getElementById('bleImportType');
+    if (!typeSelect) return;
+    const count = filledCount != null ? filledCount : Array.from(
+      document.querySelectorAll('#bleAdvBody .ble-import-name')
+    ).filter(inp => inp.value.trim()).length;
+
+    Array.from(typeSelect.options).forEach(opt => {
+      const multiOnly = opt.value !== 'button';
+      opt.disabled = multiOnly && count <= 1;
+      opt.hidden = multiOnly && count <= 1;
+    });
+    if (count <= 1 && typeSelect.value !== 'button') {
+      typeSelect.value = 'button';
+    }
+  }
+
+  importSelectedBleCommands() {
+    const typeSelect = document.getElementById('bleImportType');
+    const importType = typeSelect?.value || 'button';
+
+    const toImport = [];
+    document.querySelectorAll('#bleAdvBody tr.ble-adv-row').forEach(tr => {
+      const nameInput = tr.querySelector('.ble-import-name');
+      const cmdName = nameInput?.value.trim();
+      if (!cmdName) return;
+      const address = tr.dataset.address;
+      const entry = this._bleDevices.find(d => d.address === address);
+      if (!entry) return;
+      const code = entry.raw || '';
+      toImport.push({ cmdName, code });
+    });
+
+    if (toImport.length === 0) {
+      Notification.error('Fill in at least one "Import as" name');
+      return;
+    }
+
+    if (importType === 'button') {
+      toImport.forEach(({ cmdName, code }) => {
+        this.tempCommands[cmdName] = {
+          type: 'button',
+          values: { code },
+          props: { color: '#2196f3', icon: '📡', display: 'both' }
+        };
+      });
+    } else if (importType === 'light' || importType === 'switch') {
+      if (toImport.length < 2) {
+        Notification.error(`${importType} type requires at least 2 entries (on and off)`);
+        return;
+      }
+      const commandName = toImport[0].cmdName;
+      this.tempCommands[commandName] = {
+        type: importType,
+        values: { on: toImport[0].code, off: toImport[1].code },
+        props: { color: importType === 'light' ? '#ffeb3b' : '#2196f3', icon: importType === 'light' ? '💡' : '🔌', display: 'both' }
+      };
+    } else {
+      const commandName = toImport[0].cmdName;
+      const values = {};
+      toImport.forEach(({ cmdName, code }) => { values[cmdName] = code; });
+      this.tempCommands[commandName] = {
+        type: importType,
+        values,
+        props: { color: '#2196f3', icon: '📡', display: 'both' }
+      };
+    }
+
+    this._closeBleScanner();
+    Notification.success(`Imported BLE command(s) as ${importType}`);
+    const commandsList = Utils.$('#commandsList');
+    if (commandsList) {
+      commandsList.innerHTML = this.renderCommandsList(this.tempCommands);
+    }
+  }
+
+  _openBleDeviceInfoDialog(entry) {
+    const hexDisplay = (hexStr) => {
+      if (!hexStr) return '';
+      const bytes = hexStr.match(/.{2}/g) || [];
+      return bytes.map(b => `0x${b.toUpperCase()}`).join(' ');
+    };
+
+    let mfrHtml = '';
+    for (const [id, data] of Object.entries(entry.manufacturer_data || {})) {
+      mfrHtml += `<tr><td><b>${this._escapeHtml(id)}</b></td><td class="ble-hex-data">${hexDisplay(data)}</td></tr>`;
+    }
+    if (!mfrHtml) mfrHtml = '<tr><td colspan="2" class="ble-adv-empty">—</td></tr>';
+
+    let svcDataHtml = '';
+    for (const [uuid, data] of Object.entries(entry.service_data || {})) {
+      svcDataHtml += `<tr><td><b>${this._escapeHtml(uuid)}</b></td><td class="ble-hex-data">${hexDisplay(data)}</td></tr>`;
+    }
+    if (!svcDataHtml) svcDataHtml = '<tr><td colspan="2" class="ble-adv-empty">—</td></tr>';
+
+    let svcUuidsHtml = '';
+    for (const uuid of (entry.service_uuids || [])) {
+      svcUuidsHtml += `<tr><td>${this._escapeHtml(uuid)}</td></tr>`;
+    }
+    if (!svcUuidsHtml) svcUuidsHtml = '<tr><td class="ble-adv-empty">—</td></tr>';
+
+    const pickButton = this._blePickMode
+      ? `<button class="btn btn-small" onclick="deviceManager._blePickFromDialog('${this._escapeAttr(entry.address)}')">Use this</button>`
+      : '';
+
+    const content = `
+      <div class="ble-info-section">
+        <p>
+          <b>Address</b>: ${this._escapeHtml(entry.address)}<br>
+          <b>Name</b>: ${this._escapeHtml(entry.name || '')}<br>
+          <b>Source</b>: ${this._escapeHtml(entry.source || '')}
+        </p>
+      </div>
+      <h3>Advertisement Data</h3>
+      <h4>Manufacturer Data</h4>
+      <table class="ble-info-table" width="100%"><tbody>${mfrHtml}</tbody></table>
+      <h4>Service Data</h4>
+      <table class="ble-info-table" width="100%"><tbody>${svcDataHtml}</tbody></table>
+      <h4>Service UUIDs</h4>
+      <table class="ble-info-table" width="100%"><tbody>${svcUuidsHtml}</tbody></table>
+      <div class="ble-info-actions">
+        <button class="btn btn-outlined" onclick="deviceManager._copyBleEntryToClipboard('${this._escapeAttr(entry.address)}')">Copy to clipboard</button>
+        ${pickButton}
+      </div>
     `;
 
-    tbody.appendChild(tr);
-    this._sortScannerTable();
-    this._applyBleFilters();
-  }
-
-  _sortScannerTable() {
-    const tbody = document.getElementById('bleScannerBody');
-    if (!tbody) return;
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    rows.sort((a, b) => parseFloat(a.dataset.ageSeconds || 9999) - parseFloat(b.dataset.ageSeconds || 9999));
-    rows.forEach(tr => tbody.appendChild(tr));
-  }
-
-  _updateAgeDisplays() {
-    const now = Date.now();
-    document.querySelectorAll('#bleScannerBody tr').forEach(tr => {
-      const initialAgo = parseFloat(tr.dataset.initialAgo || 0);
-      const fetchedAt = parseInt(tr.dataset.fetchedAt || now);
-      const currentAgo = initialAgo + (now - fetchedAt) / 1000;
-      tr.dataset.ageSeconds = currentAgo;
-      const span = tr.querySelector('.ble-age-span');
-      if (span) span.textContent = Math.round(currentAgo);
+    this._bleInfoModal = new Modal({
+      title: 'Device Information',
+      content,
+      className: 'ble-info-modal'
     });
-    // Do NOT re-sort here — sorting moves DOM nodes and breaks open <select> dropdowns.
-    // Sorting only happens when new rows arrive (_appendScannerRow calls _sortScannerTable).
+    this._bleInfoModal.open();
   }
 
-  async _testBleEmit(btn, hciName) {
-    const row = btn.closest('tr');
-    const select = row.querySelector('.ble-field-select');
-    if (!select || !select.value) return;
-
-    let payload;
+  async _copyBleEntryToClipboard(address) {
+    const entry = this._bleDevices.find(d => d.address === address);
+    if (!entry) return;
     try {
-      payload = JSON.parse(select.value);
-    } catch (e) { return; }
+      await navigator.clipboard.writeText(JSON.stringify(entry, null, 2));
+      Notification.success('Copied to clipboard');
+    } catch (e) {
+      Notification.error('Failed to copy');
+    }
+  }
+
+  _blePickFromDialog(address) {
+    const entry = this._bleDevices.find(d => d.address === address);
+    if (!entry) return;
+    const code = entry.raw || '';
+    if (this._bleInfoModal) {
+      this._bleInfoModal.element?.remove();
+      this._bleInfoModal = null;
+    }
+    this._closeBleScanner();
+    if (this._blePickCallback) {
+      this._blePickCallback(code);
+      this._blePickCallback = null;
+    }
+  }
+
+  async _testBleRaw(btn, address) {
+    const entry = this._bleDevices.find(d => d.address === address);
+    if (!entry?.raw) {
+      Notification.error('No raw data available for this device');
+      return;
+    }
 
     btn.disabled = true;
     btn.textContent = '…';
 
     try {
       const result = await WSManager.call('whispeer/ble_emit', {
-        adapter: hciName,
-        ad_type: payload.ad_type,
-        field_id: payload.field_id,
-        data_hex: payload.data_hex,
+        adapter: this._bleAdapter,
+        raw_hex: entry.raw,
       });
       if (result?.status === 'success') {
         btn.textContent = '✅';
@@ -2273,78 +2558,19 @@ class DeviceManager extends Component {
     }, 2000);
   }
 
-  _applyBleFilters() {
-    const hideConsumer = document.getElementById('bleConsumerFilter')?.checked;
-    const hideEmpty = document.getElementById('bleHideEmptyFilter')?.checked;
-    const addrFilter = (document.getElementById('bleAddressFilter')?.value || '').toLowerCase();
-    const rows = document.querySelectorAll('#bleScannerBody tr');
+  _closeBleScanner() {
+    if (this._bleUnsub) {
+      try { this._bleUnsub(); } catch (_) {}
+      this._bleUnsub = null;
+    }
+    clearInterval(this._bleTimeTimer);
+    this._bleTimeTimer = null;
 
-    rows.forEach(tr => {
-      let hidden = false;
-      if (hideConsumer && tr.dataset.consumer === 'true') hidden = true;
-      if (hideEmpty && tr.dataset.hasData === 'false') hidden = true;
-      if (addrFilter && !tr.dataset.address.includes(addrFilter)) hidden = true;
-      tr.style.display = hidden ? 'none' : '';
-    });
-  }
-
-  _updateBleImportBtn() {
-    const btn = document.getElementById('bleImportBtn');
-    if (!btn) return;
-    const anyChecked = document.querySelectorAll('#bleScannerBody .ble-import-check:checked').length > 0;
-    btn.disabled = !anyChecked;
-  }
-
-  importSelectedBleCommands() {
-    const rows = document.querySelectorAll('#bleScannerBody tr');
-    let imported = 0;
-
-    rows.forEach(tr => {
-      const checkbox = tr.querySelector('.ble-import-check');
-      if (!checkbox || !checkbox.checked) return;
-
-      const select = tr.querySelector('.ble-field-select');
-      const nameInput = tr.querySelector('.ble-import-name');
-      if (!select || !select.value) return;
-
-      const cmdName = (nameInput?.value || '').trim() || tr.dataset.address || `ble_cmd_${imported}`;
-
-      let payload;
-      try {
-        payload = JSON.parse(select.value);
-      } catch (e) { return; }
-
-      // Use raw advertisement bytes when available; fall back to data_hex
-      const code = tr.dataset.raw || payload.data_hex;
-
-      this.tempCommands[cmdName] = {
-        type: 'button',
-        values: {
-          code
-        },
-        props: {
-          color: '#2196f3',
-          icon: '📡',
-          display: 'both'
-        }
-      };
-      imported++;
-    });
-
-    this.stopBlePoll();
     if (this._bleScannerModal) {
-      this._bleScannerModal.close();
+      this._bleScannerModal.element?.remove();
       this._bleScannerModal = null;
     }
-
-    if (imported > 0) {
-      Notification.success(`Imported ${imported} BLE command(s)`);
-      // Re-render commands list in device modal
-      const commandsList = Utils.$('#commandsList');
-      if (commandsList) {
-        commandsList.innerHTML = this.renderCommandsList(this.tempCommands);
-      }
-    }
+    this._bleDevices = [];
   }
 }
 
