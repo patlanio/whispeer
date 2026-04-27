@@ -31,6 +31,8 @@ async def async_setup_entry(
     entities: list[WhispeerNumber] = []
     for device in devices:
         for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
+            if not isinstance(cmd_cfg, dict):
+                continue
             if cmd_cfg.get("type") == CMD_TYPE_NUMERIC:
                 uid = f"whispeer_{device['id']}_{cmd_name}"
                 entities.append(WhispeerNumber(device, cmd_name, cmd_cfg, api))
@@ -44,6 +46,8 @@ async def async_setup_entry(
         new: list[WhispeerNumber] = []
         device_id = device_data["id"]
         for cmd_name, cmd_cfg in (device_data.get("commands") or {}).items():
+            if not isinstance(cmd_cfg, dict):
+                continue
             if cmd_cfg.get("type") == CMD_TYPE_NUMERIC:
                 uid = f"whispeer_{device_id}_{cmd_name}"
                 if uid not in registered:

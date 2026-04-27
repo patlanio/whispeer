@@ -26,9 +26,11 @@ CMD_TYPE_NUMERIC = "numeric"
 CMD_TYPE_GROUP = "group"
 # "options" renders as a SelectEntity.
 CMD_TYPE_OPTIONS = "options"
+# "climate" renders as a ClimateEntity driven by an IR code table.
+CMD_TYPE_CLIMATE = "climate"
 
 # Platforms
-PLATFORMS = ["switch", "button", "light", "select", "number"]
+PLATFORMS = ["switch", "button", "light", "select", "number", "climate"]
 
 # Configuration and options
 CONF_ENABLED = "enabled"

@@ -541,6 +541,35 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
             states[f"{device_id}:{command_name}"] = raw
         connection.send_result(msg["id"], {"states": states})
 
+    @websocket_api.websocket_command({
+        vol.Required("type"): "whispeer/get_ha_entities",
+        vol.Optional("domains"): list,
+    })
+    @websocket_api.async_response
+    async def ws_get_ha_entities(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        """Return HA entities filtered by domain(s).
+
+        Response: {"entities": [{"entity_id": ..., "friendly_name": ..., "domain": ...}]}
+        """
+        allowed_domains = set(msg.get("domains") or ["sensor", "binary_sensor"])
+        entities = []
+        for state in hass.states.async_all():
+            domain = state.entity_id.split(".")[0]
+            if domain not in allowed_domains:
+                continue
+            entities.append({
+                "entity_id": state.entity_id,
+                "friendly_name": state.attributes.get("friendly_name", state.entity_id),
+                "domain": domain,
+                "device_class": state.attributes.get("device_class", ""),
+            })
+        entities.sort(key=lambda e: e["entity_id"])
+        connection.send_result(msg["id"], {"entities": entities})
+
     for _handler in [
         ws_get_devices,
         ws_add_device,
@@ -557,6 +586,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         ws_prepare_to_learn,
         ws_find_frequency,
         ws_get_entity_states,
+        ws_get_ha_entities,
     ]:
         websocket_api.async_register_command(hass, _handler)
 

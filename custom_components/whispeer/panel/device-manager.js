@@ -10,6 +10,11 @@ class DeviceManager extends Component {
     this._detectedFrequency = null;
     this._fastLearning = false;
     this._fastLearnStop = false;
+    this._climateData = null;
+    this._climateLearning = false;
+    this._climateLearningCell = null;
+    this._climateLearningGen = 0;
+    this._climateTestMode = false;
   }
 
   init() {
@@ -168,7 +173,10 @@ class DeviceManager extends Component {
     const { id, name, type, commands = {} } = device;
     const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[type] || { label: type, badge: 'type-ble' };
 
-    const commandsHTML = this.renderDeviceCommands(device);
+    const commandsHTML = type === 'climate'
+      ? this._renderClimateCard(device)
+      : this.renderDeviceCommands(device);
+
     const automations = DataManager.getDeviceAutomations(id);
     const automationBadge = automations.length > 0
       ? `<span class="automation-count-badge" title="${automations.length} automation(s)">${automations.length}</span>`
@@ -603,6 +611,7 @@ class DeviceManager extends Component {
   openAddDeviceModal() {
     this.currentDevice = null;
     this.tempCommands = this.createSampleCommands();
+    this._climateData = null;
     this.showDeviceModal('Add Device', {});
   }
 
@@ -615,6 +624,13 @@ class DeviceManager extends Component {
 
     this.currentDevice = device;
     this.tempCommands = Utils.deepClone(device.commands || {});
+    this._climateData = device.type === 'climate' ? {
+      config: Utils.deepClone(device.config || {}),
+      table: Utils.deepClone(device.table || {}),
+      commands: Utils.deepClone(device.commands || {}),
+      source: device.source || 'scratch',
+      sensors: Utils.deepClone(device.sensors || {})
+    } : null;
     this.showDeviceModal('Edit Device', device);
 
     // Refresh automations in background and update the section if it has changed
@@ -673,7 +689,8 @@ class DeviceManager extends Component {
     const typeOptions = [
       { value: 'ir', label: 'Infrared' },
       { value: 'rf', label: 'Radio Frequency' },
-      { value: 'ble', label: 'Bluetooth LE' }
+      { value: 'ble', label: 'Bluetooth LE' },
+      { value: 'climate', label: 'Climate (IR - SmartIR)' }
     ].map(opt =>
       `<option value="${opt.value}"${opt.value === deviceType ? ' selected' : ''}>${opt.label}</option>`
     ).join('');
@@ -949,36 +966,65 @@ class DeviceManager extends Component {
     if (!typeSelect || !interfaceSelect) return;
 
     const deviceType = typeSelect.value;
+    const isClimate = deviceType === 'climate';
 
     const fastLearnBtn = document.getElementById('fastLearnBtn');
     if (fastLearnBtn) {
-      fastLearnBtn.style.display = (deviceType === 'ir' || deviceType === 'rf') ? '' : 'none';
+      fastLearnBtn.style.display = (!isClimate && (deviceType === 'ir' || deviceType === 'rf')) ? '' : 'none';
     }
     const bulkLearnBtn = document.getElementById('bulkLearnBtn');
     if (bulkLearnBtn) {
       bulkLearnBtn.style.display = deviceType === 'ble' ? '' : 'none';
     }
+
+    // Show / hide the normal commands section for climate devices
+    const commandsSection = document.querySelector('#deviceForm .commands-section');
+    if (commandsSection) {
+      commandsSection.style.display = isClimate ? 'none' : '';
+    }
+
+    // Show / hide the climate section
+    let climateSection = document.getElementById('climateSection');
+    if (isClimate) {
+      if (!climateSection) {
+        climateSection = document.createElement('div');
+        climateSection.id = 'climateSection';
+        const commandsSectionEl = document.querySelector('#deviceForm .commands-section');
+        if (commandsSectionEl) {
+          commandsSectionEl.insertAdjacentElement('afterend', climateSection);
+        } else {
+          document.querySelector('#deviceForm .modal-controls')?.insertAdjacentElement('beforebegin', climateSection);
+        }
+      }
+      climateSection.style.display = '';
+      this._renderClimateSection(climateSection);
+    } else if (climateSection) {
+      climateSection.style.display = 'none';
+    }
+
     const currentDevice = this.currentDevice;
-    
+
     // Clear current interfaces and show loading
     interfaceSelect.innerHTML = '<option value="">⏳ Loading interfaces...</option>';
     interfaceSelect.disabled = true;
-    
+
+    const interfaceDeviceType = isClimate ? 'ir' : deviceType;
+
     try {
-      const interfaces = await DataManager.loadInterfaces(deviceType);
-      
+      const interfaces = await DataManager.loadInterfaces(interfaceDeviceType);
+
       // Clear loading state
       interfaceSelect.disabled = false;
-      
+
       if (interfaces && interfaces.length > 0) {
         let selectedIndex = null;
-        
+
         interfaceSelect.innerHTML = interfaces.map((iface, index) => {
           // Todos los objetos deben tener label
           if (typeof iface === 'object' && iface.label) {
             // Usar el índice como value y guardar el objeto en data-interface
             const interfaceData = JSON.stringify(iface).replace(/"/g, '&quot;');
-            
+
             // Check if this interface should be selected when editing
             let shouldSelect = false;
             if (preserveSelection && currentDevice && currentDevice.emitter) {
@@ -993,23 +1039,23 @@ class DeviceManager extends Component {
                 selectedIndex = index;
               }
             }
-            
+
             return `<option value="${index}" data-interface="${interfaceData}" ${shouldSelect ? 'selected' : ''}>${iface.label}</option>`;
           } else {
             console.error('Invalid interface object, missing label:', iface);
             return ''; // Skip invalid interfaces
           }
         }).filter(option => option).join(''); // Remove empty options
-        
+
         // Set the selected interface if found
         if (selectedIndex !== null) {
           interfaceSelect.value = selectedIndex.toString();
         }
-        
-        console.log(`Loaded ${interfaces.length} interfaces for ${deviceType}:`, interfaces);
+
+        console.log(`Loaded ${interfaces.length} interfaces for ${interfaceDeviceType}:`, interfaces);
       } else {
         interfaceSelect.innerHTML = '<option value="">❌ No interfaces available</option>';
-        console.log(`No interfaces found for device type: ${deviceType}`);
+        console.log(`No interfaces found for device type: ${interfaceDeviceType}`);
       }
     } catch (error) {
       console.error('Failed to load interfaces:', error);
@@ -1078,10 +1124,22 @@ class DeviceManager extends Component {
     e.preventDefault();
     this.stopFastLearn();
     this.saveAllInlineCommands();
-    
+
     const formData = new FormData(e.target);
     const deviceData = Object.fromEntries(formData.entries());
     deviceData.commands = this.tempCommands;
+
+    // Persist climate-specific data if this is a climate device
+    if (deviceData.type === 'climate') {
+      const climateData = this._collectClimateData();
+      if (climateData) {
+        deviceData.config = climateData.config;
+        deviceData.table = climateData.table;
+        deviceData.commands = climateData.commands;
+        deviceData.source = climateData.source;
+        deviceData.sensors = climateData.sensors;
+      }
+    }
 
     // Convert emit_interval to number if present and validate positive
     if (deviceData.emit_interval !== undefined && deviceData.emit_interval !== '') {
@@ -1553,6 +1611,7 @@ class DeviceManager extends Component {
   }
 
   closeDeviceModal() {
+    this._cancelClimateLearn();
     this.stopFastLearn();
     if (this.deviceModal) {
       this.deviceModal.close();
@@ -1715,6 +1774,7 @@ class DeviceManager extends Component {
     }
 
     let learningToast = null;
+    const learnGen = this._climateLearningGen;
     const isRF = deviceInfo.type === 'rf';
     const isBroadlink = (interfaceObject?.manufacturer || '').toLowerCase().includes('broadlink');
 
@@ -1728,9 +1788,16 @@ class DeviceManager extends Component {
     }
 
     try {
-      Notification.info(`Preparing ${deviceInfo.type.toUpperCase()} device for learning...`);
+      learningToast = Notification.permanent(`Preparing ${deviceInfo.type.toUpperCase()} device for learning...`);
+      this._activeLearnToast = learningToast;
 
       const prepareResult = await CommandManager.learnCommand(deviceInfo.type, emitterData);
+
+      if (this._climateLearningGen !== learnGen) {
+        learningToast.close();
+        return;
+      }
+
       if (prepareResult.status !== 'prepared') {
         throw new Error(prepareResult.message || 'Failed to prepare device for learning');
       }
@@ -1739,9 +1806,12 @@ class DeviceManager extends Component {
       let deviceReady = false;
       let currentPhase = (isRF && isBroadlink && !emitterData.frequency) ? 'sweeping' : 'capturing';
 
+      if (learningToast) { learningToast.close(); learningToast = null; }
       learningToast = Notification.permanent('⏳ Preparing device, please wait…');
+      this._activeLearnToast = learningToast;
 
       await new Promise((resolve, reject) => {
+        this._activeLearnReject = reject;
         const timeoutHandle = setTimeout(() => {
           unsubscribe();
           reject(new Error('Learning timed out - no button press detected within timeout'));
@@ -1759,11 +1829,13 @@ class DeviceManager extends Component {
             if (phase === 'capturing') {
               if (learningToast) { learningToast.close(); learningToast = null; }
               learningToast = Notification.permanent('Frequency detected! Release the button, then press the desired button briefly…');
+              this._activeLearnToast = learningToast;
               setTimeout(() => {
                 if (learningToast) { learningToast.close(); learningToast = null; }
                 deviceReady = true;
                 if (originalButton) originalButton.textContent = 'Learning';
                 learningToast = Notification.permanent('Press a button on the remote control');
+                this._activeLearnToast = learningToast;
               }, 3000);
             }
           }
@@ -1788,6 +1860,7 @@ class DeviceManager extends Component {
               } else {
                 learningToast = Notification.permanent('Press a button on the remote control');
               }
+              this._activeLearnToast = learningToast;
             }
           } else if (status === 'error' || status === 'timeout') {
             clearTimeout(timeoutHandle);
@@ -1801,10 +1874,16 @@ class DeviceManager extends Component {
       });
 
     } catch (error) {
+      if (error?._climateCancelled || this._climateLearningGen !== learnGen) {
+        if (learningToast) { learningToast.close(); learningToast = null; }
+        return;
+      }
       console.error('Learn command error:', error);
       if (learningToast) { learningToast.close(); learningToast = null; }
       Notification.error(`Failed to learn command: ${error.message}`);
     } finally {
+      this._activeLearnReject = null;
+      if (this._activeLearnToast === learningToast) this._activeLearnToast = null;
       if (originalButton) {
         originalButton.disabled = false;
         originalButton.textContent = 'Learn';
@@ -2571,6 +2650,696 @@ const colspan = this._blePickMode ? 7 : 8;
       this._bleScannerModal = null;
     }
     this._bleDevices = [];
+  }
+
+  // ====================================================================
+  // CLIMATE SECTION — form, table, card, learn
+  // ====================================================================
+
+  _getClimateData() {
+    if (!this._climateData) {
+      this._climateData = {
+        config: null,
+        table: {},
+        commands: {},
+        source: 'scratch',
+        sensors: { power: null, humidity: null, temperature: null }
+      };
+    }
+    return this._climateData;
+  }
+
+  _renderClimateSection(container) {
+    const cd = this._getClimateData();
+    const cfg = cd.config || {};
+
+    const allModes = ['cool', 'heat', 'dry', 'fan_only', 'auto'];
+    const allFanModes = ['auto', 'low', 'mid', 'high', 'turbo'];
+    const activeModes = cfg.modes || ['cool', 'heat', 'dry', 'fan_only'];
+    const activeFans = cfg.fan_modes || ['auto', 'low', 'mid', 'high'];
+
+    const hasTable = cd.config && (cd.config.modes || []).length > 0;
+
+    const modeCheckboxes = allModes.map(m =>
+      `<label class="climate-checkbox">
+        <input type="checkbox" name="climate_mode" value="${m}" ${activeModes.includes(m) ? 'checked' : ''}>
+        <span>${m}</span>
+      </label>`
+    ).join('');
+
+    const fanCheckboxes = allFanModes.map(f =>
+      `<label class="climate-checkbox">
+        <input type="checkbox" name="climate_fan" value="${f}" ${activeFans.includes(f) ? 'checked' : ''}>
+        <span>${f}</span>
+      </label>`
+    ).join('');
+
+    const panelsDisplay = hasTable ? 'display:none' : '';
+    const tableDisplay = hasTable ? '' : 'display:none';
+
+    container.innerHTML = `
+      <div class="climate-section">
+        <div id="climatePanelsWrap" style="${panelsDisplay}">
+          <div class="climate-panel">
+            <div class="climate-panel-header">
+              <span>📥 Learn from SmartIR</span>
+            </div>
+            <div class="climate-panel-body">
+              <div class="climate-smartir-row">
+                <div class="input-group" style="flex:1">
+                  <div class="input-group-prepend">
+                    <div class="input-group-text">Device #</div>
+                  </div>
+                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1120"
+                         value="${this._escapeAttr(cd._smartirNum || '')}">
+                </div>
+                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
+                <a class="btn btn-small btn-outlined"
+                   href="https://github.com/smartHomeHub/SmartIR/blob/master/docs/CLIMATE.md#available-codes-for-climate-devices"
+                   target="_blank" rel="noopener">Find yours</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="climate-or-separator"><span>OR</span></div>
+
+          <div class="climate-panel">
+            <div class="climate-panel-header">
+              <span>✏️ Start from scratch</span>
+            </div>
+            <div class="climate-panel-body">
+              <div class="climate-scratch-row">
+                <div class="input-group" style="flex:1">
+                  <div class="input-group-prepend"><div class="input-group-text">Min temp</div></div>
+                  <input type="number" id="climateMinTemp" class="form-input" value="${cfg.min_temp ?? 16}" min="0" max="50" style="width:70px">
+                </div>
+                <div class="input-group" style="flex:1">
+                  <div class="input-group-prepend"><div class="input-group-text">Max temp</div></div>
+                  <input type="number" id="climateMaxTemp" class="form-input" value="${cfg.max_temp ?? 30}" min="0" max="50" style="width:70px">
+                </div>
+              </div>
+              <div class="climate-checkgroup">
+                <span class="climate-checkgroup-label">Modes</span>
+                ${modeCheckboxes}
+              </div>
+              <div class="climate-checkgroup">
+                <span class="climate-checkgroup-label">Fan speeds</span>
+                ${fanCheckboxes}
+              </div>
+              <button type="button" class="btn btn-small" style="margin-top:8px" onclick="deviceManager._generateClimateTable()">Generate table</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="climateSensorsRow" class="climate-sensors-row" style="${hasTable ? '' : 'display:none'}">
+          <div class="input-group" style="flex:1">
+            <div class="input-group-prepend"><div class="input-group-text">Power sensor</div></div>
+            <select id="climatePowerSensor" class="form-select"><option value="">— none —</option></select>
+          </div>
+          <div class="input-group" style="flex:1">
+            <div class="input-group-prepend"><div class="input-group-text">Humidity sensor</div></div>
+            <select id="climateHumiditySensor" class="form-select"><option value="">— none —</option></select>
+          </div>
+          <div class="input-group" style="flex:1">
+            <div class="input-group-prepend"><div class="input-group-text">Temp sensor</div></div>
+            <select id="climateTempSensor" class="form-select"><option value="">— none —</option></select>
+            <button type="button" class="btn btn-small btn-danger" style="margin-left:6px"
+                    onclick="deviceManager._resetClimateTable()">Reset</button>
+          </div>
+        </div>
+
+        <div id="climateTableSection" style="${tableDisplay}">
+          ${hasTable ? this._buildClimateTableHTML() : ''}
+        </div>
+      </div>
+    `;
+
+    this._populateSensorSelects(cd.sensors || {});
+  }
+
+  async _populateSensorSelects(currentSensors) {
+    try {
+      const result = await WSManager.call('whispeer/get_ha_entities', {
+        domains: ['sensor', 'binary_sensor']
+      });
+      const entities = result?.entities || [];
+      const selects = [
+        { id: 'climatePowerSensor', key: 'power' },
+        { id: 'climateHumiditySensor', key: 'humidity' },
+        { id: 'climateTempSensor', key: 'temperature' }
+      ];
+      for (const { id, key } of selects) {
+        const sel = document.getElementById(id);
+        if (!sel) continue;
+        sel.innerHTML = '<option value="">— none —</option>' +
+          entities.map(e =>
+            `<option value="${this._escapeAttr(e.entity_id)}" ${currentSensors[key] === e.entity_id ? 'selected' : ''}>${this._escapeHtml(e.friendly_name || e.entity_id)}</option>`
+          ).join('');
+      }
+    } catch (e) {
+      console.warn('[Climate] Failed to load sensor entities:', e);
+    }
+  }
+
+  _buildClimateTableHTML() {
+    const cd = this._getClimateData();
+    const cfg = cd.config || {};
+    const modes = cfg.modes || [];
+    const fans = cfg.fan_modes || [];
+    const minT = parseInt(cfg.min_temp ?? 16);
+    const maxT = parseInt(cfg.max_temp ?? 30);
+
+    if (modes.length === 0 || fans.length === 0) return '';
+
+    const temps = [];
+    for (let t = minT; t <= maxT; t++) temps.push(t);
+
+    const isTestMode = !!this._climateTestMode;
+    const toggleLabel = isTestMode ? 'test mode' : 'learn mode';
+    const toggleClass = isTestMode ? 'climate-mode-toggle is-test' : 'climate-mode-toggle';
+    const nFans = fans.length;
+
+    // Row 1: mode headers (toggle btn in corner cell)
+    const modeHeaders = modes.map(m =>
+      `<th class="climate-mode-header" colspan="${nFans}">${m}</th>`
+    ).join('');
+
+    // Row 2: OFF cell (col 1) + fan headers repeated per mode
+    const offCode = (cd.commands || {}).off || '';
+    const offHasCode = !!offCode;
+    const offIsLearning = this._climateLearningCell === '__off__';
+    const offIconSpan = offHasCode
+      ? `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '📡' : '✓'}</span>`
+      : `<span class="climate-cell-icon empty">⚠</span>`;
+
+    const fanHeaders = modes.flatMap(() =>
+      fans.map(f => `<th class="climate-fan-header">${f}</th>`)
+    ).join('');
+
+    // Row 3: fast-learn buttons spanning fan cols per mode
+    const fastLearnCols = modes.map(m =>
+      `<td class="climate-fast-learn-cell" colspan="${nFans}">
+        <button type="button" class="climate-fast-learn-btn"
+          onclick="deviceManager._startClimateColumnFastLearn('${m}')">⚡ Fast Learn</button>
+      </td>`
+    ).join('');
+
+    // Data rows: one flat <td> per (mode × fan) intersection
+    const rows = temps.map(temp => {
+      const cells = modes.flatMap(mode =>
+        fans.map(fan => {
+          const code = ((cd.table[mode] || {})[fan] || {})[String(temp)] || '';
+          const hasCode = !!code;
+          const cellKey = `${mode}__${fan}__${temp}`;
+          const isLearning = this._climateLearningCell === cellKey;
+          let inner;
+          if (isLearning) {
+            inner = `<span class="climate-cell-icon learning"><span class="climate-spinner">⠋</span></span>`;
+          } else if (hasCode) {
+            inner = `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '📡' : '✓'}</span>`;
+          } else {
+            inner = `<span class="climate-cell-icon empty">⚠</span>`;
+          }
+          return `<td class="climate-cell" data-cell="${this._escapeAttr(cellKey)}"
+                      onclick="deviceManager._onClimateCellClick('${mode}','${fan}',${temp})"
+                      title="${mode} / ${fan} / ${temp}°C">${inner}</td>`;
+        })
+      ).join('');
+      return `<tr><th class="climate-temp-header">${temp}°C</th>${cells}</tr>`;
+    }).join('');
+
+    return `
+      <div class="climate-table-scroll">
+        <table class="climate-table">
+          <thead>
+            <tr>
+              <td class="climate-off-cell${offIsLearning ? ' learning' : (offHasCode ? ' present' : ' empty')}"
+                  data-cell="__off__"
+                  onclick="deviceManager._onClimateOffClick()"
+                  title="off">
+                ${offIsLearning
+                  ? '<span class="climate-cell-icon learning"><span class="climate-spinner">⠋</span></span>'
+                  : offIconSpan}
+                <span class="climate-off-label">off</span>
+              </td>
+              ${modeHeaders}
+            </tr>
+            <tr>
+              <th class="climate-fan-speed-label">fan speed</th>
+              ${fanHeaders}
+            </tr>
+            <tr class="climate-fast-learn-row">
+              <td class="climate-corner-cell">
+                <button type="button" class="${toggleClass}"
+                        onclick="deviceManager._toggleClimateMode(this)">
+                  ${toggleLabel}
+                </button>
+              </td>
+              ${fastLearnCols}
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  _refreshClimateTable() {
+    const section = document.getElementById('climateTableSection');
+    if (section) section.innerHTML = this._buildClimateTableHTML();
+  }
+
+  _toggleClimateMode(btn) {
+    this._climateTestMode = !this._climateTestMode;
+    this._refreshClimateTable();
+  }
+
+  _resetClimateTable() {
+    if (!confirm('Reset will clear all learned IR codes and show the import/generate sections again. Continue?')) return;
+    const cd = this._getClimateData();
+    cd.config = null;
+    cd.table = {};
+    cd.commands = {};
+    cd.source = 'scratch';
+    cd._smartirNum = '';
+    const climateSection = document.getElementById('climateSection');
+    if (climateSection) this._renderClimateSection(climateSection);
+  }
+
+  _cancelClimateLearn() {
+    if (this._climateLearningCell) {
+      this._climateLearning = false;
+      this._climateLearningGen++;
+      this._climateLearningCell = null;
+      this._activeLearnToast?.close();
+      this._activeLearnToast = null;
+      const reject = this._activeLearnReject;
+      this._activeLearnReject = null;
+      if (reject) reject(Object.assign(new Error('cancelled'), { _climateCancelled: true }));
+      this._refreshClimateTable();
+    }
+  }
+
+  async _onClimateCellClick(mode, fan, temp) {
+    if (this._climateTestMode) {
+      await this._testClimateCell(mode, fan, temp);
+    } else {
+      this._cancelClimateLearn();
+      await this._learnClimateCell(mode, fan, temp);
+    }
+  }
+
+  async _testClimateCell(mode, fan, temp) {
+    const cd = this._getClimateData();
+    const code = ((cd.table[mode] || {})[fan] || {})[String(temp)] || '';
+    if (!code) { Notification.error('No code learned for this cell'); return; }
+    try {
+      await this._climateSendCode(`${mode}_${fan}_${temp}`, code);
+      Notification.success(`Sent: ${mode} / ${fan} / ${temp}°C`);
+    } catch (e) {
+      Notification.error(`Test failed: ${e.message}`);
+    }
+  }
+
+  async _climateSendCode(name, code) {
+    if (this.currentDevice) {
+      return DataManager.sendCommand(this.currentDevice.id, 'climate', name, code);
+    }
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo?.interface) {
+      throw new Error('No interface selected');
+    }
+    return WSManager.call('whispeer/send_command', {
+      device_id: 'preview',
+      device_type: 'climate',
+      command_name: name,
+      command_code: code,
+      emitter: deviceInfo.interface,
+    });
+  }
+
+  async _onClimateOffClick() {
+    if (this._climateTestMode) {
+      const cd = this._getClimateData();
+      const code = cd.commands?.off;
+      if (!code) { Notification.error('No code learned for off'); return; }
+      try {
+        await this._climateSendCode('off', code);
+        Notification.success('Off command sent');
+      } catch (e) {
+        Notification.error(`Test failed: ${e.message}`);
+      }
+    } else {
+      const deviceInfo = this.getCurrentDeviceInfo();
+      if (!deviceInfo?.interface) { Notification.error('Select an interface first'); return; }
+      this._climateLearning = false;
+      this._climateLearningGen++;
+      const myGen = this._climateLearningGen;
+      const cellKey = '__off__';
+      this._climateLearningCell = cellKey;
+      this._refreshClimateTable();
+      const spinner = this._startCellSpinner(cellKey);
+      const fakeInput = { value: '' };
+      try {
+        await this.performLearnCommand(deviceInfo, 'climate_off', fakeInput);
+        if (fakeInput.value && this._climateLearningGen === myGen) {
+          const cd = this._getClimateData();
+          cd.commands = cd.commands || {};
+          cd.commands.off = fakeInput.value;
+        }
+      } finally {
+        this._stopCellSpinner(spinner);
+        if (this._climateLearningGen === myGen) {
+          this._climateLearningCell = null;
+          this._refreshClimateTable();
+        }
+      }
+    }
+  }
+
+  async _importSmartIR() {
+    const numInput = document.getElementById('smartirDeviceNum');
+    const num = numInput?.value.trim();
+    if (!num) {
+      Notification.error('Enter a SmartIR device number');
+      return;
+    }
+
+    const url = `https://raw.githubusercontent.com/smartHomeHub/SmartIR/master/codes/climate/${num}.json`;
+    Notification.info(`Fetching SmartIR device ${num}…`);
+
+    let json;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      json = await resp.json();
+    } catch (err) {
+      Notification.error(`Failed to import SmartIR: ${err.message}`);
+      return;
+    }
+
+    const cd = this._getClimateData();
+    cd._smartirNum = num;
+    cd.source = 'smartir';
+
+    const modes = (json.operationModes || []).map(m => m.toLowerCase());
+    const fanModesRaw = json.fanModes || [];
+    const fans = fanModesRaw.map(f => f.toLowerCase());
+    const minTemp = json.minTemperature ?? 16;
+    const maxTemp = json.maxTemperature ?? 30;
+
+    cd.config = { min_temp: minTemp, max_temp: maxTemp, modes, fan_modes: fans };
+    cd.commands = { off: json.commands?.off || '' };
+    cd.table = {};
+
+    for (const mode of modes) {
+      const modeKey = mode;
+      const srcMode = json.commands?.[mode];
+      if (!srcMode || typeof srcMode !== 'object') continue;
+      cd.table[modeKey] = {};
+      for (const fan of fans) {
+        const srcFan = srcMode[fan] || srcMode[fan.charAt(0).toUpperCase() + fan.slice(1)] || {};
+        if (!srcFan || typeof srcFan !== 'object') continue;
+        cd.table[modeKey][fan] = {};
+        for (const [tempKey, code] of Object.entries(srcFan)) {
+          cd.table[modeKey][fan][String(tempKey)] = code;
+        }
+      }
+    }
+
+    const climateSection = document.getElementById('climateSection');
+    if (climateSection) this._renderClimateSection(climateSection);
+    Notification.success(`SmartIR device ${num} imported (${modes.length} modes, ${fans.length} fan speeds)`);
+  }
+
+  _generateClimateTable() {
+    const minTemp = parseInt(document.getElementById('climateMinTemp')?.value ?? 16);
+    const maxTemp = parseInt(document.getElementById('climateMaxTemp')?.value ?? 30);
+    const modes = [...document.querySelectorAll('input[name="climate_mode"]:checked')].map(cb => cb.value);
+    const fans = [...document.querySelectorAll('input[name="climate_fan"]:checked')].map(cb => cb.value);
+
+    if (modes.length === 0) { Notification.error('Select at least one mode'); return; }
+    if (fans.length === 0) { Notification.error('Select at least one fan speed'); return; }
+    if (minTemp > maxTemp) { Notification.error('Min temp must be ≤ max temp'); return; }
+
+    const cd = this._getClimateData();
+    cd.source = 'scratch';
+    cd.config = { min_temp: minTemp, max_temp: maxTemp, modes, fan_modes: fans };
+    cd.table = cd.table || {};
+
+    for (const mode of modes) {
+      cd.table[mode] = cd.table[mode] || {};
+      for (const fan of fans) {
+        cd.table[mode][fan] = cd.table[mode][fan] || {};
+        for (let t = minTemp; t <= maxTemp; t++) {
+          cd.table[mode][fan][String(t)] = cd.table[mode][fan][String(t)] || '';
+        }
+      }
+    }
+
+    this._refreshClimateTable();
+    const panelsWrap = document.getElementById('climatePanelsWrap');
+    const tableSection = document.getElementById('climateTableSection');
+    const sensorsRow = document.getElementById('climateSensorsRow');
+    if (panelsWrap) panelsWrap.style.display = 'none';
+    if (tableSection) tableSection.style.display = '';
+    if (sensorsRow) sensorsRow.style.display = '';
+    Notification.success('Table generated');
+  }
+
+  _collectClimateData() {
+    const cd = this._getClimateData();
+    const sensors = {
+      power: document.getElementById('climatePowerSensor')?.value || null,
+      humidity: document.getElementById('climateHumiditySensor')?.value || null,
+      temperature: document.getElementById('climateTempSensor')?.value || null
+    };
+    for (const k of Object.keys(sensors)) {
+      if (!sensors[k]) sensors[k] = null;
+    }
+    return { ...cd, sensors };
+  }
+
+  async _learnClimateCell(mode, fan, temp) {
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo?.interface) { Notification.error('Select an interface first'); return; }
+
+    const myGen = this._climateLearningGen;
+    const cellKey = `${mode}__${fan}__${temp}`;
+    this._climateLearningCell = cellKey;
+    this._refreshClimateTable();
+
+    const spinner = this._startCellSpinner(cellKey);
+    const fakeInput = { value: '' };
+
+    try {
+      await this.performLearnCommand(deviceInfo, `climate_${mode}_${fan}_${temp}`, fakeInput);
+      if (fakeInput.value && this._climateLearningGen === myGen) {
+        const cd = this._getClimateData();
+        cd.table[mode] = cd.table[mode] || {};
+        cd.table[mode][fan] = cd.table[mode][fan] || {};
+        cd.table[mode][fan][String(temp)] = fakeInput.value;
+      }
+    } finally {
+      this._stopCellSpinner(spinner);
+      if (this._climateLearningGen === myGen) {
+        this._climateLearningCell = null;
+        this._refreshClimateTable();
+      }
+    }
+  }
+
+  _startCellSpinner(cellKey) {
+    const el = document.querySelector(`[data-cell="${CSS.escape(cellKey)}"] .climate-spinner`);
+    if (!el) return null;
+    let frame = 0;
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const handle = setInterval(() => {
+      if (el) el.textContent = frames[frame++ % frames.length];
+    }, 100);
+    return handle;
+  }
+
+  _stopCellSpinner(handle) {
+    if (handle) clearInterval(handle);
+  }
+
+  async _startClimateColumnFastLearn(mode) {
+    if (this._climateLearning) return;
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo?.interface) { Notification.error('Select an interface first'); return; }
+
+    this._climateLearning = true;
+
+    const cd = this._getClimateData();
+    const cfg = cd.config || {};
+    const fans = cfg.fan_modes || [];
+    const minT = parseInt(cfg.min_temp ?? 16);
+    const maxT = parseInt(cfg.max_temp ?? 30);
+
+    this._climateLearningGen++;
+    const myFastGen = this._climateLearningGen;
+
+    try {
+      for (let temp = minT; temp <= maxT; temp++) {
+        for (const fan of fans) {
+          if (!this._climateLearning || this._climateLearningGen !== myFastGen) return;
+          const existing = ((cd.table[mode] || {})[fan] || {})[String(temp)];
+          if (existing) continue;
+
+          await this._learnClimateCell(mode, fan, temp);
+          if (this._climateLearningGen !== myFastGen) return;
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
+    } finally {
+      this._climateLearning = false;
+    }
+    Notification.success(`Fast learn for mode "${mode}" complete`);
+  }
+
+  // ------------------------------------------------------------------
+  // Climate card (main UI)
+  // ------------------------------------------------------------------
+
+  _renderClimateCard(device) {
+    const { id } = device;
+    const config = device.config || {};
+    const modes = config.modes || [];
+    const fans = config.fan_modes || [];
+    const minT = parseInt(config.min_temp ?? 16);
+    const maxT = parseInt(config.max_temp ?? 30);
+
+    const temps = [];
+    for (let t = minT; t <= maxT; t++) temps.push(t);
+
+    const offToggle = `
+      <div class="command-toggle-full-width" data-climate-power="${this._escapeAttr(id)}">
+        <span class="command-toggle-label">off</span>
+        <div class="command-toggle off" onclick="deviceManager._climateTogglePower('${id}')"></div>
+      </div>`;
+
+    const modeGroup = modes.length ? `
+      <div class="input-group-container">
+        <div class="input-group-prepend"><span class="input-group-text">Mode</span></div>
+        <div class="btn-group-wrapper">
+          <div class="btn-group" data-climate-modes="${this._escapeAttr(id)}">
+            ${modes.map(m =>
+              `<button class="btn-group-item" data-mode="${m}" onclick="deviceManager._climateSetMode('${id}', '${m}')">${m}</button>`
+            ).join('')}
+          </div>
+        </div>
+      </div>` : '';
+
+    const fanGroup = fans.length ? `
+      <div class="input-group-container">
+        <div class="input-group-prepend"><span class="input-group-text">Fan</span></div>
+        <div class="btn-group-wrapper">
+          <div class="btn-group" data-climate-fans="${this._escapeAttr(id)}">
+            ${fans.map(f =>
+              `<button class="btn-group-item" data-fan="${f}" onclick="deviceManager._climateSetFan('${id}', '${f}')">${f}</button>`
+            ).join('')}
+          </div>
+        </div>
+      </div>` : '';
+
+    const tempGroup = temps.length ? `
+      <div class="input-group-container">
+        <div class="input-group-prepend"><span class="input-group-text">Temp</span></div>
+        <div class="btn-group-wrapper">
+          <div class="btn-group climate-temp-group" data-climate-temps="${this._escapeAttr(id)}">
+            ${temps.map(t =>
+              `<button class="btn-group-item" data-temp="${t}" onclick="deviceManager._climateSetTemp('${id}', ${t})">${t}</button>`
+            ).join('')}
+          </div>
+        </div>
+      </div>` : '';
+
+    return `<div class="climate-card-controls">${offToggle}${modeGroup}${fanGroup}${tempGroup}</div>`;
+  }
+
+  _getClimateCardState(deviceId) {
+    if (!this._climateCardState) this._climateCardState = {};
+    if (!this._climateCardState[deviceId]) {
+      const device = DataManager.getDevice(deviceId);
+      const cfg = device?.config || {};
+      const modes = cfg.modes || [];
+      const fans = cfg.fan_modes || [];
+      const minT = parseInt(cfg.min_temp ?? 16);
+      this._climateCardState[deviceId] = {
+        on: false,
+        mode: modes[0] || null,
+        fan: fans[0] || null,
+        temp: minT
+      };
+    }
+    return this._climateCardState[deviceId];
+  }
+
+  async _climateSendCurrentState(deviceId) {
+    const st = this._getClimateCardState(deviceId);
+    const device = DataManager.getDevice(deviceId);
+    if (!device) return;
+    if (!st.on) {
+      const offCode = device.commands?.off;
+      if (offCode) await DataManager.sendCommand(deviceId, 'climate', 'off', offCode);
+      return;
+    }
+    const code = ((device.table?.[st.mode] || {})[st.fan] || {})[String(st.temp)];
+    if (code) {
+      await DataManager.sendCommand(deviceId, 'climate', `${st.mode}_${st.fan}_${st.temp}`, code);
+    } else {
+      Notification.warning(`No code for ${st.mode} / ${st.fan} / ${st.temp}°C`);
+    }
+  }
+
+  _climateUpdateCardUI(deviceId) {
+    const st = this._getClimateCardState(deviceId);
+    const toggle = document.querySelector(`[data-climate-power="${deviceId}"] .command-toggle`);
+    if (toggle) {
+      toggle.classList.toggle('on', st.on);
+      toggle.classList.toggle('off', !st.on);
+    }
+    document.querySelectorAll(`[data-climate-modes="${deviceId}"] .btn-group-item`).forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === st.mode);
+    });
+    document.querySelectorAll(`[data-climate-fans="${deviceId}"] .btn-group-item`).forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.fan === st.fan);
+    });
+    document.querySelectorAll(`[data-climate-temps="${deviceId}"] .btn-group-item`).forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.temp) === st.temp);
+    });
+  }
+
+  _climateTogglePower(deviceId) {
+    const st = this._getClimateCardState(deviceId);
+    st.on = !st.on;
+    this._climateUpdateCardUI(deviceId);
+    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
+  }
+
+  _climateSetMode(deviceId, mode) {
+    const st = this._getClimateCardState(deviceId);
+    st.mode = mode;
+    st.on = true;
+    this._climateUpdateCardUI(deviceId);
+    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
+  }
+
+  _climateSetFan(deviceId, fan) {
+    const st = this._getClimateCardState(deviceId);
+    st.fan = fan;
+    st.on = true;
+    this._climateUpdateCardUI(deviceId);
+    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
+  }
+
+  _climateSetTemp(deviceId, temp) {
+    const st = this._getClimateCardState(deviceId);
+    st.temp = temp;
+    st.on = true;
+    this._climateUpdateCardUI(deviceId);
+    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
   }
 }
 

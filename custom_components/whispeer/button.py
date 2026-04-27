@@ -36,6 +36,8 @@ async def async_setup_entry(
     def _entities_from_device(device: dict[str, Any]) -> list[WhispeerButton]:
         result: list[WhispeerButton] = []
         for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
+            if not isinstance(cmd_cfg, dict):
+                continue
             cmd_type = cmd_cfg.get("type")
             if cmd_type == CMD_TYPE_BUTTON:
                 uid = f"whispeer_{device['id']}_{cmd_name}"

@@ -46,7 +46,8 @@ const APP_CONFIG = {
   DEVICE_TYPES: {
     ir: { label: 'IR', badge: 'type-ir' },
     rf: { label: 'RF', badge: 'type-rf' },
-    ble: { label: 'BLE', badge: 'type-ble' }
+    ble: { label: 'BLE', badge: 'type-ble' },
+    climate: { label: 'Climate (IR)', badge: 'type-climate' }
   }
 };
 

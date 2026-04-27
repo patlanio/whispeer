@@ -305,6 +305,12 @@ body {
   color: #f57c00;
 }
 
+.type-climate {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+}
+
 .device-info {
   color: var(--text-secondary);
   font-size: 0.9rem;
@@ -1783,4 +1789,333 @@ body {
 .toast-close:hover {
   background: rgba(0, 0, 0, 0.1);
   color: var(--text-primary);
+}
+
+/* ====================================================================
+   CLIMATE STYLES
+   ==================================================================== */
+
+/* --- Section panels (collapsible) --- */
+.climate-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.climate-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.climate-panel-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.climate-panel-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --- OR separator between the two panels --- */
+.climate-or-separator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.climate-or-separator::before,
+.climate-or-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+/* --- SmartIR row --- */
+.climate-smartir-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* --- Scratch form rows --- */
+.climate-scratch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.climate-checkgroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.climate-checkgroup-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 70px;
+}
+
+.climate-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.climate-checkbox input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* --- Sensor row (3 selects) --- */
+.climate-sensors-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.climate-sensors-row .input-group {
+  min-width: 180px;
+}
+
+/* --- Table wrapper --- */
+.climate-table-scroll {
+  overflow-x: auto;
+}
+
+.climate-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8rem;
+  table-layout: auto;
+}
+
+.climate-table th,
+.climate-table td {
+  border: 1px solid var(--border-color);
+  padding: 0;
+}
+
+/* --- Corner cell (fast-learn row col 1) — holds the learn/test toggle --- */
+.climate-corner-cell {
+  background: var(--bg-secondary);
+  padding: 4px 6px !important;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* --- Fan speed label (row 2 col 1) --- */
+.climate-fan-speed-label {
+  background: var(--bg-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  padding: 3px 6px !important;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.climate-temp-header {
+  background: var(--bg-secondary);
+  font-weight: 500;
+  padding: 4px 8px !important;
+  white-space: nowrap;
+  text-align: center;
+  min-width: 50px;
+}
+
+.climate-mode-header {
+  background: var(--bg-secondary);
+  font-weight: 600;
+  padding: 6px 10px !important;
+  text-align: center;
+  white-space: nowrap;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+}
+
+/* --- Fan speed header (row 2, cols 2+) --- */
+.climate-fan-header {
+  background: var(--bg-secondary);
+  font-weight: 500;
+  padding: 3px 6px !important;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: 36px;
+}
+
+/* --- OFF cell (row 2 col 1) — acts like a data cell --- */
+.climate-off-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 4px 8px !important;
+  white-space: nowrap;
+  user-select: none;
+  transition: filter 0.15s;
+}
+
+.climate-off-cell:hover { filter: brightness(0.9); }
+
+.climate-off-cell.present { background: rgba(102, 187, 106, 0.2); }
+.climate-off-cell.empty   { background: rgba(255, 167, 38, 0.12); }
+
+.climate-off-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* --- Fast learn row --- */
+.climate-fast-learn-row td {
+  padding: 4px 6px !important;
+  text-align: center;
+  background: var(--bg-secondary);
+}
+
+.climate-fast-learn-cell {
+  padding: 4px 6px !important;
+  text-align: center;
+  background: var(--bg-secondary);
+}
+
+.climate-fast-learn-btn {
+  background: none;
+  border: 1px dashed var(--border-color);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.climate-fast-learn-btn:hover {
+  background: var(--accent-color);
+  color: #fff;
+  border-color: var(--accent-color);
+}
+
+/* --- Data cell (flat: one td per mode × fan intersection) --- */
+.climate-cell {
+  cursor: pointer;
+  text-align: center;
+  vertical-align: middle;
+  padding: 4px !important;
+  min-width: 36px;
+  height: 32px;
+  user-select: none;
+  transition: filter 0.15s;
+}
+
+.climate-cell:hover { filter: brightness(0.85); }
+
+/* --- Cell icon (inside .climate-cell and .climate-off-cell) --- */
+.climate-cell-icon {
+  display: inline-block;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.climate-cell-icon.present {
+  color: #2e7d32;
+}
+
+.climate-cell-icon.present.test {
+  color: #1565c0;
+}
+
+.climate-cell-icon.empty {
+  color: #e65100;
+}
+
+@keyframes climate-learn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.climate-cell-icon.learning {
+  color: #1565c0;
+  animation: climate-learn-pulse 0.7s ease-in-out infinite;
+}
+
+.climate-spinner {
+  font-size: 0.9rem;
+}
+
+/* --- Learn / Test mode toggle (inside corner cell) --- */
+.climate-mode-toggle {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.climate-mode-toggle.is-test {
+  background: rgba(33, 150, 243, 0.15);
+  color: #1565c0;
+  border-color: #1565c0;
+}
+
+/* --- Climate card controls (main device card) --- */
+.climate-card-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.climate-temp-group {
+  flex-wrap: wrap;
+}
+
+/* Dark theme adaptations */
+body.theme-dark .climate-cell-icon.present      { color: #a5d6a7; }
+body.theme-dark .climate-cell-icon.present.test { color: #90caf9; }
+body.theme-dark .climate-cell-icon.empty        { color: #ffcc80; }
+body.theme-dark .climate-cell-icon.learning { color: #90caf9; }
+body.theme-dark .climate-off-cell.present  { background: rgba(102, 187, 106, 0.15); }
+body.theme-dark .climate-off-cell.empty    { background: rgba(255, 167, 38, 0.1); }
+
+body.theme-dark .type-climate {
+  background: #1b5e20;
+  color: #a5d6a7;
 }
