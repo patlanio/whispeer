@@ -514,10 +514,13 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         """
         entity_reg = er.async_get(hass)
         states: dict[str, str] = {}
+        domain_states: dict[str, dict] = {}
         for reg_entry in entity_reg.entities.values():
             if reg_entry.platform != DOMAIN:
                 continue
-            if reg_entry.domain not in ("switch", "light", "select", "number"):
+            if reg_entry.domain not in (
+                "switch", "light", "select", "number", "climate", "fan", "media_player"
+            ):
                 continue
             uid = reg_entry.unique_id or ""
             if not uid.startswith("whispeer_"):
@@ -538,8 +541,188 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                     raw = str(int(float(raw)))
                 except (ValueError, TypeError):
                     pass
-            states[f"{device_id}:{command_name}"] = raw
-        connection.send_result(msg["id"], {"states": states})
+            key = f"{device_id}:{command_name}"
+            states[key] = raw
+
+            if reg_entry.domain in ("climate", "fan", "media_player") or command_name == "domain_light":
+                domain_states[key] = {
+                    "entity_id": reg_entry.entity_id,
+                    "entity_domain": reg_entry.domain,
+                    "state": raw,
+                    "attributes": {
+                        "fan_mode": state_obj.attributes.get("fan_mode"),
+                        "temperature": state_obj.attributes.get("temperature"),
+                        "preset_mode": state_obj.attributes.get("preset_mode"),
+                        "percentage": state_obj.attributes.get("percentage"),
+                        "source": state_obj.attributes.get("source"),
+                    },
+                }
+        connection.send_result(msg["id"], {
+            "states": states,
+            "domain_states": domain_states,
+        })
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "whispeer/domain_action",
+        vol.Required("device_id"): str,
+        vol.Required("domain"): str,
+        vol.Required("action"): str,
+        vol.Optional("mode"): str,
+        vol.Optional("fan_mode"): str,
+        vol.Optional("temperature"): vol.Any(int, float),
+        vol.Optional("preset_mode"): str,
+        vol.Optional("percentage"): vol.Any(int, float),
+        vol.Optional("source"): str,
+    })
+    @websocket_api.async_response
+    async def ws_domain_action(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        entity_reg = er.async_get(hass)
+        domain = (msg.get("domain") or "").lower()
+        action = (msg.get("action") or "").lower()
+        device_id = msg["device_id"]
+
+        command_name_map = {
+            "climate": "climate",
+            "fan": "fan",
+            "media_player": "media_player",
+            "light": "domain_light",
+        }
+        command_name = command_name_map.get(domain)
+        if not command_name:
+            connection.send_result(msg["id"], {
+                "status": "error",
+                "message": f"Unsupported domain '{domain}'",
+            })
+            return
+
+        uid = f"whispeer_{device_id}_{command_name}"
+        reg_entry = next(
+            (
+                entry for entry in entity_reg.entities.values()
+                if entry.platform == DOMAIN and (entry.unique_id or "") == uid
+            ),
+            None,
+        )
+        if not reg_entry:
+            connection.send_result(msg["id"], {
+                "status": "error",
+                "message": f"Entity not found for {uid}",
+            })
+            return
+
+        entity_id = reg_entry.entity_id
+
+        try:
+            if domain == "climate":
+                if action == "off":
+                    await hass.services.async_call(
+                        "climate", "set_hvac_mode",
+                        {"entity_id": entity_id, "hvac_mode": "off"},
+                        blocking=True,
+                    )
+                elif action == "set_mode":
+                    mode = msg.get("mode")
+                    if mode:
+                        await hass.services.async_call(
+                            "climate", "set_hvac_mode",
+                            {"entity_id": entity_id, "hvac_mode": mode},
+                            blocking=True,
+                        )
+                elif action == "set_fan_mode":
+                    fan_mode = msg.get("fan_mode")
+                    if fan_mode:
+                        await hass.services.async_call(
+                            "climate", "set_fan_mode",
+                            {"entity_id": entity_id, "fan_mode": fan_mode},
+                            blocking=True,
+                        )
+                elif action == "set_temperature":
+                    if msg.get("temperature") is not None:
+                        await hass.services.async_call(
+                            "climate", "set_temperature",
+                            {"entity_id": entity_id, "temperature": msg.get("temperature")},
+                            blocking=True,
+                        )
+                else:
+                    connection.send_result(msg["id"], {
+                        "status": "error",
+                        "message": f"Unsupported climate action '{action}'",
+                    })
+                    return
+
+            elif domain == "fan":
+                if action == "off":
+                    await hass.services.async_call(
+                        "fan", "turn_off", {"entity_id": entity_id}, blocking=True
+                    )
+                elif action == "set":
+                    data: dict[str, Any] = {"entity_id": entity_id}
+                    if msg.get("preset_mode") is not None:
+                        data["preset_mode"] = msg.get("preset_mode")
+                    if msg.get("percentage") is not None:
+                        data["percentage"] = msg.get("percentage")
+                    await hass.services.async_call(
+                        "fan", "turn_on", data, blocking=True
+                    )
+                else:
+                    connection.send_result(msg["id"], {
+                        "status": "error",
+                        "message": f"Unsupported fan action '{action}'",
+                    })
+                    return
+
+            elif domain == "media_player":
+                media_actions = {
+                    "on": ("turn_on", None),
+                    "off": ("turn_off", None),
+                    "volume_up": ("volume_up", None),
+                    "volume_down": ("volume_down", None),
+                    "mute": ("volume_mute", {"is_volume_muted": True}),
+                    "previous": ("media_previous_track", None),
+                    "next": ("media_next_track", None),
+                    "select_source": ("select_source", {"source": msg.get("source")}),
+                }
+                mapping = media_actions.get(action)
+                if not mapping:
+                    connection.send_result(msg["id"], {
+                        "status": "error",
+                        "message": f"Unsupported media_player action '{action}'",
+                    })
+                    return
+                service, extra = mapping
+                data = {"entity_id": entity_id}
+                if extra:
+                    data.update(extra)
+                await hass.services.async_call(
+                    "media_player", service, data, blocking=True
+                )
+
+            elif domain == "light":
+                if action not in ("on", "off"):
+                    connection.send_result(msg["id"], {
+                        "status": "error",
+                        "message": f"Unsupported light action '{action}'",
+                    })
+                    return
+                service = "turn_on" if action == "on" else "turn_off"
+                await hass.services.async_call(
+                    "light", service, {"entity_id": entity_id}, blocking=True
+                )
+
+            connection.send_result(msg["id"], {
+                "status": "success",
+                "entity_id": entity_id,
+            })
+        except Exception as exc:
+            connection.send_result(msg["id"], {
+                "status": "error",
+                "message": str(exc),
+                "entity_id": entity_id,
+            })
 
     @websocket_api.websocket_command({
         vol.Required("type"): "whispeer/get_ha_entities",
@@ -586,6 +769,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         ws_prepare_to_learn,
         ws_find_frequency,
         ws_get_entity_states,
+        ws_domain_action,
         ws_get_ha_entities,
     ]:
         websocket_api.async_register_command(hass, _handler)

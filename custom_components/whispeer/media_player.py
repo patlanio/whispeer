@@ -119,11 +119,13 @@ class WhispeerMediaPlayer(WhispeerBaseEntity, MediaPlayerEntity):
         await self._send("on")
         self._is_on = True
         self.async_write_ha_state()
+        self._fire_state_update()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._send("off")
         self._is_on = False
         self.async_write_ha_state()
+        self._fire_state_update()
 
     async def async_volume_up(self, **kwargs: Any) -> None:
         await self._send("volumeUp")
@@ -152,6 +154,7 @@ class WhispeerMediaPlayer(WhispeerBaseEntity, MediaPlayerEntity):
                 await asyncio.sleep(0.4)
         self._current_source = source
         self.async_write_ha_state()
+        self._fire_state_update()
 
     async def _send(self, key: str) -> None:
         code = self._commands.get(key)
@@ -166,3 +169,15 @@ class WhispeerMediaPlayer(WhispeerBaseEntity, MediaPlayerEntity):
         if last_state:
             self._is_on = last_state.state == MediaPlayerState.ON
             self._current_source = last_state.attributes.get("source")
+
+    def _fire_state_update(self) -> None:
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": "media_player",
+            "type": "media_player",
+            "state": "on" if self._is_on else "off",
+            "attributes": {
+                "source": self._current_source,
+            },
+        })

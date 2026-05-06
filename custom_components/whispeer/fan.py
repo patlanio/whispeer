@@ -141,6 +141,7 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
         self._current_preset = None
         self._current_level = 0
         self.async_write_ha_state()
+        self._fire_state_update()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         code = self._commands.get(preset_mode)
@@ -151,6 +152,7 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
         self._is_on = True
         self._current_preset = preset_mode
         self.async_write_ha_state()
+        self._fire_state_update()
 
     async def async_set_percentage(self, percentage: int) -> None:
         target = round(percentage / 100 * self._speeds_count)
@@ -176,6 +178,7 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
         self._is_on = target > 0
         self._current_level = target
         self.async_write_ha_state()
+        self._fire_state_update()
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -187,3 +190,16 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
             else:
                 pct = last_state.attributes.get("percentage", 0) or 0
                 self._current_level = round(pct / 100 * self._speeds_count)
+
+    def _fire_state_update(self) -> None:
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": "fan",
+            "type": "fan",
+            "state": "on" if self._is_on else "off",
+            "attributes": {
+                "preset_mode": self._current_preset,
+                "percentage": self.percentage,
+            },
+        })

@@ -224,7 +224,12 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
             "entity_id": self.entity_id,
             "device_id": self._device_data["id"],
             "command_name": "climate",
+            "type": "climate",
             "state": self._attr_hvac_mode,
+            "attributes": {
+                "fan_mode": self._attr_fan_mode,
+                "temperature": self._attr_target_temperature,
+            },
         })
 
 

@@ -161,6 +161,13 @@ class WhispeerDomainLight(WhispeerBaseEntity, LightEntity):
             await self._async_send_code(code)
         self._attr_is_on = True
         self.async_write_ha_state()
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": "domain_light",
+            "type": "light",
+            "state": "on",
+        })
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         code = self._commands.get("off", "")
@@ -168,4 +175,11 @@ class WhispeerDomainLight(WhispeerBaseEntity, LightEntity):
             await self._async_send_code(code)
         self._attr_is_on = False
         self.async_write_ha_state()
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": "domain_light",
+            "type": "light",
+            "state": "off",
+        })
 

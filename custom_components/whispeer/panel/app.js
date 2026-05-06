@@ -153,6 +153,23 @@ class WhispeerApp {
         const isToggle = state === 'on' || state === 'off'
           || type === 'switch' || type === 'light';
 
+        const isDomainEntity = command_name === 'climate'
+          || command_name === 'fan'
+          || command_name === 'media_player'
+          || command_name === 'domain_light';
+
+        if (isDomainEntity && window.deviceManager?.applyDomainStateUpdate) {
+          window.deviceManager.applyDomainStateUpdate(
+            String(device_id),
+            command_name,
+            {
+              state,
+              attributes: event.data?.attributes || {},
+              entity_domain: type || '',
+            }
+          );
+        }
+
         if (isToggle) {
           const wrapper = document.querySelector(
             `[data-entity="${device_id}:${command_name}"]`

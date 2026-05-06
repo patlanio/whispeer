@@ -2137,6 +2137,12 @@ body {
   width: 100%;
 }
 
+.climate-card-controls.is-off .btn-group-item.active {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .climate-temp-group {
   flex-wrap: wrap;
 }

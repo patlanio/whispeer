@@ -145,6 +145,7 @@ class DeviceManager extends Component {
     try {
       const result = await WSManager.call('whispeer/get_entity_states');
       const states = result?.states || {};
+      const domainStates = result?.domain_states || {};
       for (const [key, state] of Object.entries(states)) {
         // Toggles (switch / light) have a [data-entity] wrapper.
         const wrapper = document.querySelector(`[data-entity="${key}"]`);
@@ -164,9 +165,144 @@ class DeviceManager extends Component {
         const commandName = key.substring(colonIdx + 1);
         this.updateGroupCommandState(deviceId, commandName, state);
       }
+
+      for (const [key, payload] of Object.entries(domainStates)) {
+        const colonIdx = key.indexOf(':');
+        if (colonIdx === -1) continue;
+        const deviceId = key.substring(0, colonIdx);
+        const commandName = key.substring(colonIdx + 1);
+        this.applyDomainStateUpdate(deviceId, commandName, payload);
+      }
     } catch (e) {
       console.warn('[DeviceManager] Failed to sync entity states:', e);
     }
+  }
+
+  applyDomainStateUpdate(deviceId, commandName, payload) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device || !device.domain) return;
+
+    if (commandName === 'climate') {
+      this._applyClimateEntityState(deviceId, payload);
+      return;
+    }
+    if (commandName === 'fan') {
+      this._applyFanEntityState(deviceId, payload);
+      return;
+    }
+    if (commandName === 'media_player') {
+      this._applyMediaPlayerEntityState(deviceId, payload);
+      return;
+    }
+    if (commandName === 'domain_light') {
+      this._applyDomainLightEntityState(deviceId, payload);
+    }
+  }
+
+  _applyClimateEntityState(deviceId, payload) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device || device.domain !== 'climate') return;
+
+    const st = this._getClimateCardState(deviceId);
+    const attrs = payload?.attributes || {};
+    const hvacRaw = String(payload?.state || '').toLowerCase();
+
+    st.on = hvacRaw !== 'off' && hvacRaw !== 'unknown' && hvacRaw !== 'unavailable' && !!hvacRaw;
+
+    const cfg = device.config || {};
+    const modes = cfg.modes || [];
+    const fans = cfg.fan_modes || [];
+    const minT = parseInt(cfg.min_temp ?? 16);
+    const maxT = parseInt(cfg.max_temp ?? 30);
+
+    if (modes.includes(hvacRaw)) {
+      st.mode = hvacRaw;
+    }
+
+    if (typeof attrs.fan_mode === 'string' && fans.includes(attrs.fan_mode)) {
+      st.fan = attrs.fan_mode;
+    }
+
+    const temp = Number(attrs.temperature);
+    if (!Number.isNaN(temp)) {
+      st.temp = Math.max(minT, Math.min(maxT, Math.round(temp)));
+    }
+
+    this._climateUpdateCardUI(deviceId);
+  }
+
+  _applyFanEntityState(deviceId, payload) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device || device.domain !== 'fan') return;
+
+    const attrs = payload?.attributes || {};
+    const isOn = String(payload?.state || '').toLowerCase() === 'on';
+
+    const toggle = document.querySelector(`[data-fan-power="${deviceId}"] .command-toggle`);
+    if (toggle) {
+      toggle.classList.toggle('on', isOn);
+      toggle.classList.toggle('off', !isOn);
+    }
+
+    const speedButtons = document.querySelectorAll(`[data-fan-speeds="${deviceId}"] .btn-group-item`);
+    speedButtons.forEach(btn => btn.classList.remove('active'));
+
+    const model = device.config?.fan_model || 'direct';
+    if (!isOn) return;
+
+    if (model === 'direct') {
+      const preset = String(attrs.preset_mode || '');
+      speedButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.speed === preset);
+      });
+      return;
+    }
+
+    const percentage = Number(attrs.percentage);
+    const count = Number(device.config?.speeds_count || speedButtons.length || 1);
+    if (Number.isNaN(percentage) || count <= 0) return;
+    const level = Math.max(1, Math.min(count, Math.round((percentage / 100) * count)));
+    speedButtons.forEach(btn => {
+      btn.classList.toggle('active', Number(btn.dataset.level) === level);
+    });
+  }
+
+  _applyMediaPlayerEntityState(deviceId, payload) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device || device.domain !== 'media_player') return;
+
+    const isOn = String(payload?.state || '').toLowerCase() === 'on';
+    const attrs = payload?.attributes || {};
+    const source = String(attrs.source || '');
+
+    const powerButtons = document.querySelectorAll(`.device-card[data-device-id="${deviceId}"] .btn`);
+    powerButtons.forEach(btn => {
+      const text = (btn.textContent || '').toLowerCase();
+      if (text.includes('on')) {
+        btn.classList.toggle('active', isOn);
+      } else if (text.includes('off')) {
+        btn.classList.toggle('active', !isOn);
+      }
+    });
+
+    document.querySelectorAll(`.device-card[data-device-id="${deviceId}"] .btn-group-item`).forEach(btn => {
+      const label = (btn.textContent || '').trim();
+      btn.classList.toggle('active', !!source && label === source);
+    });
+  }
+
+  _applyDomainLightEntityState(deviceId, payload) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device || device.domain !== 'light') return;
+    const isOn = String(payload?.state || '').toLowerCase() === 'on';
+    document.querySelectorAll(`.device-card[data-device-id="${deviceId}"] .btn`).forEach(btn => {
+      const text = (btn.textContent || '').toLowerCase();
+      if (text.includes('on')) {
+        btn.classList.toggle('active', isOn);
+      } else if (text.includes('off')) {
+        btn.classList.toggle('active', !isOn);
+      }
+    });
   }
 
   renderDeviceCard(device) {
@@ -3933,7 +4069,7 @@ const colspan = this._blePickMode ? 7 : 8;
       const count = config.speeds_count || 3;
       return `
         <div class="climate-card-controls">
-          <div class="command-toggle-full-width">
+          <div class="command-toggle-full-width" data-fan-power="${this._escapeAttr(id)}">
             <span class="command-toggle-label">off</span>
             <div class="command-toggle off" onclick="deviceManager._fanSendCommand('${id}', 'off')"></div>
           </div>
@@ -3942,7 +4078,7 @@ const colspan = this._blePickMode ? 7 : 8;
             <div class="btn-group-wrapper">
               <div class="btn-group" data-fan-speeds="${this._escapeAttr(id)}">
                 ${Array.from({ length: count }, (_, i) =>
-                  `<button class="btn-group-item" onclick="deviceManager._fanSendIncrementalTo('${id}', ${i + 1}, ${count})">${i + 1}</button>`
+                  `<button class="btn-group-item" data-level="${i + 1}" onclick="deviceManager._fanSendIncrementalTo('${id}', ${i + 1}, ${count})">${i + 1}</button>`
                 ).join('')}
               </div>
             </div>
@@ -3954,7 +4090,7 @@ const colspan = this._blePickMode ? 7 : 8;
     const speeds = config.speeds || Object.keys(commands).filter(k => k !== 'off');
     return `
       <div class="climate-card-controls">
-        <div class="command-toggle-full-width">
+        <div class="command-toggle-full-width" data-fan-power="${this._escapeAttr(id)}">
           <span class="command-toggle-label">off</span>
           <div class="command-toggle off" onclick="deviceManager._fanSendCommand('${id}', 'off')"></div>
         </div>
@@ -4028,10 +4164,31 @@ const colspan = this._blePickMode ? 7 : 8;
   async _fanSendCommand(deviceId, speedOrOff) {
     const device = DataManager.getDevice(deviceId);
     if (!device) return;
-    const code = device.commands?.[speedOrOff];
-    if (!code) { Notification.warning(`No code learned for "${speedOrOff}"`); return; }
     try {
-      await DataManager.sendCommand(deviceId, 'ir', speedOrOff, code);
+      if ((device.domain || 'default') === 'fan') {
+        let result;
+        if (speedOrOff === 'off') {
+          result = await WSManager.call('whispeer/domain_action', {
+            device_id: String(deviceId),
+            domain: 'fan',
+            action: 'off',
+          });
+        } else {
+          result = await WSManager.call('whispeer/domain_action', {
+            device_id: String(deviceId),
+            domain: 'fan',
+            action: 'set',
+            preset_mode: speedOrOff,
+          });
+        }
+        if (result?.status !== 'success') {
+          throw new Error(result?.message || `Failed fan action ${speedOrOff}`);
+        }
+      } else {
+        const code = device.commands?.[speedOrOff];
+        if (!code) { Notification.warning(`No code learned for "${speedOrOff}"`); return; }
+        await DataManager.sendCommand(deviceId, 'ir', speedOrOff, code);
+      }
       document.querySelectorAll(`[data-fan-speeds="${deviceId}"] .btn-group-item`).forEach(btn => {
         btn.classList.toggle('active', btn.dataset.speed === speedOrOff);
       });
@@ -4042,12 +4199,25 @@ const colspan = this._blePickMode ? 7 : 8;
   async _fanSendIncrementalTo(deviceId, targetLevel, maxLevel) {
     const device = DataManager.getDevice(deviceId);
     if (!device) return;
-    const code = device.commands?.speed;
-    if (!code) { Notification.warning('No speed code learned'); return; }
     try {
-      for (let i = 0; i < targetLevel; i++) {
-        await DataManager.sendCommand(deviceId, 'ir', 'speed', code);
-        if (i < targetLevel - 1) await new Promise(r => setTimeout(r, 400));
+      if ((device.domain || 'default') === 'fan') {
+        const percentage = Math.round((targetLevel / maxLevel) * 100);
+        const result = await WSManager.call('whispeer/domain_action', {
+          device_id: String(deviceId),
+          domain: 'fan',
+          action: 'set',
+          percentage,
+        });
+        if (result?.status !== 'success') {
+          throw new Error(result?.message || 'Failed to set fan speed');
+        }
+      } else {
+        const code = device.commands?.speed;
+        if (!code) { Notification.warning('No speed code learned'); return; }
+        for (let i = 0; i < targetLevel; i++) {
+          await DataManager.sendCommand(deviceId, 'ir', 'speed', code);
+          if (i < targetLevel - 1) await new Promise(r => setTimeout(r, 400));
+        }
       }
       Notification.success(`Fan speed: ${targetLevel}`);
     } catch (e) { Notification.error(e.message); }
@@ -4056,10 +4226,32 @@ const colspan = this._blePickMode ? 7 : 8;
   async _mpSendCommand(deviceId, cmdName) {
     const device = DataManager.getDevice(deviceId);
     if (!device) return;
-    const code = device.commands?.[cmdName];
-    if (!code) { Notification.warning(`No code learned for "${cmdName}"`); return; }
     try {
-      await DataManager.sendCommand(deviceId, 'ir', cmdName, code);
+      if ((device.domain || 'default') === 'media_player') {
+        const actionMap = {
+          on: 'on',
+          off: 'off',
+          volumeUp: 'volume_up',
+          volumeDown: 'volume_down',
+          mute: 'mute',
+          previousChannel: 'previous',
+          nextChannel: 'next',
+        };
+        const action = actionMap[cmdName];
+        if (!action) throw new Error(`Unsupported media action ${cmdName}`);
+        const result = await WSManager.call('whispeer/domain_action', {
+          device_id: String(deviceId),
+          domain: 'media_player',
+          action,
+        });
+        if (result?.status !== 'success') {
+          throw new Error(result?.message || `Failed media action ${cmdName}`);
+        }
+      } else {
+        const code = device.commands?.[cmdName];
+        if (!code) { Notification.warning(`No code learned for "${cmdName}"`); return; }
+        await DataManager.sendCommand(deviceId, 'ir', cmdName, code);
+      }
       Notification.success(`Sent: ${cmdName}`);
     } catch (e) { Notification.error(e.message); }
   }
@@ -4067,13 +4259,25 @@ const colspan = this._blePickMode ? 7 : 8;
   async _mpSendSource(deviceId, sourceName) {
     const device = DataManager.getDevice(deviceId);
     if (!device) return;
-    const codeOrArr = device.commands?.sources?.[sourceName];
-    if (!codeOrArr) { Notification.warning(`No code for source "${sourceName}"`); return; }
     try {
-      const codes = Array.isArray(codeOrArr) ? codeOrArr : [codeOrArr];
-      for (let i = 0; i < codes.length; i++) {
-        await DataManager.sendCommand(deviceId, 'ir', `source_${sourceName}`, codes[i]);
-        if (i < codes.length - 1) await new Promise(r => setTimeout(r, 400));
+      if ((device.domain || 'default') === 'media_player') {
+        const result = await WSManager.call('whispeer/domain_action', {
+          device_id: String(deviceId),
+          domain: 'media_player',
+          action: 'select_source',
+          source: sourceName,
+        });
+        if (result?.status !== 'success') {
+          throw new Error(result?.message || `Failed selecting source ${sourceName}`);
+        }
+      } else {
+        const codeOrArr = device.commands?.sources?.[sourceName];
+        if (!codeOrArr) { Notification.warning(`No code for source "${sourceName}"`); return; }
+        const codes = Array.isArray(codeOrArr) ? codeOrArr : [codeOrArr];
+        for (let i = 0; i < codes.length; i++) {
+          await DataManager.sendCommand(deviceId, 'ir', `source_${sourceName}`, codes[i]);
+          if (i < codes.length - 1) await new Promise(r => setTimeout(r, 400));
+        }
       }
       Notification.success(`Source: ${sourceName}`);
     } catch (e) { Notification.error(e.message); }
@@ -4082,10 +4286,21 @@ const colspan = this._blePickMode ? 7 : 8;
   async _lightSendCommand(deviceId, cmdName) {
     const device = DataManager.getDevice(deviceId);
     if (!device) return;
-    const code = device.commands?.[cmdName];
-    if (!code) { Notification.warning(`No code learned for "${cmdName}"`); return; }
     try {
-      await DataManager.sendCommand(deviceId, 'ir', cmdName, code);
+      if ((device.domain || 'default') === 'light' && (cmdName === 'on' || cmdName === 'off')) {
+        const result = await WSManager.call('whispeer/domain_action', {
+          device_id: String(deviceId),
+          domain: 'light',
+          action: cmdName,
+        });
+        if (result?.status !== 'success') {
+          throw new Error(result?.message || `Failed light action ${cmdName}`);
+        }
+      } else {
+        const code = device.commands?.[cmdName];
+        if (!code) { Notification.warning(`No code learned for "${cmdName}"`); return; }
+        await DataManager.sendCommand(deviceId, 'ir', cmdName, code);
+      }
       Notification.success(`Light: ${cmdName}`);
     } catch (e) { Notification.error(e.message); }
   }
@@ -4147,7 +4362,7 @@ const colspan = this._blePickMode ? 7 : 8;
         </div>
       </div>` : '';
 
-    return `<div class="climate-card-controls">${offToggle}${modeGroup}${fanGroup}${tempGroup}</div>`;
+    return `<div class="climate-card-controls" data-climate-card="${this._escapeAttr(id)}">${offToggle}${modeGroup}${fanGroup}${tempGroup}</div>`;
   }
 
   _getClimateCardState(deviceId) {
@@ -4168,25 +4383,24 @@ const colspan = this._blePickMode ? 7 : 8;
     return this._climateCardState[deviceId];
   }
 
-  async _climateSendCurrentState(deviceId) {
-    const st = this._getClimateCardState(deviceId);
-    const device = DataManager.getDevice(deviceId);
-    if (!device) return;
-    if (!st.on) {
-      const offCode = device.commands?.off;
-      if (offCode) await DataManager.sendCommand(deviceId, 'climate', 'off', offCode);
-      return;
-    }
-    const code = ((device.table?.[st.mode] || {})[st.fan] || {})[String(st.temp)];
-    if (code) {
-      await DataManager.sendCommand(deviceId, 'climate', `${st.mode}_${st.fan}_${st.temp}`, code);
-    } else {
-      Notification.warning(`No code for ${st.mode} / ${st.fan} / ${st.temp}°C`);
+  async _climateDomainAction(deviceId, action, payload = {}) {
+    const result = await WSManager.call('whispeer/domain_action', {
+      device_id: String(deviceId),
+      domain: 'climate',
+      action,
+      ...payload,
+    });
+    if (result?.status !== 'success') {
+      throw new Error(result?.message || `Failed climate action: ${action}`);
     }
   }
 
   _climateUpdateCardUI(deviceId) {
     const st = this._getClimateCardState(deviceId);
+    const container = document.querySelector(`[data-climate-card="${deviceId}"]`);
+    if (container) {
+      container.classList.toggle('is-off', !st.on);
+    }
     const toggle = document.querySelector(`[data-climate-power="${deviceId}"] .command-toggle`);
     if (toggle) {
       toggle.classList.toggle('on', st.on);
@@ -4205,33 +4419,42 @@ const colspan = this._blePickMode ? 7 : 8;
 
   _climateTogglePower(deviceId) {
     const st = this._getClimateCardState(deviceId);
-    st.on = !st.on;
+    const turningOn = !st.on;
+    st.on = turningOn;
     this._climateUpdateCardUI(deviceId);
-    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
+    if (turningOn) {
+      this._climateDomainAction(deviceId, 'set_mode', { mode: st.mode })
+        .catch(e => Notification.error(e.message));
+      return;
+    }
+    this._climateDomainAction(deviceId, 'off')
+      .catch(e => Notification.error(e.message));
   }
 
   _climateSetMode(deviceId, mode) {
     const st = this._getClimateCardState(deviceId);
     st.mode = mode;
-    st.on = true;
+    if (st.on) {
+      this._climateDomainAction(deviceId, 'set_mode', { mode })
+        .catch(e => Notification.error(e.message));
+    }
     this._climateUpdateCardUI(deviceId);
-    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
   }
 
   _climateSetFan(deviceId, fan) {
     const st = this._getClimateCardState(deviceId);
     st.fan = fan;
-    st.on = true;
+    this._climateDomainAction(deviceId, 'set_fan_mode', { fan_mode: fan })
+      .catch(e => Notification.error(e.message));
     this._climateUpdateCardUI(deviceId);
-    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
   }
 
   _climateSetTemp(deviceId, temp) {
     const st = this._getClimateCardState(deviceId);
     st.temp = temp;
-    st.on = true;
+    this._climateDomainAction(deviceId, 'set_temperature', { temperature: temp })
+      .catch(e => Notification.error(e.message));
     this._climateUpdateCardUI(deviceId);
-    this._climateSendCurrentState(deviceId).catch(e => Notification.error(e.message));
   }
 }
 
