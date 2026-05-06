@@ -1910,6 +1910,18 @@ body {
   table-layout: auto;
 }
 
+.climate-table tr > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--surface-color);
+  box-shadow: 1px 0 0 var(--border-color);
+}
+
+.climate-table thead tr > :first-child {
+  z-index: 6;
+}
+
 .climate-table th,
 .climate-table td {
   border: 1px solid var(--border-color);
@@ -2009,21 +2021,43 @@ body {
 }
 
 .climate-fast-learn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   background: none;
   border: 1px dashed var(--border-color);
   border-radius: 4px;
-  padding: 3px 8px;
+  padding: 3px 6px;
   font-size: 0.75rem;
   cursor: pointer;
   color: var(--text-secondary);
   white-space: nowrap;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
   transition: background 0.15s, color 0.15s;
+}
+
+.climate-fast-learn-text {
+  white-space: nowrap;
+}
+
+.climate-fast-learn-icon {
+  display: inline-block;
+  line-height: 1;
 }
 
 .climate-fast-learn-btn:hover {
   background: var(--accent-color);
   color: #fff;
   border-color: var(--accent-color);
+}
+
+@media (max-width: 1200px) {
+  .climate-fast-learn-text {
+    display: none;
+  }
 }
 
 /* --- Data cell (flat: one td per mode × fan intersection) --- */

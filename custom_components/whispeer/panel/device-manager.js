@@ -1850,6 +1850,7 @@ class DeviceManager extends Component {
     }
 
     let learningToast = null;
+    let learned = false;
     const learnGen = this._climateLearningGen;
     const isRF = deviceInfo.type === 'rf';
     const isBroadlink = (interfaceObject?.manufacturer || '').toLowerCase().includes('broadlink');
@@ -1871,7 +1872,7 @@ class DeviceManager extends Component {
 
       if (this._climateLearningGen !== learnGen) {
         learningToast.close();
-        return;
+        return false;
       }
 
       if (prepareResult.status !== 'prepared') {
@@ -1922,6 +1923,7 @@ class DeviceManager extends Component {
             codeInput.value = data.command_data;
             if (learningToast) { learningToast.close(); learningToast = null; }
             Notification.success('Command learned successfully!');
+            learned = true;
             if (isRF && data.detected_frequency != null) {
               this._setDetectedFrequency(data.detected_frequency);
             }
@@ -1952,11 +1954,12 @@ class DeviceManager extends Component {
     } catch (error) {
       if (error?._climateCancelled || this._climateLearningGen !== learnGen) {
         if (learningToast) { learningToast.close(); learningToast = null; }
-        return;
+        return false;
       }
       console.error('Learn command error:', error);
       if (learningToast) { learningToast.close(); learningToast = null; }
       Notification.error(`Failed to learn command: ${error.message}`);
+      return false;
     } finally {
       this._activeLearnReject = null;
       if (this._activeLearnToast === learningToast) this._activeLearnToast = null;
@@ -1966,6 +1969,8 @@ class DeviceManager extends Component {
       }
       if (learningToast) learningToast.close();
     }
+
+    return learned;
   }
 
   _setDetectedFrequency(frequency) {
@@ -3444,19 +3449,24 @@ const colspan = this._blePickMode ? 7 : 8;
     const offHasCode = !!offCode;
     const offIsLearning = this._climateLearningCell === '__off__';
     const offIconSpan = offHasCode
-      ? `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '📡' : '✓'}</span>`
+      ? `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '🛜' : '✓'}</span>`
       : `<span class="climate-cell-icon empty">⚠</span>`;
 
     const fanHeaders = modes.flatMap(() =>
       fans.map(f => `<th class="climate-fan-header">${f}</th>`)
     ).join('');
 
-    // Row 3: fast-learn buttons spanning fan cols per mode
-    const fastLearnCols = modes.map(m =>
-      `<td class="climate-fast-learn-cell" colspan="${nFans}">
-        <button type="button" class="climate-fast-learn-btn"
-          onclick="deviceManager._startClimateColumnFastLearn('${m}')">⚡ Fast Learn</button>
-      </td>`
+    // Row 3: one fast-learn button per data column (mode + fan speed)
+    const fastLearnCols = modes.flatMap(m =>
+      fans.map(f =>
+        `<td class="climate-fast-learn-cell">
+          <button type="button" class="climate-fast-learn-btn"
+            onclick="deviceManager._startClimateColumnFastLearn('${m}','${f}')"
+            title="Fast learn ${m} / ${f}">
+            <span class="climate-fast-learn-icon">⚡</span><span class="climate-fast-learn-text"> learn</span>
+          </button>
+        </td>`
+      )
     ).join('');
 
     // Data rows: one flat <td> per (mode × fan) intersection
@@ -3471,7 +3481,7 @@ const colspan = this._blePickMode ? 7 : 8;
           if (isLearning) {
             inner = `<span class="climate-cell-icon learning"><span class="climate-spinner">⠋</span></span>`;
           } else if (hasCode) {
-            inner = `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '📡' : '✓'}</span>`;
+            inner = `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '🛜' : '✓'}</span>`;
           } else {
             inner = `<span class="climate-cell-icon empty">⚠</span>`;
           }
@@ -3823,9 +3833,10 @@ const colspan = this._blePickMode ? 7 : 8;
 
     const spinner = this._startCellSpinner(cellKey);
     const fakeInput = { value: '' };
+    let learned = false;
 
     try {
-      await this.performLearnCommand(deviceInfo, `climate_${mode}_${fan}_${temp}`, fakeInput);
+      learned = await this.performLearnCommand(deviceInfo, `climate_${mode}_${fan}_${temp}`, fakeInput);
       if (fakeInput.value && this._climateLearningGen === myGen) {
         const cd = this._getClimateData();
         cd.table[mode] = cd.table[mode] || {};
@@ -3839,6 +3850,8 @@ const colspan = this._blePickMode ? 7 : 8;
         this._refreshClimateTable();
       }
     }
+
+    return !!(learned && fakeInput.value);
   }
 
   _startCellSpinner(cellKey) {
@@ -3856,7 +3869,7 @@ const colspan = this._blePickMode ? 7 : 8;
     if (handle) clearInterval(handle);
   }
 
-  async _startClimateColumnFastLearn(mode) {
+  async _startClimateColumnFastLearn(mode, fan) {
     if (this._climateLearning) return;
     const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo?.interface) { Notification.error('Select an interface first'); return; }
@@ -3865,29 +3878,39 @@ const colspan = this._blePickMode ? 7 : 8;
 
     const cd = this._getClimateData();
     const cfg = cd.config || {};
-    const fans = cfg.fan_modes || [];
     const minT = parseInt(cfg.min_temp ?? 16);
     const maxT = parseInt(cfg.max_temp ?? 30);
 
     this._climateLearningGen++;
     const myFastGen = this._climateLearningGen;
+    const pendingTemps = [];
+    for (let temp = minT; temp <= maxT; temp++) {
+      const existing = ((cd.table[mode] || {})[fan] || {})[String(temp)];
+      if (!existing) pendingTemps.push(temp);
+    }
+
+    if (pendingTemps.length === 0) {
+      for (let temp = minT; temp <= maxT; temp++) {
+        pendingTemps.push(temp);
+      }
+    }
 
     try {
-      for (let temp = minT; temp <= maxT; temp++) {
-        for (const fan of fans) {
-          if (!this._climateLearning || this._climateLearningGen !== myFastGen) return;
-          const existing = ((cd.table[mode] || {})[fan] || {})[String(temp)];
-          if (existing) continue;
+      for (const temp of pendingTemps) {
+        if (!this._climateLearning || this._climateLearningGen !== myFastGen) return;
 
-          await this._learnClimateCell(mode, fan, temp);
-          if (this._climateLearningGen !== myFastGen) return;
-          await new Promise(r => setTimeout(r, 400));
+        const learned = await this._learnClimateCell(mode, fan, temp);
+        if (!learned || this._climateLearningGen !== myFastGen) {
+          Notification.warning(`Fast learn stopped in ${mode} / ${fan} at ${temp}°C`);
+          return;
         }
+
+        await new Promise(r => setTimeout(r, 400));
       }
     } finally {
       this._climateLearning = false;
     }
-    Notification.success(`Fast learn for mode "${mode}" complete`);
+    Notification.success(`Fast learn for ${mode} / ${fan} complete`);
   }
 
   // ------------------------------------------------------------------
