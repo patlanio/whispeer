@@ -307,8 +307,7 @@ class DeviceManager extends Component {
 
   renderDeviceCard(device) {
     const { id, name, commands = {} } = device;
-    // Backward compat: legacy type='climate' devices have no domain field.
-    const domain = device.domain || (device.type === 'climate' ? 'climate' : 'default');
+    const domain = device.domain || 'default';
 
     let typeLabel, badgeClass, commandsHTML;
     if (domain !== 'default') {
@@ -317,14 +316,9 @@ class DeviceManager extends Component {
       badgeClass = domainConfig.badge;
       if (domain === 'climate') {
         commandsHTML = this._renderClimateCard(device);
-      } else if (domain === 'fan') {
-        commandsHTML = this._renderFanCard(device);
-      } else if (domain === 'media_player') {
-        commandsHTML = this._renderMediaPlayerCard(device);
-      } else if (domain === 'light') {
-        commandsHTML = this._renderLightCard(device);
       } else {
-        commandsHTML = this.renderDeviceCommands(device);
+        const genericCommands = this._domainToGenericCommands(domain, device);
+        commandsHTML = this.renderDeviceCommands({ ...device, commands: genericCommands });
       }
     } else {
       const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[device.type] || { label: device.type, badge: 'type-ir' };
@@ -346,6 +340,167 @@ class DeviceManager extends Component {
       commands: commandsHTML,
       automationBadge
     });
+  }
+
+  _createCommand(type, values, props = {}) {
+    return { type, values: values || {}, props: props || {} };
+  }
+
+  _domainToGenericCommands(domain, device) {
+    const config = device?.config || {};
+    const commands = device?.commands || {};
+
+    if (domain === 'fan') {
+      const out = {};
+      if (commands.off) {
+        out.power = this._createCommand('button', { code: commands.off }, { display: 'text', icon: '' });
+      }
+      const forwardMap = (commands.forward && typeof commands.forward === 'object')
+        ? commands.forward
+        : commands;
+      const reverseMap = (commands.reverse && typeof commands.reverse === 'object')
+        ? commands.reverse
+        : null;
+      const speeds = config.fan_model === 'incremental'
+        ? Array.from({ length: Number(config.speeds_count || 3) }, (_, i) => String(i + 1))
+        : ((config.speeds && config.speeds.length > 0)
+          ? config.speeds
+          : (Object.keys(forwardMap).filter(k => k !== 'off' && k !== 'forward' && k !== 'reverse').length > 0
+            ? Object.keys(forwardMap).filter(k => k !== 'off' && k !== 'forward' && k !== 'reverse')
+            : ['low', 'medium', 'high']));
+      const values = {};
+      for (const s of speeds) {
+        const code = config.fan_model === 'incremental' ? commands.speed : forwardMap[s];
+        values[s] = code || '';
+      }
+      out.speed = this._createCommand('options', values, { display: 'text', icon: '' });
+      if (reverseMap) {
+        const reverseValues = {};
+        for (const s of speeds) {
+          reverseValues[s] = reverseMap[s] || '';
+        }
+        out.reverse_speed = this._createCommand('options', reverseValues, { display: 'text', icon: '' });
+      }
+      for (const [key, value] of Object.entries(commands)) {
+        if (['off', 'speed', 'default', 'forward', 'reverse'].includes(key)) continue;
+        if (speeds.includes(key)) continue;
+        if (typeof value === 'string') {
+          out[key] = this._createCommand('button', { code: value }, { display: 'text', icon: '' });
+        }
+      }
+      return out;
+    }
+
+    if (domain === 'media_player') {
+      const out = {};
+      out.power = this._createCommand('switch', {
+        on: commands.on || '',
+        off: commands.off || '',
+      }, { display: 'text', icon: '' });
+      out.volume = this._createCommand('options', {
+        mute: commands.mute || '',
+        up: commands.volumeUp || '',
+        down: commands.volumeDown || '',
+      }, { display: 'text', icon: '' });
+      out.channel = this._createCommand('group', {
+        prev: commands.previousChannel || '',
+        next: commands.nextChannel || '',
+      }, { display: 'text', icon: '' });
+      out.source = this._createCommand('options', commands.sources || {}, { display: 'text', icon: '' });
+      return out;
+    }
+
+    if (domain === 'light') {
+      return {
+        power: this._createCommand('light', {
+          on: commands.on || '',
+          off: commands.off || '',
+        }, { display: 'text', icon: '' }),
+        scene: this._createCommand('options', {
+          brighten: commands.brighten || '',
+          dim: commands.dim || '',
+          colder: commands.colder || '',
+          warmer: commands.warmer || '',
+          night: commands.night || '',
+        }, { display: 'text', icon: '' }),
+      };
+    }
+
+    return device?.commands || {};
+  }
+
+  _genericToDomainCommands(domain, genericCommands = {}) {
+    if (domain === 'fan') {
+      const outCommands = {};
+      const cfg = { fan_model: 'direct', speeds: [] };
+
+      const power = genericCommands.power;
+      if (power?.type === 'button') outCommands.off = power.values?.code || '';
+      if (power?.type === 'switch') outCommands.off = power.values?.off || '';
+
+      const speed = genericCommands.speed;
+      const values = speed?.values || {};
+      cfg.speeds = Object.keys(values).filter(k => values[k] !== undefined);
+      for (const [k, v] of Object.entries(values)) {
+        outCommands[k] = v;
+      }
+
+      const reverse = genericCommands.reverse_speed;
+      const reverseValues = reverse?.values || {};
+      const hasReverse = Object.keys(reverseValues).some(k => (reverseValues[k] || '').trim() !== '');
+      if (hasReverse) {
+        outCommands.forward = { ...values };
+        outCommands.reverse = {};
+        for (const [k, v] of Object.entries(reverseValues)) {
+          outCommands.reverse[k] = v;
+        }
+      }
+
+      for (const [key, cmd] of Object.entries(genericCommands)) {
+        if (['power', 'speed', 'reverse_speed'].includes(key)) continue;
+        if (cmd?.type === 'button') {
+          outCommands[key] = cmd.values?.code || '';
+        }
+      }
+
+      return { config: cfg, commands: outCommands, table: {} };
+    }
+
+    if (domain === 'media_player') {
+      const outCommands = {};
+      const power = genericCommands.power?.values || {};
+      outCommands.on = power.on || '';
+      outCommands.off = power.off || '';
+
+      const volume = genericCommands.volume?.values || {};
+      outCommands.mute = volume.mute || '';
+      outCommands.volumeUp = volume.up || '';
+      outCommands.volumeDown = volume.down || '';
+
+      const channel = genericCommands.channel?.values || {};
+      outCommands.previousChannel = channel.prev || '';
+      outCommands.nextChannel = channel.next || '';
+
+      outCommands.sources = genericCommands.source?.values || {};
+      return { config: null, commands: outCommands, table: {} };
+    }
+
+    if (domain === 'light') {
+      const outCommands = {};
+      const power = genericCommands.power?.values || {};
+      outCommands.on = power.on || '';
+      outCommands.off = power.off || '';
+
+      const scene = genericCommands.scene?.values || {};
+      outCommands.brighten = scene.brighten || '';
+      outCommands.dim = scene.dim || '';
+      outCommands.colder = scene.colder || '';
+      outCommands.warmer = scene.warmer || '';
+      outCommands.night = scene.night || '';
+      return { config: null, commands: outCommands, table: {} };
+    }
+
+    return { config: null, commands: genericCommands, table: {} };
   }
 
   // ------------------------------------------------------------------
@@ -779,9 +934,10 @@ class DeviceManager extends Component {
     }
 
     this.currentDevice = device;
-    this.tempCommands = Utils.deepClone(device.commands || {});
-    // Backward compat: legacy type='climate' → treat as domain='climate'.
-    const domain = device.domain || (device.type === 'climate' ? 'climate' : 'default');
+    const domain = device.domain || 'default';
+    this.tempCommands = domain === 'default'
+      ? Utils.deepClone(device.commands || {})
+      : this._domainToGenericCommands(domain, device);
     this._climateData = domain !== 'default' ? {
       config: Utils.deepClone(device.config || {}),
       table: Utils.deepClone(device.table || {}),
@@ -843,9 +999,8 @@ class DeviceManager extends Component {
   }
 
   buildDeviceForm(device = {}) {
-    // Backward compat: legacy type='climate' devices map to domain='climate', type='ir'.
-    const deviceDomain = device.domain || (device.type === 'climate' ? 'climate' : 'default');
-    const deviceType = (device.type === 'climate' ? 'ir' : device.type) || 'ir';
+    const deviceDomain = device.domain || 'default';
+    const deviceType = device.type || 'ir';
 
     const domainOptions = [
       { value: 'default',      label: 'Default (commands)' },
@@ -872,6 +1027,11 @@ class DeviceManager extends Component {
       ? device.frequency : '';
 
     const showFrequency = deviceType === 'rf';
+    const showCommunity = deviceDomain !== 'default';
+    const communityCode = (device._smartirNum !== undefined && device._smartirNum !== null)
+      ? String(device._smartirNum)
+      : '';
+    const docsUrl = this._getSmartIRDocsUrl(deviceDomain);
 
     const frequencyField = `
       <div class="device-field-group" id="frequencyField" data-field="frequency"${showFrequency ? '' : ' style="display:none"'}>
@@ -884,6 +1044,20 @@ class DeviceManager extends Component {
                  value="${this._escapeAttr(String(frequency))}">
           <button type="button" class="input-group-append-btn" id="findFrequencyBtn"
                   onclick="deviceManager.findFrequency()">Find</button>
+        </div>
+      </div>
+    `;
+
+    const communityField = `
+      <div class="device-field-group" id="communityField" data-field="community"${showCommunity ? '' : ' style="display:none"'}>
+        <div class="input-group">
+          <div class="input-group-prepend">
+            <div class="input-group-text">Community <a id="communityHelpLink" href="${this._escapeAttr(docsUrl)}" target="_blank" rel="noopener">(?)</a></div>
+          </div>
+          <input type="text" id="smartirCommunityCode" class="form-input" placeholder="e.g. 1120"
+                 value="${this._escapeAttr(communityCode)}">
+          <button type="button" class="input-group-append-btn" id="communityImportBtn"
+                  onclick="deviceManager._importSmartIR()">Import</button>
         </div>
       </div>
     `;
@@ -931,6 +1105,7 @@ class DeviceManager extends Component {
         </div>
         <div class="device-field-row" id="rfToolsRow" style="display:none">
           ${frequencyField}
+          ${communityField}
           <div class="device-field-group" data-field="emit_interval">
             <div class="input-group">
               <div class="input-group-prepend">
@@ -999,7 +1174,7 @@ class DeviceManager extends Component {
 
   _onDomainChange(preserveSelection = false) {
     const domain = this._getCurrentDomain();
-    const isDomainManaged = domain !== 'default';
+    const isDomainManaged = domain === 'climate';
     const deviceType = this._getCurrentDeviceType();
 
     const fastLearnBtn = document.getElementById('fastLearnBtn');
@@ -1014,6 +1189,15 @@ class DeviceManager extends Component {
     const commandsSection = document.querySelector('#deviceForm .commands-section');
     if (commandsSection) {
       commandsSection.style.display = isDomainManaged ? 'none' : '';
+    }
+
+    if (!isDomainManaged && domain !== 'default') {
+      this.tempCommands = this._domainToGenericCommands(domain, {
+        domain,
+        config: this._climateData?.config || {},
+        commands: this._climateData?.commands || {},
+      });
+      this.refreshCommandsList();
     }
 
     let domainSection = document.getElementById('domainSection');
@@ -1034,8 +1218,28 @@ class DeviceManager extends Component {
       domainSection.style.display = 'none';
     }
 
+    this._updateCommunityField();
+
     // Reload interfaces (domain change may affect the required interface type).
     this.onDeviceTypeChange(preserveSelection);
+  }
+
+  _getSmartIRDocsUrl(domain) {
+    if (domain === 'climate') return 'https://github.com/smartHomeHub/SmartIR/blob/master/docs/CLIMATE.md#available-codes-for-climate-devices';
+    if (domain === 'fan') return 'https://github.com/smartHomeHub/SmartIR/blob/master/docs/FAN.md#available-codes-for-fan-devices';
+    if (domain === 'media_player') return 'https://github.com/smartHomeHub/SmartIR/blob/master/docs/MEDIA_PLAYER.md#available-codes-for-media-player-devices';
+    if (domain === 'light') return 'https://github.com/smartHomeHub/SmartIR/tree/master/codes/light';
+    return 'https://github.com/smartHomeHub/SmartIR';
+  }
+
+  _updateCommunityField() {
+    const field = document.getElementById('communityField');
+    if (!field) return;
+    const domain = this._getCurrentDomain();
+    const show = domain !== 'default';
+    field.style.display = show ? '' : 'none';
+    const link = document.getElementById('communityHelpLink');
+    if (link) link.href = this._getSmartIRDocsUrl(domain);
   }
 
   createInlineCommandForm(command = null, isExisting = false) {
@@ -1215,7 +1419,7 @@ class DeviceManager extends Component {
     interfaceSelect.disabled = true;
 
     // Domain-managed devices always use IR interfaces.
-    const interfaceDeviceType = isDomainManaged ? 'ir' : deviceType;
+    const interfaceDeviceType = isDomainManaged || domain !== 'default' ? 'ir' : deviceType;
 
     try {
       const interfaces = await DataManager.loadInterfaces(interfaceDeviceType);
@@ -1275,6 +1479,7 @@ class DeviceManager extends Component {
     }
 
     this._updateFrequencyField(deviceType);
+    this._updateCommunityField();
     // Update broadlink tools after interfaces are loaded (selected option now has data)
     this._updateBroadlinkToolsVisibility();
   }
@@ -1283,9 +1488,10 @@ class DeviceManager extends Component {
     const freqField = document.getElementById('frequencyField');
     const rfToolsRow = document.getElementById('rfToolsRow');
     const broadlinkToolsRow = document.getElementById('broadlinkToolsRow');
+    const domain = this._getCurrentDomain();
 
     if (rfToolsRow) {
-      rfToolsRow.style.display = (deviceType === 'rf' || deviceType === 'ir') ? '' : 'none';
+      rfToolsRow.style.display = (domain !== 'default' || deviceType === 'rf' || deviceType === 'ir') ? '' : 'none';
     }
 
     // Show frequency field whenever device type is RF
@@ -1338,7 +1544,7 @@ class DeviceManager extends Component {
 
     // Persist domain-specific data when a non-default domain is selected.
     const deviceDomain = deviceData.domain || 'default';
-    if (deviceDomain !== 'default') {
+    if (deviceDomain === 'climate') {
       const domainData = this._collectDomainData(deviceDomain);
       if (domainData) {
         deviceData.config = domainData.config;
@@ -1351,6 +1557,16 @@ class DeviceManager extends Component {
           deviceData.sensors = domainData.sensors;
         }
       }
+    } else if (deviceDomain !== 'default') {
+      const mapped = this._genericToDomainCommands(deviceDomain, this.tempCommands);
+      deviceData.config = mapped.config;
+      deviceData.commands = mapped.commands;
+      if (mapped.table && Object.keys(mapped.table).length > 0) {
+        deviceData.table = mapped.table;
+      } else {
+        delete deviceData.table;
+      }
+      deviceData.source = deviceData.source || 'scratch';
     }
 
     // Convert emit_interval to number if present and validate positive
@@ -1392,7 +1608,7 @@ class DeviceManager extends Component {
             ...interfaceObj // Store everything from the interface object
           };
           
-          // Store interface label for backward compatibility
+          // Store interface label for quick display in the form
           deviceData.interface = interfaceObj.label;
           deviceData.emitter = emitterData;
           
@@ -3801,7 +4017,8 @@ const colspan = this._blePickMode ? 7 : 8;
 
   async _importSmartIR() {
     const numInput = document.getElementById('smartirDeviceNum');
-    const num = numInput?.value.trim();
+    const communityInput = document.getElementById('smartirCommunityCode');
+    const num = (communityInput?.value || numInput?.value || '').trim();
     if (!num) {
       Notification.error('Enter a SmartIR device number');
       return;
@@ -3840,8 +4057,20 @@ const colspan = this._blePickMode ? 7 : 8;
       Notification.success(`SmartIR light ${num} imported`);
     }
 
-    const domainSection = document.getElementById('domainSection');
-    if (domainSection) this._renderDomainSection(domainSection, domain);
+    if (communityInput) communityInput.value = num;
+    if (numInput) numInput.value = num;
+
+    if (domain === 'climate') {
+      const domainSection = document.getElementById('domainSection');
+      if (domainSection) this._renderDomainSection(domainSection, domain);
+    } else {
+      this.tempCommands = this._domainToGenericCommands(domain, {
+        domain,
+        config: cd.config,
+        commands: cd.commands,
+      });
+      this.refreshCommandsList();
+    }
   }
 
   _parseSmartIRClimate(cd, json) {
@@ -3859,7 +4088,7 @@ const colspan = this._blePickMode ? 7 : 8;
       if (!srcMode || typeof srcMode !== 'object') continue;
       cd.table[mode] = {};
       for (const fan of fans) {
-        const srcFan = srcMode[fan] || srcMode[fan.charAt(0).toUpperCase() + fan.slice(1)] || {};
+        const srcFan = srcMode[fan] || {};
         if (!srcFan || typeof srcFan !== 'object') continue;
         cd.table[mode][fan] = {};
         for (const [tempKey, code] of Object.entries(srcFan)) {
@@ -3870,16 +4099,56 @@ const colspan = this._blePickMode ? 7 : 8;
   }
 
   _parseSmartIRFan(cd, json) {
-    const speeds = json.speed || [];
-    // SmartIR fans may store codes under commands.forward or directly under commands[speed].
-    const speedSrc = json.commands?.forward || json.commands || {};
+    const declaredSpeeds = Array.isArray(json.speed)
+      ? json.speed
+      : (Array.isArray(json.speeds) ? json.speeds : []);
+    const commandsRoot = json.commands || {};
+    const pickSpeedMap = (container) => {
+      if (!container || typeof container !== 'object' || Array.isArray(container)) return {};
+      if (container.default && typeof container.default === 'object' && !Array.isArray(container.default)) {
+        return container.default;
+      }
+      if (container.speed && typeof container.speed === 'object' && !Array.isArray(container.speed)) {
+        return container.speed;
+      }
+      return container;
+    };
+
+    const forwardSrc = pickSpeedMap(commandsRoot.forward || commandsRoot);
+    const reverseSrc = pickSpeedMap(commandsRoot.reverse || null);
+
+    const derivedSpeeds = Object.keys(forwardSrc || {}).filter(k => k !== 'off' && k !== 'default' && k !== 'forward' && k !== 'reverse');
+    const speeds = declaredSpeeds.length > 0 ? declaredSpeeds : derivedSpeeds;
+
     cd.config = { fan_model: 'direct', speeds };
     cd.commands = {};
-    if (json.commands?.off) cd.commands.off = json.commands.off;
+    if (commandsRoot.off) cd.commands.off = commandsRoot.off;
+    for (const [key, value] of Object.entries(commandsRoot)) {
+      if (['off', 'default', 'speed', 'forward', 'reverse'].includes(key)) continue;
+      if (typeof value === 'string') {
+        cd.commands[key] = value;
+      }
+    }
     for (const speed of speeds) {
-      const raw = speedSrc[speed];
+      const raw = forwardSrc[speed];
       if (raw && typeof raw === 'string') {
         cd.commands[speed] = raw;
+      } else if (raw && typeof raw === 'object' && typeof raw.code === 'string') {
+        cd.commands[speed] = raw.code;
+      }
+    }
+    const hasReverse = speeds.some(speed => {
+      const raw = reverseSrc[speed];
+      return (typeof raw === 'string' && raw) || (raw && typeof raw === 'object' && typeof raw.code === 'string');
+    });
+    if (hasReverse) {
+      cd.commands.forward = {};
+      cd.commands.reverse = {};
+      for (const speed of speeds) {
+        const fRaw = forwardSrc[speed];
+        const rRaw = reverseSrc[speed];
+        cd.commands.forward[speed] = typeof fRaw === 'string' ? fRaw : (fRaw?.code || '');
+        cd.commands.reverse[speed] = typeof rRaw === 'string' ? rRaw : (rRaw?.code || '');
       }
     }
     cd.table = {};
