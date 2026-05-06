@@ -20,13 +20,9 @@ class HassClient:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        # BLE real-time advertisement buffer: address -> info dict
         self._ble_buffer: dict[str, dict] = {}
         self._ble_cancel_cb = None
 
-    # ------------------------------------------------------------------
-    # Hub / interface discovery
-    # ------------------------------------------------------------------
 
     async def async_discover_hubs(self) -> list[dict[str, Any]]:
         """
@@ -65,9 +61,6 @@ class HassClient:
 
         return hubs
 
-    # ------------------------------------------------------------------
-    # Sending
-    # ------------------------------------------------------------------
 
     async def async_send_command(
         self,
@@ -102,9 +95,6 @@ class HassClient:
             _LOGGER.exception("Failed to send command on %s", entity_id)
             return False
 
-    # ------------------------------------------------------------------
-    # Learning
-    # ------------------------------------------------------------------
 
     async def async_learn_command(
         self,
@@ -138,14 +128,9 @@ class HassClient:
             timeout,
         )
 
-        # RF learning is a two-phase process (frequency sweep + command capture).
-        # Each phase can take up to `timeout` seconds, so allow double the time
-        # before the outer guard fires.
         wait_timeout = timeout * 1.5 if command_type.lower() == "rf" else timeout
 
         try:
-            # blocking=True makes HA wait until the button is pressed and
-            # the code is stored, or until the device-side timeout fires.
             await asyncio.wait_for(
                 self._hass.services.async_call(
                     "remote",
@@ -278,8 +263,7 @@ class HassClient:
         storage_dir = self._hass.config.path(".storage")
         result: list[dict] = []
 
-        # Collect unique (prefix, source_label) pairs from connected remotes.
-        prefixes: dict[str, str] = {}  # prefix → source label
+        prefixes: dict[str, str] = {}
         entity_registry = er.async_get(self._hass)
         device_registry = dr.async_get(self._hass)
         for state in self._hass.states.async_all("remote"):
@@ -341,9 +325,6 @@ class HassClient:
 
         return await self._hass.async_add_executor_job(_read_all)
 
-    # ------------------------------------------------------------------
-    # BLE adapter discovery and scanning
-    # ------------------------------------------------------------------
 
     async def async_get_ble_adapters(self) -> list[dict]:
         """Return local BLE adapters (via ``ble_emitter.get_ble_adapters``)."""
@@ -470,9 +451,6 @@ class HassClient:
         return None
 
 
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
 
 def _ensure_base64(data: str) -> str:
     """Return *data* as a valid base64 string.
@@ -483,12 +461,8 @@ def _ensure_base64(data: str) -> str:
     """
     stripped = data.strip()
 
-    # Learned/imported codes may include incidental whitespace/newlines.
     stripped = "".join(stripped.split())
 
-    # Check hex first: hex strings only use 0-9 a-f and have even length.
-    # This must come before the base64 check because hex chars are a strict
-    # subset of valid base64 chars, causing hex strings to pass b64decode.
     _HEX_CHARS = frozenset("0123456789abcdefABCDEF")
     if len(stripped) % 2 == 0 and all(c in _HEX_CHARS for c in stripped):
         try:
@@ -497,7 +471,6 @@ def _ensure_base64(data: str) -> str:
         except ValueError:
             pass
 
-    # Already base64 — return as-is.
     return stripped
 
 
@@ -522,34 +495,28 @@ def _get_storage_file_prefix(manufacturer: str) -> str | None:
 
 
 def _get_capabilities(state, device_entry=None) -> list[str]:
-    caps = ["ir"]  # Assume IR by default in the remote domain
+    caps = ["ir"]
 
-    # 1. Check supported_features (Bitmask)
     features = state.attributes.get("supported_features", 0)
-    can_learn = bool(features & 1)  # Bit 0 is LEARN_COMMAND
+    can_learn = bool(features & 1)
 
     if not can_learn:
-        return []  # If it cannot learn, it is not useful for the "learning" UI
+        return []
 
-    # 2. Logic by Manufacturer (Add known cases cleanly)
     if device_entry:
         manufacturer = (device_entry.manufacturer or "").lower()
         model = (device_entry.model or "").lower()
 
-        # Broadlink case: "pro" is the standard for RF
         if "broadlink" in manufacturer:
             if "pro" in model:
                 caps.append("rf")
 
-        # Bond case: It is a hub that is natively RF
         elif "bond" in manufacturer:
             caps.append("rf")
 
-        # Global Caché or Logitech case: They are 99% IR
         elif "logitech" in manufacturer or "global caché" in manufacturer:
-            pass  # Only IR
+            pass
 
-    # 3. Heuristic: If the device name contains RF (user-assisted)
     if "rf" in state.entity_id.lower() and "rf" not in caps:
         caps.append("rf")
 

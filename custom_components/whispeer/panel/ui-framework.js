@@ -37,7 +37,6 @@ class Component {
     let html = this.templates[name];
     Object.entries(data).forEach(([key, value]) => {
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-      // Use a function replacer so HTML/$ in value is never interpreted as a special pattern
       html = html.replace(regex, () => (value == null ? '' : String(value)));
     });
     
@@ -491,14 +490,13 @@ class Toast {
       setTimeout(() => Toast.remove(toast), duration);
     }
 
-    // Add close method to the toast instance
     toast.close = () => Toast.remove(toast);
 
     return toast;
   }
 
   static permanent(message, type = 'info') {
-    return Toast.show(message, type, 0); // 0 duration means permanent
+    return Toast.show(message, type, 0);
   }
 
   static remove(toast) {

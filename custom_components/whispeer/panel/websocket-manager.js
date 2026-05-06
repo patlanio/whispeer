@@ -1,5 +1,4 @@
 class WSManager {
-  // -- Connection --
   static _ws = null;
   static _msgId = 1;
   static _ready = false;
@@ -8,23 +7,15 @@ class WSManager {
   static _reconnectDelay = 1000;
   static _reconnectTimer = null;
 
-  // -- Pending calls: msgId → { resolve, reject } --
   static _pending = new Map();
 
-  // -- Message queue while authenticating --
   static _messageQueue = [];
 
-  // -- Event subscriptions --
-  // _eventSubs: Map<eventType, { haSubId: number|null, callbacks: Set<Function> }>
   static _eventSubs = new Map();
-  // _haSubIdToEventType: Map<number, string>
   static _haSubIdToEventType = new Map();
 
-  // -- Command subscriptions (subscribeMessage-style) --
-  // _commandSubs: Map<msgId, Function>
   static _commandSubs = new Map();
 
-  // -- Ready callbacks --
   static _onReadyCallbacks = [];
 
   /**
@@ -32,20 +23,17 @@ class WSManager {
    * Called both at initial connect and on every reconnect attempt.
    */
   static _getToken() {
-    // 1. Global function injected by the panel backend
     if (typeof window.getHomeAssistantToken === 'function') {
       const t = window.getHomeAssistantToken();
       if (t) return t;
     }
 
-    // 2. HA's modern WebSocket connection object (home-assistant-js-websocket)
     try {
       const conn = window.hassConnection || window.parent?.hassConnection;
       const t = conn?.options?.auth?.accessToken;
       if (t) return t;
     } catch (_) {}
 
-    // 3. hassTokens key in localStorage (written by HA frontend)
     try {
       const raw = localStorage.getItem('hassTokens');
       if (raw) {
@@ -54,7 +42,6 @@ class WSManager {
       }
     } catch (_) {}
 
-    // 4. hass object on <home-assistant> element in parent frame
     try {
       const el = window.parent?.document?.querySelector('home-assistant');
       const t = el?.__hass?.auth?.data?.access_token
@@ -72,7 +59,6 @@ class WSManager {
   static connect() {
     const token = WSManager._getToken();
     if (!token) {
-      // HA parent frame might not be ready yet — wait and retry
       setTimeout(() => WSManager.connect(), 500);
       return;
     }
@@ -149,7 +135,6 @@ class WSManager {
       console.error('[WSManager] Authentication rejected — will retry with fresh token');
       WSManager._connecting = false;
       WSManager._ws.close();
-      // Clear any stale cached token and retry after a short delay
       WSManager._token = null;
       WSManager._scheduleReconnect();
       return;
@@ -219,7 +204,6 @@ class WSManager {
           WSManager._token = fresh;
           WSManager._doConnect();
         } else {
-          // Token not yet available — try again via connect()
           WSManager.connect();
         }
       }

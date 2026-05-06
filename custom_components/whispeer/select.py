@@ -28,7 +28,6 @@ from .entity import WhispeerBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-# Only the "options" command type is rendered as a SelectEntity.
 _SELECT_TYPES = {CMD_TYPE_OPTIONS}
 
 
@@ -55,7 +54,6 @@ async def async_setup_entry(
                     registered.add(uid)
         return result
 
-    # Load entities that already exist in storage.
     devices = await api.async_get_devices()
     entities: list[WhispeerSelect] = []
     for device in devices:
@@ -117,7 +115,6 @@ class WhispeerSelect(WhispeerBaseEntity, SelectEntity):
     ) -> None:
         super().__init__(device_data, command_name, command_cfg, api_client)
         values = command_cfg.get("values") or {}
-        # Preserve insertion order (Python 3.7+).
         self._attr_options = [str(k) for k in values]
         self._attr_current_option = (
             self._attr_options[0] if self._attr_options else None

@@ -83,7 +83,6 @@ class DataManager {
   }
 
   static async saveDevices() {
-    // Deprecated: syncing will be performed explicitly on CRUD operations
   }
 
   static async addDevice(device) {
@@ -159,12 +158,10 @@ class DataManager {
   }
 
   static loadSettings() {
-    // Keep UI settings in memory only
     return DataManager.settings;
   }
 
   static saveSettings() {
-    // No-op for now; could persist to backend later
   }
 
   static updateSettings(updates) {

@@ -137,7 +137,6 @@ class DeviceManager extends Component {
 
     this._renderStoredCodesIntoSection(this.storedCodes);
 
-    // Sync toggle states from HA (source of truth) after DOM is ready.
     this._syncEntityStates();
   }
 
@@ -147,7 +146,6 @@ class DeviceManager extends Component {
       const states = result?.states || {};
       const domainStates = result?.domain_states || {};
       for (const [key, state] of Object.entries(states)) {
-        // Toggles (switch / light) have a [data-entity] wrapper.
         const wrapper = document.querySelector(`[data-entity="${key}"]`);
         if (wrapper) {
           const toggle = wrapper.querySelector('.command-toggle');
@@ -158,7 +156,6 @@ class DeviceManager extends Component {
           }
         }
 
-        // Options / select / numeric: highlight the active button.
         const colonIdx = key.indexOf(':');
         if (colonIdx === -1) continue;
         const deviceId = key.substring(0, colonIdx);
@@ -503,9 +500,6 @@ class DeviceManager extends Component {
     return { config: null, commands: genericCommands, table: {} };
   }
 
-  // ------------------------------------------------------------------
-  // Stored codes section
-  // ------------------------------------------------------------------
 
   async loadAndRenderStoredCodes() {
     const section = document.getElementById('storedCodesSection');
@@ -531,10 +525,8 @@ class DeviceManager extends Component {
       return;
     }
 
-    // Build flat index for onclick reference (avoids embedding codes in HTML)
     this._storedCodesFlat = codes.slice();
 
-    // Group by device
     const grouped = {};
     codes.forEach(c => {
       if (!grouped[c.device]) grouped[c.device] = [];
@@ -656,7 +648,6 @@ class DeviceManager extends Component {
       .replace(/>/g, '&gt;');
   }
 
-  // ------------------------------------------------------------------
 
   renderDeviceCommands(device) {
     const { commands = {}, id } = device;
@@ -869,53 +860,6 @@ class DeviceManager extends Component {
           color: '#03a9f4'
         }
       },
-      // 'sample_switch': {
-      //   type: 'switch',
-      //   values: {
-      //     on: '',
-      //     off: ''
-      //   },
-      //   props: {
-      //     shape: 'square',
-      //     color: '#4caf50'
-      //   }
-      // },
-      // 'sample_light': {
-      //   type: 'light',
-      //   values: {
-      //     on: '',
-      //     off: ''
-      //   },
-      //   props: {
-      //     shape: 'circle',
-      //     color: '#ffeb3b'
-      //   }
-      // },
-      // 'sample_numeric': {
-      //   type: 'numeric',
-      //   values: {
-      //     '0': '',
-      //     '1': '',
-      //     '2': '',
-      //     '3': ''
-      //   },
-      //   props: {
-      //     shape: 'rounded',
-      //     color: '#ff9800'
-      //   }
-      // },
-      // 'sample_group': {
-      //   type: 'group',
-      //   values: {
-      //     'option_a': '',
-      //     'option_b': '',
-      //     'option_c': ''
-      //   },
-      //   props: {
-      //     shape: 'rounded',
-      //     color: '#9c27b0'
-      //   }
-      // }
     };
   }
 
@@ -948,7 +892,6 @@ class DeviceManager extends Component {
     } : null;
     this.showDeviceModal('Edit Device', device);
 
-    // Refresh automations in background and update the section if it has changed
     DataManager.loadAutomations().then(() => {
       const section = document.querySelector('.device-automations-section');
       const modalBody = document.querySelector('.device-modal .modal-body');
@@ -1220,7 +1163,6 @@ class DeviceManager extends Component {
 
     this._updateCommunityField();
 
-    // Reload interfaces (domain change may affect the required interface type).
     this.onDeviceTypeChange(preserveSelection);
   }
 
@@ -1383,7 +1325,6 @@ class DeviceManager extends Component {
     const typeSelect = deviceForm.querySelector('select[name="type"]');
     if (typeSelect) {
       typeSelect.addEventListener('change', () => this.onDeviceTypeChange(false));
-      // Initial load: trigger domain handler which also calls onDeviceTypeChange(true).
       this._onDomainChange(true);
     }
 
@@ -1414,32 +1355,25 @@ class DeviceManager extends Component {
 
     const currentDevice = this.currentDevice;
 
-    // Clear current interfaces and show loading
     interfaceSelect.innerHTML = '<option value="">⏳ Loading interfaces...</option>';
     interfaceSelect.disabled = true;
 
-    // Domain-managed devices always use IR interfaces.
     const interfaceDeviceType = isDomainManaged || domain !== 'default' ? 'ir' : deviceType;
 
     try {
       const interfaces = await DataManager.loadInterfaces(interfaceDeviceType);
 
-      // Clear loading state
       interfaceSelect.disabled = false;
 
       if (interfaces && interfaces.length > 0) {
         let selectedIndex = null;
 
         interfaceSelect.innerHTML = interfaces.map((iface, index) => {
-          // Todos los objetos deben tener label
           if (typeof iface === 'object' && iface.label) {
-            // Usar el índice como value y guardar el objeto en data-interface
             const interfaceData = JSON.stringify(iface).replace(/"/g, '&quot;');
 
-            // Check if this interface should be selected when editing
             let shouldSelect = false;
             if (preserveSelection && currentDevice && currentDevice.emitter) {
-              // Match by entity_id
               if (currentDevice.emitter.entity_id && iface.entity_id === currentDevice.emitter.entity_id) {
                 shouldSelect = true;
                 selectedIndex = index;
@@ -1449,11 +1383,10 @@ class DeviceManager extends Component {
             return `<option value="${index}" data-interface="${interfaceData}" ${shouldSelect ? 'selected' : ''}>${iface.label}</option>`;
           } else {
             console.error('Invalid interface object, missing label:', iface);
-            return ''; // Skip invalid interfaces
+            return '';
           }
-        }).filter(option => option).join(''); // Remove empty options
+        }).filter(option => option).join('');
 
-        // Set the selected interface if found
         if (selectedIndex !== null) {
           interfaceSelect.value = selectedIndex.toString();
         }
@@ -1466,7 +1399,6 @@ class DeviceManager extends Component {
     } catch (error) {
       console.error('Failed to load interfaces:', error);
 
-      // Clear loading state
       interfaceSelect.disabled = false;
 
       interfaceSelect.innerHTML = '<option value="">⚠️ Error loading interfaces</option>';
@@ -1475,7 +1407,6 @@ class DeviceManager extends Component {
 
     this._updateFrequencyField(deviceType);
     this._updateCommunityField();
-    // Update broadlink tools after interfaces are loaded (selected option now has data)
     this._updateBroadlinkToolsVisibility();
   }
 
@@ -1489,7 +1420,6 @@ class DeviceManager extends Component {
       rfToolsRow.style.display = (domain !== 'default' || deviceType === 'rf' || deviceType === 'ir') ? '' : 'none';
     }
 
-    // Show frequency field whenever device type is RF
     const freq = this.currentDevice?.frequency || this._detectedFrequency || '';
     if (freqField) {
       const show = deviceType === 'rf';
@@ -1500,7 +1430,6 @@ class DeviceManager extends Component {
       }
     }
 
-    // Show broadlink tools only when interface is broadlink
     this._updateBroadlinkToolsVisibility();
   }
 
@@ -1537,7 +1466,6 @@ class DeviceManager extends Component {
     const deviceData = Object.fromEntries(formData.entries());
     deviceData.commands = this.tempCommands;
 
-    // Persist domain-specific data when a non-default domain is selected.
     const deviceDomain = deviceData.domain || 'default';
     if (deviceDomain === 'climate') {
       const domainData = this._collectDomainData(deviceDomain);
@@ -1564,7 +1492,6 @@ class DeviceManager extends Component {
       deviceData.source = deviceData.source || 'scratch';
     }
 
-    // Convert emit_interval to number if present and validate positive
     if (deviceData.emit_interval !== undefined && deviceData.emit_interval !== '') {
       const parsed = parseFloat(deviceData.emit_interval);
       if (isNaN(parsed) || parsed < 0) {
@@ -1583,27 +1510,23 @@ class DeviceManager extends Component {
       deviceData.frequency = this._detectedFrequency;
     }
 
-    // Add emitter information based on device type and interface
     const deviceType = deviceData.type;
     const interfaceIndex = deviceData.interface;
     
     if (interfaceIndex !== '' && interfaceIndex !== undefined) {
       try {
-        // Get the interface object from the select option
         const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
         const selectedOption = interfaceSelect.options[interfaceIndex];
         
         if (selectedOption && selectedOption.dataset.interface) {
           const interfaceObj = JSON.parse(selectedOption.dataset.interface.replace(/&quot;/g, '"'));
           
-          // Create emitter data with complete interface object
           const emitterData = {
             device_type: deviceType,
             interface_index: parseInt(interfaceIndex),
-            ...interfaceObj // Store everything from the interface object
+            ...interfaceObj
           };
           
-          // Store interface label for quick display in the form
           deviceData.interface = interfaceObj.label;
           deviceData.emitter = emitterData;
           
@@ -1834,7 +1757,6 @@ class DeviceManager extends Component {
   }
 
   deleteCommand(commandName) {
-    // Auto-save all other commands from the DOM before re-rendering
     this._saveAllContainersSilent(commandName);
     if (this.tempCommands[commandName]) {
       delete this.tempCommands[commandName];
@@ -1874,7 +1796,6 @@ class DeviceManager extends Component {
 
     const deviceType = this._getCurrentDeviceType();
 
-// BLE: send directly via WebSocket
       if (deviceType === 'ble') {
         const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
         const selectedOpt = interfaceSelect?.options[interfaceSelect?.selectedIndex];
@@ -2058,13 +1979,11 @@ class DeviceManager extends Component {
   }
 
   startLongPress(deviceId, commandName) {
-    // Always fire once immediately
     this.executeCommand(deviceId, commandName);
 
     const device = DataManager.getDevice(deviceId);
     const interval = parseFloat(device?.emit_interval);
 
-    // If interval is 0 or not set, don't repeat
     if (!interval || interval <= 0) return;
 
     const ms = Math.max(interval * 1000, 100);
@@ -2087,7 +2006,6 @@ class DeviceManager extends Component {
     const formData = new FormData(form);
     const deviceData = Object.fromEntries(formData.entries());
     
-    // Get the interface object from the selected option's data-interface attribute
     const interfaceSelect = form.querySelector('select[name="interface"]');
     const selectedOption = interfaceSelect.selectedOptions[0];
     let interfaceObject = null;
@@ -2341,13 +2259,11 @@ class DeviceManager extends Component {
   }
 
   _getLearnBtnCodeInput(learnBtn) {
-    // Option field (light/switch use data-option, numeric/group use data-option-value)
     const optionField = learnBtn.closest('.option-field');
     if (optionField) {
       return optionField.querySelector('input[data-option]') ||
              optionField.querySelector('input[data-option-value]');
     }
-    // Button type: code input inside the command-inline-form
     const form = learnBtn.closest('.command-inline-form');
     return form ? form.querySelector('input[data-field="code"]') : null;
   }
@@ -2384,28 +2300,22 @@ class DeviceManager extends Component {
         let learnBtn = this._findNextEmptyLearnButton();
 
         if (!learnBtn) {
-          // No empty slot found — add a new command row
           this.addInlineCommand();
-          // Wait a tick for DOM to update
           await new Promise(resolve => setTimeout(resolve, 50));
           learnBtn = this._findNextEmptyLearnButton();
         }
 
         if (!learnBtn) break;
 
-        // Scroll the button into view and focus the associated code input
         learnBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         const focusInput = this._getLearnBtnCodeInput(learnBtn);
         if (focusInput) focusInput.focus();
 
-        // Small cooldown so hardware is fully idle before the next prepare call
         await new Promise(resolve => setTimeout(resolve, 400));
 
-        // Trigger learning and wait for it to complete or fail
         const learned = await this._fastLearnOne(learnBtn);
 
         if (!learned) {
-          // Timeout or error — stop fast learn
           break;
         }
       }
@@ -2422,7 +2332,6 @@ class DeviceManager extends Component {
     const commandForm = commandContainer?.querySelector('.command-inline-form');
     const nameInput = commandForm?.querySelector('input.command-inline-input.name');
 
-    // Auto-generate a name if empty
     if (nameInput && !nameInput.value.trim()) {
       nameInput.value = `cmd_${Date.now()}`;
     }
@@ -2526,9 +2435,6 @@ class DeviceManager extends Component {
     }
   }
 
-  // ------------------------------------------------------------------
-  // BLE Advertisement Monitor (HA-native style)
-  // ------------------------------------------------------------------
 
   openBleScannerModal(pickMode = false, onPick = null) {
     const interfaceSelect = Utils.$('#deviceForm select[name="interface"]');
@@ -2850,7 +2756,6 @@ const colspan = this._blePickMode ? 7 : 8;
       return;
     }
 
-    // Don't open the info dialog if the click was on the import input
     if (event?.target?.classList.contains('ble-import-name')) return;
 
     this._openBleDeviceInfoDialog(entry);
@@ -3080,9 +2985,6 @@ const colspan = this._blePickMode ? 7 : 8;
     this._bleDevices = [];
   }
 
-  // ====================================================================
-  // CLIMATE SECTION — form, table, card, learn
-  // ====================================================================
 
   _getClimateData() {
     if (!this._climateData) {
@@ -3110,9 +3012,6 @@ const colspan = this._blePickMode ? 7 : 8;
     return this._climateData;
   }
 
-  // ------------------------------------------------------------------
-  // Domain section dispatcher
-  // ------------------------------------------------------------------
 
   _renderDomainSection(container, domain) {
     if (domain === 'climate') {
@@ -3128,9 +3027,6 @@ const colspan = this._blePickMode ? 7 : 8;
     }
   }
 
-  // ------------------------------------------------------------------
-  // Fan domain section
-  // ------------------------------------------------------------------
 
   _renderFanSection(container) {
     const cd = this._getClimateData();
@@ -3307,9 +3203,6 @@ const colspan = this._blePickMode ? 7 : 8;
     }
   }
 
-  // ------------------------------------------------------------------
-  // Media player domain section
-  // ------------------------------------------------------------------
 
   _renderMediaPlayerSection(container) {
     const cd = this._getClimateData();
@@ -3486,9 +3379,6 @@ const colspan = this._blePickMode ? 7 : 8;
     if (domainSection) this._renderDomainSection(domainSection, 'media_player');
   }
 
-  // ------------------------------------------------------------------
-  // Light domain section
-  // ------------------------------------------------------------------
 
   _renderLightSection(container) {
     const cd = this._getClimateData();
@@ -3613,9 +3503,6 @@ const colspan = this._blePickMode ? 7 : 8;
     }
   }
 
-  // ------------------------------------------------------------------
-  // Generic domain cell helper
-  // ------------------------------------------------------------------
 
   _domainCell(cellKey, label, code, isTestMode, onclick) {
     const hasCode = !!code;
@@ -3786,12 +3673,10 @@ const colspan = this._blePickMode ? 7 : 8;
     const toggleClass = isTestMode ? 'climate-mode-toggle is-test' : 'climate-mode-toggle';
     const nFans = fans.length;
 
-    // Row 1: mode headers (toggle btn in corner cell)
     const modeHeaders = modes.map(m =>
       `<th class="climate-mode-header" colspan="${nFans}">${m}</th>`
     ).join('');
 
-    // Row 2: OFF cell (col 1) + fan headers repeated per mode
     const offCode = (cd.commands || {}).off || '';
     const offHasCode = !!offCode;
     const offIsLearning = this._climateLearningCell === '__off__';
@@ -3803,7 +3688,6 @@ const colspan = this._blePickMode ? 7 : 8;
       fans.map(f => `<th class="climate-fan-header">${f}</th>`)
     ).join('');
 
-    // Row 3: one fast-learn button per data column (mode + fan speed)
     const fastLearnCols = modes.flatMap(m =>
       fans.map(f =>
         `<td class="climate-fast-learn-cell">
@@ -3816,7 +3700,6 @@ const colspan = this._blePickMode ? 7 : 8;
       )
     ).join('');
 
-    // Data rows: one flat <td> per (mode × fan) intersection
     const rows = temps.map(temp => {
       const cells = modes.flatMap(mode =>
         fans.map(fan => {
@@ -4321,9 +4204,6 @@ const colspan = this._blePickMode ? 7 : 8;
     Notification.success(`Fast learn for ${mode} / ${fan} complete`);
   }
 
-  // ------------------------------------------------------------------
-  // Fan / media player / light cards (main UI)
-  // ------------------------------------------------------------------
 
   _renderFanCard(device) {
     const { id, config = {}, commands = {} } = device;
@@ -4569,9 +4449,6 @@ const colspan = this._blePickMode ? 7 : 8;
     } catch (e) { Notification.error(e.message); }
   }
 
-  // ------------------------------------------------------------------
-  // Climate card (main UI)
-  // ------------------------------------------------------------------
 
   _renderClimateCard(device) {
     const { id } = device;

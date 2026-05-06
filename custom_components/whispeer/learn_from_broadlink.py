@@ -56,9 +56,6 @@ class BroadlinkLearnProvider(LearnProvider):
     def can_handle(cls, device_type: str, manufacturer: str) -> bool:
         return device_type.lower() == "rf" and "broadlink" in manufacturer.lower()
 
-    # ------------------------------------------------------------------
-    # Public entry points
-    # ------------------------------------------------------------------
 
     async def start(self, session: LearnSession) -> None:
         """Start learning an RF command.
@@ -115,9 +112,6 @@ class BroadlinkLearnProvider(LearnProvider):
             )
             session.update_status("error", error_message=str(exc))
 
-    # ------------------------------------------------------------------
-    # Executor jobs (run in a thread pool — no async/await inside)
-    # ------------------------------------------------------------------
 
     def _do_full_rf_learn(
         self,
@@ -135,9 +129,6 @@ class BroadlinkLearnProvider(LearnProvider):
             )
             return
 
-        # Phase 1 — sweep_frequency() is non-blocking: sends the command and
-        # returns immediately.  Mark as 'learning' right after so the frontend
-        # sees phase='sweeping' and asks the user to hold a button.
         device.sweep_frequency()
         session.update_status("learning")
 
@@ -160,9 +151,6 @@ class BroadlinkLearnProvider(LearnProvider):
 
         session.detected_frequency = freq
 
-        # Phase 2 — find_rf_packet() is synchronous: the device is in capture
-        # mode as soon as it returns.  Update phase so the frontend transitions
-        # to 'capturing' and asks the user to press the button briefly.
         device.find_rf_packet(freq)
         session.phase = "capturing"
 
@@ -190,10 +178,8 @@ class BroadlinkLearnProvider(LearnProvider):
             )
             return
 
-        # find_rf_packet() is synchronous — device is in capture mode when it returns.
         device.find_rf_packet(frequency)
         session.update_status("learning")
-        # session.phase is already "capturing"
 
         code = self._poll_check_data(device, max_attempts=30)
         if code:
@@ -256,9 +242,6 @@ class BroadlinkLearnProvider(LearnProvider):
                 continue
         return None
 
-    # ------------------------------------------------------------------
-    # Connection resolution
-    # ------------------------------------------------------------------
 
     async def _resolve_connection(
         self, session: LearnSession

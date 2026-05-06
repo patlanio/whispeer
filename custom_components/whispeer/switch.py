@@ -44,7 +44,6 @@ async def async_setup_entry(
                     registered.add(uid)
         return result
 
-    # Register entities that already exist in storage.
     devices = await api.async_get_devices()
     entities: list[WhispeerSwitch] = []
     for device in devices:
@@ -68,9 +67,7 @@ async def async_setup_entry(
         """
         new: list[WhispeerSwitch] = []
         for uid in registered:
-            # Extract device_id from uid prefix
             pass
-        # Re-query storage for any brand-new devices
         hass.async_create_task(_async_refresh(current_device_ids))
 
     async def _async_refresh(known_ids: set[str]) -> None:

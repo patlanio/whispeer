@@ -164,9 +164,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     ) -> None:
         sub_command = msg.get("sub_command")
 
-        # Route on/off sub-commands through the HA entity service so that:
-        # 1. HA entity state is updated and visible in dashboards / automations.
-        # 2. The entity fires whispeer_state_update which syncs the panel toggle.
         if sub_command in ("on", "off"):
             uid = f"whispeer_{msg['device_id']}_{msg['command_name']}"
             entity_reg = er.async_get(hass)
@@ -195,7 +192,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                         target_domain, service, target_entity_id, exc,
                     )
 
-        # Route select/number option selections through the HA entity service.
         elif sub_command is not None:
             uid = f"whispeer_{msg['device_id']}_{msg['command_name']}"
             entity_reg = er.async_get(hass)

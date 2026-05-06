@@ -35,13 +35,11 @@ async def async_setup_entry(
 
     def _entities_from_device(device: dict[str, Any]) -> list[WhispeerLight]:
         result: list[WhispeerLight] = []
-        # Domain-level light entity (IR-controlled with brighten/dim/colder/warmer).
         if device.get("domain") == DEVICE_DOMAIN_LIGHT:
             uid = f"whispeer_{device['id']}_domain_light"
             if uid not in registered:
                 result.append(WhispeerDomainLight(device, api))
                 registered.add(uid)
-        # Command-level light entities (CMD_TYPE_LIGHT — existing behavior).
         for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
             if not isinstance(cmd_cfg, dict):
                 continue

@@ -25,7 +25,6 @@ from .learn_from_ble import BleLearnProvider
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
-# Ordered list of providers — first match wins.
 _LEARN_PROVIDERS: list[type[LearnProvider]] = [
     BroadlinkLearnProvider,
     HassLearnProvider,
@@ -40,9 +39,6 @@ def _pick_learn_provider(device_type: str, manufacturer: str, hass) -> LearnProv
     return HassLearnProvider(hass)
 
 
-# ------------------------------------------------------------------
-# Response helpers
-# ------------------------------------------------------------------
 
 def _ok(message: str, **extra: Any) -> dict:
     return {"status": "success", "message": message, **extra}
@@ -52,9 +48,6 @@ def _err(message: str, **extra: Any) -> dict:
     return {"status": "error", "message": message, **extra}
 
 
-# ------------------------------------------------------------------
-# Main API Client
-# ------------------------------------------------------------------
 
 class WhispeerApiClient:
     """Manages device storage and delegates HW commands to HassClient."""
@@ -72,9 +65,6 @@ class WhispeerApiClient:
         self._hubs_cache: Dict[str, Dict[str, Any]] = {}
         self._hass_client = HassClient(hass)
 
-    # ------------------------------------------------------------------
-    # Basic status
-    # ------------------------------------------------------------------
 
     async def async_get_data(self) -> dict:
         return {
@@ -83,9 +73,6 @@ class WhispeerApiClient:
             "timestamp": asyncio.get_event_loop().time(),
         }
 
-    # ------------------------------------------------------------------
-    # Hub persistence
-    # ------------------------------------------------------------------
 
     async def _load_hubs(self) -> Dict[str, Dict[str, Any]]:
         try:
@@ -131,9 +118,6 @@ class WhispeerApiClient:
             return _err(f"Hub {hub_id} not found")
         return _ok(f"Hub {hub_id} removed")
 
-    # ------------------------------------------------------------------
-    # Device persistence
-    # ------------------------------------------------------------------
 
     async def _load_devices(self) -> Dict[str, Dict[str, Any]]:
         try:
@@ -244,9 +228,6 @@ class WhispeerApiClient:
     async def async_test_device(self, device_id) -> dict:
         return _ok(f"Device {device_id} test completed", test_result="passed")
 
-    # ------------------------------------------------------------------
-    # Command sending  (delegates to HassClient → remote.send_command)
-    # ------------------------------------------------------------------
 
     async def async_send_command(
         self,
@@ -260,13 +241,11 @@ class WhispeerApiClient:
         if not command_code:
             return _err(f"No command code for '{command_name}' on device '{device_id}'")
 
-        # BLE commands go through ble_emitter instead of remote.*
         if device_type == "ble":
             return await self._send_ble_command(
                 device_id, command_name, command_code, emitter_data
             )
 
-        # Resolve hub entity_id from the device's emitter/interface_id.
         entity_id = self._resolve_entity_id(device_id, emitter_data)
         if not entity_id:
             return _err(
@@ -294,17 +273,14 @@ class WhispeerApiClient:
         self, device_id: str, emitter_data: dict | None
     ) -> str | None:
         """Determine the remote.* entity_id for a device."""
-        # 1. Emitter payload may carry entity_id directly.
         if emitter_data:
             eid = emitter_data.get("entity_id") or ""
             if eid.startswith("remote."):
                 return eid
 
-        # 2. Look inside the cached device data for interface_id → hub.
         device = self._devices_cache.get(str(device_id)) or {}
         interface_id = device.get("interface_id") or ""
 
-        # interface_id may be the hub id — look up the hub.
         hub = self._hubs_cache.get(interface_id) or {}
         eid = hub.get("entity_id") or ""
         if eid.startswith("remote."):
@@ -312,9 +288,6 @@ class WhispeerApiClient:
 
         return None
 
-    # ------------------------------------------------------------------
-    # Interface discovery  (queries HA for remote.* entities)
-    # ------------------------------------------------------------------
 
     async def async_get_interfaces(self, device_type: str, hass=None) -> dict:
         """Return available hubs/interfaces for the given device type."""
@@ -323,7 +296,6 @@ class WhispeerApiClient:
 
         hubs = await self._hass_client.async_discover_hubs()
 
-        # Filter by capability
         cap = device_type.lower()
         filtered = [h for h in hubs if cap in h.get("capabilities", [])]
 
@@ -343,9 +315,6 @@ class WhispeerApiClient:
             interfaces=interfaces,
         )
 
-    # ------------------------------------------------------------------
-    # Learning  (routed to the appropriate provider)
-    # ------------------------------------------------------------------
 
     async def async_prepare_to_learn(
         self,
@@ -441,8 +410,6 @@ class WhispeerApiClient:
                 learning_status="timeout",
             )
 
-        # Still in progress — return actual status so the frontend can distinguish
-        # "hardware being set up" (preparing) from "hardware ready" (learning).
         return _ok(
             "Learning in progress",
             session_id=session_id,
@@ -481,9 +448,6 @@ class WhispeerApiClient:
             entity_id=entity_id,
         )
 
-    # ------------------------------------------------------------------
-    # BLE support  (delegated to BleLearnProvider)
-    # ------------------------------------------------------------------
 
     def _resolve_ble_adapter(
         self, device_id: str, emitter_data: dict | None

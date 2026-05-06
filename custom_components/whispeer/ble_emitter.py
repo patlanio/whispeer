@@ -14,7 +14,6 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-# Pre-check tool availability once at import time.
 _HCITOOL = shutil.which("hcitool")
 _HCICONFIG = shutil.which("hciconfig")
 CAN_EMIT = _HCITOOL is not None and _HCICONFIG is not None
@@ -44,10 +43,6 @@ def get_ble_adapters() -> list[dict[str, Any]]:
         return []
 
     adapters: list[dict[str, Any]] = []
-    # hciconfig output: blocks separated by blank lines.
-    # First line:  "hci0:   Type: Primary  Bus: USB"
-    # Second line: "        BD Address: AA:BB:CC:DD:EE:FF  ACL MTU: ..."
-    # Third+ lines: flags like "UP RUNNING" or "DOWN"
     current_name = ""
     current_mac = ""
     current_status = "DOWN"
@@ -55,7 +50,6 @@ def get_ble_adapters() -> list[dict[str, Any]]:
     for line in result.stdout.splitlines():
         m_header = re.match(r"^(hci\d+):", line)
         if m_header:
-            # Flush previous adapter.
             if current_name:
                 adapters.append({
                     "hci_name": current_name,
@@ -81,7 +75,6 @@ def get_ble_adapters() -> list[dict[str, Any]]:
             if "UP RUNNING" in line:
                 current_status = "UP"
 
-    # Flush last adapter.
     if current_name:
         adapters.append({
             "hci_name": current_name,
@@ -109,7 +102,6 @@ def build_adv_payload_manufacturer(
 ) -> list[str]:
     """Build an HCI LE advertising payload with AD type 0xFF (manufacturer)."""
     data_bytes = _hex_str_to_bytes(data_hex)
-    # AD structure: length, type=0xFF, mfr_id (2 LE), data
     ad_content = ["FF"] + _int_to_le16(mfr_id) + data_bytes
     ad_len = f"{len(ad_content):02X}"
     return [ad_len] + ad_content
@@ -136,9 +128,7 @@ def _extract_uuid16(field_id) -> int:
         return field_id
     s = str(field_id).replace("-", "")
     if len(s) == 32:
-        # Standard 128-bit Bluetooth base UUID — short UUID at index 4:8.
         return int(s[4:8], 16)
-    # Fall back to plain hex parse.
     return int(s, 16)
 
 
@@ -196,11 +186,8 @@ def emit_ble(
     )
 
     try:
-        # Disable advertising
         _run_hcitool(adapter, "0x08", "0x000A", "00")
-        # Set advertising data
         _run_hcitool(adapter, "0x08", "0x0008", *payload)
-        # Enable advertising
         _run_hcitool(adapter, "0x08", "0x000A", "01")
         _LOGGER.info("BLE advertisement emitted successfully on %s", adapter)
         return True

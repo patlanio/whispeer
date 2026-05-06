@@ -12,7 +12,6 @@ from typing import Any, Dict, Optional
 
 _LOGGER = logging.getLogger(__package__)
 
-# Active learning sessions keyed by session_id — shared across all providers.
 LEARNING_SESSIONS: Dict[str, "LearnSession"] = {}
 
 
@@ -28,7 +27,7 @@ class LearnSession:
         self.session_id = session_id
         self.command_type = command_type
         self.hub_entity_id = hub_entity_id
-        self.status = "preparing"  # preparing | learning | completed | error | timeout
+        self.status = "preparing"
         self.phase = "sweeping" if command_type.lower() == "rf" else "capturing"
         self.command_data: Optional[str] = None
         self.detected_frequency: Optional[float] = None

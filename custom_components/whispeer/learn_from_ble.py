@@ -33,9 +33,6 @@ class BleLearnProvider(LearnProvider):
             "BLE learning is done through the advertisement scanner, not the learn session flow"
         )
 
-    # ------------------------------------------------------------------
-    # Interface discovery
-    # ------------------------------------------------------------------
 
     async def get_interfaces(self) -> list[dict]:
         """Return all available BLE adapters."""
@@ -44,9 +41,6 @@ class BleLearnProvider(LearnProvider):
         client = HassClient(self._hass)
         return await client.async_get_ble_adapters()
 
-    # ------------------------------------------------------------------
-    # Scanning
-    # ------------------------------------------------------------------
 
     async def scan(self, adapter_mac: str) -> tuple[list[dict], str | None]:
         """Return BLE advertisements visible to *adapter_mac* since last call."""
@@ -55,9 +49,6 @@ class BleLearnProvider(LearnProvider):
         client = HassClient(self._hass)
         return await client.async_scan_ble_devices(adapter_mac)
 
-    # ------------------------------------------------------------------
-    # Command emission
-    # ------------------------------------------------------------------
 
     async def send_command(self, command_code: str, adapter: str) -> dict:
         """Emit a BLE command on *adapter*.

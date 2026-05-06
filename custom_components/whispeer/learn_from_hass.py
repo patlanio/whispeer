@@ -43,8 +43,6 @@ class HassLearnProvider(LearnProvider):
             client = HassClient(self._hass)
             per_phase_timeout = 45 if session.command_type.lower() == "rf" else 30
 
-            # HA's learn_command service starts the hardware immediately upon
-            # invocation; mark as 'learning' so the frontend shows the prompt.
             session.update_status("learning")
 
             code = await client.async_learn_command(

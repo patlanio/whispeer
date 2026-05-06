@@ -94,8 +94,6 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
     )
 
     def __init__(self, device_data: dict[str, Any], api_client: Any) -> None:
-        # Use a synthetic "climate" command name so the base entity builds a
-        # stable unique_id: whispeer_{device_id}_climate
         super().__init__(device_data, "climate", {}, api_client)
 
         config = device_data.get("config") or {}
@@ -114,9 +112,6 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
         self._attr_fan_mode = fan_modes[0] if fan_modes else "auto"
         self._attr_target_temperature = self._attr_min_temp
 
-    # ------------------------------------------------------------------
-    # State restoration
-    # ------------------------------------------------------------------
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -163,9 +158,6 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
                 _LOGGER.debug("WhispeerClimate %s: device_data refreshed", device_id)
                 return
 
-    # ------------------------------------------------------------------
-    # HA climate interface
-    # ------------------------------------------------------------------
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         if hvac_mode == HVACMode.OFF:
@@ -206,9 +198,6 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
         self.async_write_ha_state()
         self._fire_state_update()
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _resolve_code(self, mode: str, fan: str, temp: float | None) -> str:
         """Look up the IR code for a given mode / fan / temperature combo."""

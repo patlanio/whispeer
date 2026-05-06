@@ -21,7 +21,6 @@ class WhispeerFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle a flow initialized by the user."""
         self._errors = {}
 
-        # Only allow a single instance of the integration
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
@@ -37,7 +36,7 @@ class WhispeerFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry):
         return WhispeerOptionsFlowHandler(config_entry)
 
-    async def _show_config_form(self, user_input):  # pylint: disable=unused-argument
+    async def _show_config_form(self, user_input):
         """Show the configuration form to edit location data."""
         return self.async_show_form(
             step_id="user",
@@ -56,7 +55,7 @@ class WhispeerOptionsFlowHandler(config_entries.OptionsFlow):
         self.config_entry = config_entry
         self.options = dict(config_entry.options)
 
-    async def async_step_init(self, user_input=None):  # pylint: disable=unused-argument
+    async def async_step_init(self, user_input=None):
         """Manage the options."""
         return await self.async_step_user()
 

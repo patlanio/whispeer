@@ -1,8 +1,8 @@
 class WhispeerApp {
   constructor() {
     this.deviceManager = null;
-    this.autoRefreshInterval = null; // deprecated
-    this.settingsSubmitHandler = null;  // Store the handler reference
+    this.autoRefreshInterval = null;
+    this.settingsSubmitHandler = null;
     this.init();
   }
 
@@ -26,7 +26,6 @@ class WhispeerApp {
       document.body.className = `theme-${settings.theme}`;
     }
 
-    // Auto refresh removed; UI refresh occurs on CRUD events
   }
 
   initializeComponents() {
@@ -70,7 +69,6 @@ class WhispeerApp {
       onclick: () => this.importDevices()
     });
 
-    // Hidden file input for import
     this._importInput = Utils.createElement('input', {
       type: 'file',
       accept: '.json,application/json'
@@ -92,7 +90,6 @@ class WhispeerApp {
 
   setupSettingsModal() {
     const settingsForm = FormBuilder.create()
-      // Removed auto refresh interval setting
       .select('theme', [
         { value: 'auto', label: 'Auto (System)' },
         { value: 'light', label: 'Light' },
@@ -118,7 +115,7 @@ class WhispeerApp {
 
     this.settingsModal = new Modal({
       title: 'Settings',
-      content: settingsForm.outerHTML,  // Convert to HTML string
+      content: settingsForm.outerHTML,
       className: 'settings-modal'
     });
   }
@@ -143,8 +140,6 @@ class WhispeerApp {
       this.handleError(e.detail);
     });
 
-    // Bidirectional state sync: reflect state changes triggered
-    // from HA Lovelace cards or automations back to our panel.
     WSManager.onReady(() => {
       WSManager.subscribe('whispeer_state_update', (event) => {
         const { device_id, command_name, state, type } = event.data || {};
@@ -182,7 +177,6 @@ class WhispeerApp {
             }
           }
         } else {
-          // select / number / options: highlight the active button.
           if (window.deviceManager) {
             window.deviceManager.updateGroupCommandState(
               String(device_id), command_name, state
@@ -202,7 +196,6 @@ class WhispeerApp {
       });
     } catch (e) {
       console.error('Failed to load devices on startup:', e);
-      // Render empty state so UI is usable
       this.deviceManager.renderDevices();
     } finally {
       this.hideLoadingState();
@@ -231,7 +224,6 @@ class WhispeerApp {
     } catch (error) {
       Notification.error('Failed to refresh devices');
       console.error('Refresh error:', error);
-      // Render empty state so UI remains usable
       this.deviceManager.renderDevices();
     } finally {
       this.hideLoadingState();
@@ -298,7 +290,6 @@ class WhispeerApp {
       return;
     }
 
-    // Accept either a wrapped export { devices: [...] } or a bare array
     let incoming = [];
     if (Array.isArray(payload)) {
       incoming = payload;
@@ -327,12 +318,10 @@ class WhispeerApp {
         const match = existingByName[imported.name];
 
         if (match) {
-          // Merge commands: imported commands overwrite existing ones, missing ones are added
           const mergedCommands = { ...(match.commands || {}), ...(imported.commands || {}) };
           await DataManager.updateDevice(match.id, { ...imported, id: match.id, commands: mergedCommands });
           updated++;
         } else {
-          // New device — strip id so backend assigns a fresh one
           const { id: _ignored, ...rest } = imported;
           await DataManager.addDevice(rest);
           created++;
@@ -353,22 +342,18 @@ class WhispeerApp {
   openSettingsModal() {
     this.settingsModal.open();
     
-    // Rebind the submit event after modal opens
     setTimeout(() => {
       const form = this.settingsModal.element.querySelector('form');
       if (form) {
-        // Remove any existing listener first
         if (this.settingsSubmitHandler) {
           form.removeEventListener('submit', this.settingsSubmitHandler);
         }
         
-        // Create and store the new handler
         this.settingsSubmitHandler = (e) => {
           e.preventDefault();
           this.handleSettingsSubmit(e);
         };
         
-        // Add the new listener
         form.addEventListener('submit', this.settingsSubmitHandler);
       }
     }, 100);
@@ -378,7 +363,6 @@ class WhispeerApp {
     const formData = new FormData(e.target);
     const settings = Object.fromEntries(formData.entries());
     
-    // Removed auto refresh interval handling
 
     DataManager.updateSettings(settings);
     this.applySettings();
@@ -388,15 +372,12 @@ class WhispeerApp {
   }
 
   startAutoRefresh(interval = 5000) {
-    // deprecated
   }
 
   stopAutoRefresh() {
-    // deprecated
   }
 
   async syncWithBackend() {
-    // deprecated: syncing is now performed on CRUD operations
   }
 
   handleError(error) {
