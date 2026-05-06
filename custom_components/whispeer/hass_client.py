@@ -549,7 +549,7 @@ def _get_capabilities(state, device_entry=None) -> list[str]:
         elif "logitech" in manufacturer or "global caché" in manufacturer:
             pass  # Only IR
 
-    # 3. Fallback: If the device name contains RF (user-assisted)
+    # 3. Heuristic: If the device name contains RF (user-assisted)
     if "rf" in state.entity_id.lower() and "rf" not in caps:
         caps.append("rf")
 

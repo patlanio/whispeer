@@ -1,7 +1,7 @@
 """Home Assistant native learn provider.
 
 Delegates to HA's ``remote.learn_command`` service.  This is the default
-fallback for IR (and RF on non-Broadlink hardware) — no direct hardware
+provider for IR (and RF on non-Broadlink hardware) — no direct hardware
 access required.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__package__)
 class HassLearnProvider(LearnProvider):
     """Learn commands via HA's ``remote.learn_command`` service.
 
-    This is the default fallback: handles any device type / manufacturer not
+    This is the default provider: handles any device type / manufacturer not
     claimed by a more specific provider.
     """
 
@@ -25,7 +25,7 @@ class HassLearnProvider(LearnProvider):
 
     @classmethod
     def can_handle(cls, device_type: str, manufacturer: str) -> bool:
-        return True  # fallback — accepts anything
+        return True
 
     async def start(self, session: LearnSession) -> None:
         """Delegate to ``remote.learn_command`` and wait for the button press.

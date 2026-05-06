@@ -1444,11 +1444,6 @@ class DeviceManager extends Component {
                 shouldSelect = true;
                 selectedIndex = index;
               }
-              // Fallback: match by label
-              else if (currentDevice.interface === iface.label) {
-                shouldSelect = true;
-                selectedIndex = index;
-              }
             }
 
             return `<option value="${index}" data-interface="${interfaceData}" ${shouldSelect ? 'selected' : ''}>${iface.label}</option>`;

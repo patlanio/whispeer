@@ -126,12 +126,6 @@ class WhispeerPanelView(HomeAssistantView):
                         if (t) return t;
                     }} catch (_) {{}}
 
-                    // 6. Legacy cached key in localStorage
-                    try {{
-                        const t = localStorage.getItem('ha_access_token');
-                        if (t && t !== 'undefined' && t !== 'null') return t;
-                    }} catch (_) {{}}
-
                     return null;
                 }}
 

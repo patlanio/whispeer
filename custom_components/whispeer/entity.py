@@ -78,7 +78,6 @@ class WhispeerBaseEntity(RestoreEntity):
         )
 
 
-# Legacy coordinator entity kept for sensor.py backward compatibility.
 class WhispeerEntity(CoordinatorEntity):
     def __init__(self, coordinator, config_entry):
         super().__init__(coordinator)

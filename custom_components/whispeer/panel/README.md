@@ -230,7 +230,7 @@ modal.open();
 
 ## Migration Notes
 
-The refactored code maintains backward compatibility while providing a clean, modern architecture. All original functionality has been preserved and enhanced with:
+The refactored code provides a clean, modern architecture. Core functionality has been preserved and enhanced with:
 
 - Better error handling
 - Improved performance

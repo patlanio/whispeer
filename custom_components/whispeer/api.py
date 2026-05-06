@@ -13,7 +13,6 @@ import uuid
 from typing import Any, Dict, Optional
 
 import aiohttp
-import async_timeout
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
@@ -24,16 +23,12 @@ from .learn_from_broadlink import BroadlinkLearnProvider
 from .learn_from_hass import HassLearnProvider
 from .learn_from_ble import BleLearnProvider
 
-TIMEOUT = 10
-
 _LOGGER: logging.Logger = logging.getLogger(__package__)
-
-HEADERS = {"Content-type": "application/json; charset=UTF-8"}
 
 # Ordered list of providers — first match wins.
 _LEARN_PROVIDERS: list[type[LearnProvider]] = [
     BroadlinkLearnProvider,
-    HassLearnProvider,  # fallback
+    HassLearnProvider,
 ]
 
 
@@ -315,12 +310,6 @@ class WhispeerApiClient:
         if eid.startswith("remote."):
             return eid
 
-        # 3. Emitter may store the entity_id from legacy data.
-        emitter = device.get("emitter") or {}
-        eid = emitter.get("entity_id") or ""
-        if eid.startswith("remote."):
-            return eid
-
         return None
 
     # ------------------------------------------------------------------
@@ -578,21 +567,5 @@ class WhispeerApiClient:
             return _ok(f"Raw BLE advertisement emitted on {adapter}")
         return _err(f"Failed to emit raw BLE on {adapter}")
 
-    # ------------------------------------------------------------------
-    # Generic HTTP helper (kept for backward compat if anything uses it)
-    # ------------------------------------------------------------------
-
-    async def api_wrapper(
-        self, method: str, url: str, data: dict | None = None, headers: dict | None = None
-    ) -> dict | None:
-        try:
-            async with async_timeout.timeout(TIMEOUT):
-                resp = await getattr(self._session, method)(
-                    url, headers=headers or {}, json=data or {}
-                )
-                return await resp.json()
-        except Exception as exc:
-            _LOGGER.error("API request %s %s failed: %s", method.upper(), url, exc)
-            return None
 
 

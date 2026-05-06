@@ -62,11 +62,6 @@ class WSManager {
       if (t) return t;
     } catch (_) {}
 
-    // 5. Legacy DataManager fallback
-    if (typeof DataManager !== 'undefined') {
-      try { return DataManager.getHomeAssistantToken(); } catch (_) {}
-    }
-
     return null;
   }
 
