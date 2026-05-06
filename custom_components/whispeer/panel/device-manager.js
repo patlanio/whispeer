@@ -3601,19 +3601,27 @@ const colspan = this._blePickMode ? 7 : 8;
 
   async _climateSendCode(name, code) {
     if (this.currentDevice) {
-      return DataManager.sendCommand(this.currentDevice.id, 'climate', name, code);
+      const result = await DataManager.sendCommand(this.currentDevice.id, 'climate', name, code);
+      if (result?.status !== 'success') {
+        throw new Error(result?.message || 'Failed to send climate command');
+      }
+      return result;
     }
     const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo?.interface) {
       throw new Error('No interface selected');
     }
-    return WSManager.call('whispeer/send_command', {
+    const result = await WSManager.call('whispeer/send_command', {
       device_id: 'preview',
       device_type: 'climate',
       command_name: name,
       command_code: code,
       emitter: deviceInfo.interface,
     });
+    if (result?.status !== 'success') {
+      throw new Error(result?.message || 'Failed to send climate preview command');
+    }
+    return result;
   }
 
   async _onClimateOffClick() {

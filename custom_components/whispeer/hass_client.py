@@ -483,6 +483,9 @@ def _ensure_base64(data: str) -> str:
     """
     stripped = data.strip()
 
+    # Learned/imported codes may include incidental whitespace/newlines.
+    stripped = "".join(stripped.split())
+
     # Check hex first: hex strings only use 0-9 a-f and have even length.
     # This must come before the base64 check because hex chars are a strict
     # subset of valid base64 chars, causing hex strings to pass b64decode.
