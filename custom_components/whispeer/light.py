@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CMD_TYPE_LIGHT,
+    DEVICE_DOMAIN_LIGHT,
     DOMAIN,
     SIGNAL_WHISPEER_DATA_UPDATED,
     SIGNAL_WHISPEER_NEW_DEVICE,
@@ -34,6 +35,13 @@ async def async_setup_entry(
 
     def _entities_from_device(device: dict[str, Any]) -> list[WhispeerLight]:
         result: list[WhispeerLight] = []
+        # Domain-level light entity (IR-controlled with brighten/dim/colder/warmer).
+        if device.get("domain") == DEVICE_DOMAIN_LIGHT:
+            uid = f"whispeer_{device['id']}_domain_light"
+            if uid not in registered:
+                result.append(WhispeerDomainLight(device, api))
+                registered.add(uid)
+        # Command-level light entities (CMD_TYPE_LIGHT — existing behavior).
         for cmd_name, cmd_cfg in (device.get("commands") or {}).items():
             if not isinstance(cmd_cfg, dict):
                 continue
@@ -128,4 +136,36 @@ class WhispeerLight(WhispeerBaseEntity, LightEntity):
             "command_name": self._command_name,
             "state": "off",
         })
+
+
+class WhispeerDomainLight(WhispeerBaseEntity, LightEntity):
+    """Device-level IR light with incremental brightness/color-temp controls."""
+
+    _attr_color_mode = ColorMode.ONOFF
+    _attr_supported_color_modes = {ColorMode.ONOFF}
+
+    def __init__(self, device_data: dict[str, Any], api_client: Any) -> None:
+        super().__init__(device_data, "domain_light", {}, api_client)
+        self._commands = device_data.get("commands") or {}
+        self._attr_is_on = False
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None:
+            self._attr_is_on = last.state == "on"
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        code = self._commands.get("on", "")
+        if code:
+            await self._async_send_code(code)
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        code = self._commands.get("off", "")
+        if code:
+            await self._async_send_code(code)
+        self._attr_is_on = False
+        self.async_write_ha_state()
 

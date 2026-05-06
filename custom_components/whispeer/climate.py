@@ -12,7 +12,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    CMD_TYPE_CLIMATE,
+    DEVICE_DOMAIN_CLIMATE,
     DOMAIN,
     SIGNAL_WHISPEER_DATA_UPDATED,
     SIGNAL_WHISPEER_NEW_DEVICE,
@@ -43,7 +43,7 @@ async def async_setup_entry(
     registered: set[str] = set()
 
     def _entities_from_device(device: dict[str, Any]) -> list[WhispeerClimate]:
-        if device.get("type") != CMD_TYPE_CLIMATE:
+        if device.get("domain") != DEVICE_DOMAIN_CLIMATE:
             return []
         uid = f"whispeer_{device['id']}_climate"
         if uid in registered:

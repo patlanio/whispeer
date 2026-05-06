@@ -29,8 +29,15 @@ CMD_TYPE_OPTIONS = "options"
 # "climate" renders as a ClimateEntity driven by an IR code table.
 CMD_TYPE_CLIMATE = "climate"
 
+# Device domains — decouple physical layer (type) from HA entity model.
+DEVICE_DOMAIN_DEFAULT = "default"
+DEVICE_DOMAIN_CLIMATE = "climate"
+DEVICE_DOMAIN_FAN = "fan"
+DEVICE_DOMAIN_MEDIA_PLAYER = "media_player"
+DEVICE_DOMAIN_LIGHT = "light"
+
 # Platforms
-PLATFORMS = ["switch", "button", "light", "select", "number", "climate"]
+PLATFORMS = ["switch", "button", "light", "select", "number", "climate", "fan", "media_player"]
 
 # Configuration and options
 CONF_ENABLED = "enabled"

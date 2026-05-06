@@ -46,8 +46,14 @@ const APP_CONFIG = {
   DEVICE_TYPES: {
     ir: { label: 'IR', badge: 'type-ir' },
     rf: { label: 'RF', badge: 'type-rf' },
-    ble: { label: 'BLE', badge: 'type-ble' },
-    climate: { label: 'Climate (IR)', badge: 'type-climate' }
+    ble: { label: 'BLE', badge: 'type-ble' }
+  },
+  DEVICE_DOMAINS: {
+    default:      { label: 'IR/RF/BLE', badge: 'type-ir' },
+    climate:      { label: 'Climate', badge: 'type-climate' },
+    fan:          { label: 'Fan', badge: 'type-fan' },
+    media_player: { label: 'Media Player', badge: 'type-media-player' },
+    light:        { label: 'Light (IR)', badge: 'type-light-ir' }
   }
 };
 

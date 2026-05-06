@@ -170,12 +170,32 @@ class DeviceManager extends Component {
   }
 
   renderDeviceCard(device) {
-    const { id, name, type, commands = {} } = device;
-    const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[type] || { label: type, badge: 'type-ble' };
+    const { id, name, commands = {} } = device;
+    // Backward compat: legacy type='climate' devices have no domain field.
+    const domain = device.domain || (device.type === 'climate' ? 'climate' : 'default');
 
-    const commandsHTML = type === 'climate'
-      ? this._renderClimateCard(device)
-      : this.renderDeviceCommands(device);
+    let typeLabel, badgeClass, commandsHTML;
+    if (domain !== 'default') {
+      const domainConfig = APP_CONFIG.DEVICE_DOMAINS[domain] || { label: domain, badge: 'type-ir' };
+      typeLabel = domainConfig.label;
+      badgeClass = domainConfig.badge;
+      if (domain === 'climate') {
+        commandsHTML = this._renderClimateCard(device);
+      } else if (domain === 'fan') {
+        commandsHTML = this._renderFanCard(device);
+      } else if (domain === 'media_player') {
+        commandsHTML = this._renderMediaPlayerCard(device);
+      } else if (domain === 'light') {
+        commandsHTML = this._renderLightCard(device);
+      } else {
+        commandsHTML = this.renderDeviceCommands(device);
+      }
+    } else {
+      const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[device.type] || { label: device.type, badge: 'type-ir' };
+      typeLabel = deviceTypeConfig.label;
+      badgeClass = deviceTypeConfig.badge;
+      commandsHTML = this.renderDeviceCommands(device);
+    }
 
     const automations = DataManager.getDeviceAutomations(id);
     const automationBadge = automations.length > 0
@@ -185,8 +205,8 @@ class DeviceManager extends Component {
     return this.template('deviceCard', {
       id,
       name,
-      type: deviceTypeConfig.label,
-      badgeClass: deviceTypeConfig.badge,
+      type: typeLabel,
+      badgeClass,
       commands: commandsHTML,
       automationBadge
     });
@@ -624,12 +644,15 @@ class DeviceManager extends Component {
 
     this.currentDevice = device;
     this.tempCommands = Utils.deepClone(device.commands || {});
-    this._climateData = device.type === 'climate' ? {
+    // Backward compat: legacy type='climate' → treat as domain='climate'.
+    const domain = device.domain || (device.type === 'climate' ? 'climate' : 'default');
+    this._climateData = domain !== 'default' ? {
       config: Utils.deepClone(device.config || {}),
       table: Utils.deepClone(device.table || {}),
       commands: Utils.deepClone(device.commands || {}),
       source: device.source || 'scratch',
-      sensors: Utils.deepClone(device.sensors || {})
+      sensors: Utils.deepClone(device.sensors || {}),
+      _smartirNum: device._smartirNum || ''
     } : null;
     this.showDeviceModal('Edit Device', device);
 
@@ -684,13 +707,24 @@ class DeviceManager extends Component {
   }
 
   buildDeviceForm(device = {}) {
-    const deviceType = device.type || 'ir';
+    // Backward compat: legacy type='climate' devices map to domain='climate', type='ir'.
+    const deviceDomain = device.domain || (device.type === 'climate' ? 'climate' : 'default');
+    const deviceType = (device.type === 'climate' ? 'ir' : device.type) || 'ir';
+
+    const domainOptions = [
+      { value: 'default',      label: 'Default (commands)' },
+      { value: 'climate',      label: 'Climate (A/C)' },
+      { value: 'fan',          label: 'Fan' },
+      { value: 'media_player', label: 'Media Player' },
+      { value: 'light',        label: 'Light (IR)' },
+    ].map(opt =>
+      `<option value="${opt.value}"${opt.value === deviceDomain ? ' selected' : ''}>${opt.label}</option>`
+    ).join('');
 
     const typeOptions = [
-      { value: 'ir', label: 'Infrared' },
-      { value: 'rf', label: 'Radio Frequency' },
+      { value: 'ir',  label: 'Infrared' },
+      { value: 'rf',  label: 'Radio Frequency' },
       { value: 'ble', label: 'Bluetooth LE' },
-      { value: 'climate', label: 'Climate (IR - SmartIR)' }
     ].map(opt =>
       `<option value="${opt.value}"${opt.value === deviceType ? ' selected' : ''}>${opt.label}</option>`
     ).join('');
@@ -723,10 +757,11 @@ class DeviceManager extends Component {
         <div class="device-field-group">
           <div class="input-group">
             <div class="input-group-prepend">
-              <div class="input-group-text">Name</div>
+              <div class="input-group-text">Domain</div>
             </div>
-            <input type="text" name="name" class="form-input" placeholder="Device name"
-                   value="${this._escapeAttr(device.name || '')}" required>
+            <select name="domain" class="form-select">
+              ${domainOptions}
+            </select>
           </div>
         </div>
         <div class="device-field-group">
@@ -737,6 +772,15 @@ class DeviceManager extends Component {
             <select name="type" class="form-select">
               ${typeOptions}
             </select>
+          </div>
+        </div>
+        <div class="device-field-group">
+          <div class="input-group">
+            <div class="input-group-prepend">
+              <div class="input-group-text">Name</div>
+            </div>
+            <input type="text" name="name" class="form-input" placeholder="Device name"
+                   value="${this._escapeAttr(device.name || '')}" required>
           </div>
         </div>
         <div class="device-field-group">
@@ -810,6 +854,52 @@ class DeviceManager extends Component {
   _getCurrentDeviceType() {
     const sel = Utils.$('#deviceForm select[name="type"]');
     return sel ? sel.value : '';
+  }
+
+  _getCurrentDomain() {
+    const sel = Utils.$('#deviceForm select[name="domain"]');
+    return sel ? sel.value : 'default';
+  }
+
+  _onDomainChange(preserveSelection = false) {
+    const domain = this._getCurrentDomain();
+    const isDomainManaged = domain !== 'default';
+    const deviceType = this._getCurrentDeviceType();
+
+    const fastLearnBtn = document.getElementById('fastLearnBtn');
+    if (fastLearnBtn) {
+      fastLearnBtn.style.display = (!isDomainManaged && (deviceType === 'ir' || deviceType === 'rf')) ? '' : 'none';
+    }
+    const bulkLearnBtn = document.getElementById('bulkLearnBtn');
+    if (bulkLearnBtn) {
+      bulkLearnBtn.style.display = (!isDomainManaged && deviceType === 'ble') ? '' : 'none';
+    }
+
+    const commandsSection = document.querySelector('#deviceForm .commands-section');
+    if (commandsSection) {
+      commandsSection.style.display = isDomainManaged ? 'none' : '';
+    }
+
+    let domainSection = document.getElementById('domainSection');
+    if (isDomainManaged) {
+      if (!domainSection) {
+        domainSection = document.createElement('div');
+        domainSection.id = 'domainSection';
+        const commandsSectionEl = document.querySelector('#deviceForm .commands-section');
+        if (commandsSectionEl) {
+          commandsSectionEl.insertAdjacentElement('afterend', domainSection);
+        } else {
+          document.querySelector('#deviceForm .modal-controls')?.insertAdjacentElement('beforebegin', domainSection);
+        }
+      }
+      domainSection.style.display = '';
+      this._renderDomainSection(domainSection, domain);
+    } else if (domainSection) {
+      domainSection.style.display = 'none';
+    }
+
+    // Reload interfaces (domain change may affect the required interface type).
+    this.onDeviceTypeChange(preserveSelection);
   }
 
   createInlineCommandForm(command = null, isExisting = false) {
@@ -944,13 +1034,17 @@ class DeviceManager extends Component {
     if (!deviceForm) return;
 
     deviceForm.addEventListener('submit', (e) => this.handleDeviceFormSubmit(e));
-    
+
+    const domainSelect = deviceForm.querySelector('select[name="domain"]');
+    if (domainSelect) {
+      domainSelect.addEventListener('change', () => this._onDomainChange(false));
+    }
+
     const typeSelect = deviceForm.querySelector('select[name="type"]');
     if (typeSelect) {
-      // On type change, don't preserve selection (user is changing type intentionally)
       typeSelect.addEventListener('change', () => this.onDeviceTypeChange(false));
-      // Initial load should preserve selection for edit mode
-      this.onDeviceTypeChange(true);
+      // Initial load: trigger domain handler which also calls onDeviceTypeChange(true).
+      this._onDomainChange(true);
     }
 
     const interfaceSelect = deviceForm.querySelector('select[name="interface"]');
@@ -966,40 +1060,16 @@ class DeviceManager extends Component {
     if (!typeSelect || !interfaceSelect) return;
 
     const deviceType = typeSelect.value;
-    const isClimate = deviceType === 'climate';
+    const domain = this._getCurrentDomain();
+    const isDomainManaged = domain !== 'default';
 
     const fastLearnBtn = document.getElementById('fastLearnBtn');
     if (fastLearnBtn) {
-      fastLearnBtn.style.display = (!isClimate && (deviceType === 'ir' || deviceType === 'rf')) ? '' : 'none';
+      fastLearnBtn.style.display = (!isDomainManaged && (deviceType === 'ir' || deviceType === 'rf')) ? '' : 'none';
     }
     const bulkLearnBtn = document.getElementById('bulkLearnBtn');
     if (bulkLearnBtn) {
-      bulkLearnBtn.style.display = deviceType === 'ble' ? '' : 'none';
-    }
-
-    // Show / hide the normal commands section for climate devices
-    const commandsSection = document.querySelector('#deviceForm .commands-section');
-    if (commandsSection) {
-      commandsSection.style.display = isClimate ? 'none' : '';
-    }
-
-    // Show / hide the climate section
-    let climateSection = document.getElementById('climateSection');
-    if (isClimate) {
-      if (!climateSection) {
-        climateSection = document.createElement('div');
-        climateSection.id = 'climateSection';
-        const commandsSectionEl = document.querySelector('#deviceForm .commands-section');
-        if (commandsSectionEl) {
-          commandsSectionEl.insertAdjacentElement('afterend', climateSection);
-        } else {
-          document.querySelector('#deviceForm .modal-controls')?.insertAdjacentElement('beforebegin', climateSection);
-        }
-      }
-      climateSection.style.display = '';
-      this._renderClimateSection(climateSection);
-    } else if (climateSection) {
-      climateSection.style.display = 'none';
+      bulkLearnBtn.style.display = (!isDomainManaged && deviceType === 'ble') ? '' : 'none';
     }
 
     const currentDevice = this.currentDevice;
@@ -1008,7 +1078,8 @@ class DeviceManager extends Component {
     interfaceSelect.innerHTML = '<option value="">⏳ Loading interfaces...</option>';
     interfaceSelect.disabled = true;
 
-    const interfaceDeviceType = isClimate ? 'ir' : deviceType;
+    // Domain-managed devices always use IR interfaces.
+    const interfaceDeviceType = isDomainManaged ? 'ir' : deviceType;
 
     try {
       const interfaces = await DataManager.loadInterfaces(interfaceDeviceType);
@@ -1129,15 +1200,20 @@ class DeviceManager extends Component {
     const deviceData = Object.fromEntries(formData.entries());
     deviceData.commands = this.tempCommands;
 
-    // Persist climate-specific data if this is a climate device
-    if (deviceData.type === 'climate') {
-      const climateData = this._collectClimateData();
-      if (climateData) {
-        deviceData.config = climateData.config;
-        deviceData.table = climateData.table;
-        deviceData.commands = climateData.commands;
-        deviceData.source = climateData.source;
-        deviceData.sensors = climateData.sensors;
+    // Persist domain-specific data when a non-default domain is selected.
+    const deviceDomain = deviceData.domain || 'default';
+    if (deviceDomain !== 'default') {
+      const domainData = this._collectDomainData(deviceDomain);
+      if (domainData) {
+        deviceData.config = domainData.config;
+        if (domainData.table && Object.keys(domainData.table).length > 0) {
+          deviceData.table = domainData.table;
+        }
+        deviceData.commands = domainData.commands;
+        deviceData.source = domainData.source;
+        if (deviceDomain === 'climate') {
+          deviceData.sensors = domainData.sensors;
+        }
       }
     }
 
@@ -2669,6 +2745,545 @@ const colspan = this._blePickMode ? 7 : 8;
     return this._climateData;
   }
 
+  _getClimateData() {
+    if (!this._climateData) {
+      this._climateData = {
+        config: null,
+        table: {},
+        commands: {},
+        source: 'scratch',
+        sensors: { power: null, humidity: null, temperature: null }
+      };
+    }
+    return this._climateData;
+  }
+
+  // ------------------------------------------------------------------
+  // Domain section dispatcher
+  // ------------------------------------------------------------------
+
+  _renderDomainSection(container, domain) {
+    if (domain === 'climate') {
+      this._renderClimateSection(container);
+    } else if (domain === 'fan') {
+      this._renderFanSection(container);
+    } else if (domain === 'media_player') {
+      this._renderMediaPlayerSection(container);
+    } else if (domain === 'light') {
+      this._renderLightSection(container);
+    } else {
+      container.innerHTML = '';
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Fan domain section
+  // ------------------------------------------------------------------
+
+  _renderFanSection(container) {
+    const cd = this._getClimateData();
+    const cfg = cd.config || {};
+    const hasCommands = cfg.speeds !== undefined || (cfg.fan_model === 'incremental' && cd.commands?.speed !== undefined);
+
+    if (hasCommands) {
+      container.innerHTML = this._buildFanTableHTML(cd);
+      return;
+    }
+
+    const allSpeeds = ['lowest', 'low', 'mediumLow', 'medium', 'mediumHigh', 'high', 'turbo'];
+    const activeSpeeds = cfg.speeds || ['low', 'medium', 'high'];
+
+    const speedCheckboxes = allSpeeds.map(s =>
+      `<label class="climate-checkbox">
+        <input type="checkbox" name="fan_speed" value="${s}" ${activeSpeeds.includes(s) ? 'checked' : ''}>
+        <span>${s}</span>
+      </label>`
+    ).join('');
+
+    container.innerHTML = `
+      <div class="climate-section">
+        <div id="climatePanelsWrap">
+          <div class="climate-panel">
+            <div class="climate-panel-header"><span>📥 Learn from SmartIR</span></div>
+            <div class="climate-panel-body">
+              <div class="climate-smartir-row">
+                <div class="input-group" style="flex:1">
+                  <div class="input-group-prepend"><div class="input-group-text">Device #</div></div>
+                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1000"
+                         value="${this._escapeAttr(cd._smartirNum || '')}">
+                </div>
+                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
+                <a class="btn btn-small btn-outlined"
+                   href="https://github.com/smartHomeHub/SmartIR/blob/master/docs/FAN.md#available-codes-for-fan-devices"
+                   target="_blank" rel="noopener">Find yours</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="climate-or-separator"><span>OR</span></div>
+
+          <div class="climate-panel">
+            <div class="climate-panel-header"><span>✏️ Start from scratch</span></div>
+            <div class="climate-panel-body">
+              <div class="climate-scratch-row" style="gap:8px;align-items:center;flex-wrap:wrap">
+                <span class="climate-checkgroup-label" style="margin:0">Model</span>
+                <label class="climate-checkbox">
+                  <input type="radio" name="fan_model" value="direct" checked>
+                  <span>Direct (one code per speed)</span>
+                </label>
+                <label class="climate-checkbox">
+                  <input type="radio" name="fan_model" value="incremental">
+                  <span>Incremental (one button, N presses)</span>
+                </label>
+              </div>
+              <div class="climate-checkgroup" id="fanSpeedCheckboxes">
+                <span class="climate-checkgroup-label">Speeds</span>
+                ${speedCheckboxes}
+              </div>
+              <div id="fanIncrementalOpts" style="display:none;margin-top:6px">
+                <div class="input-group" style="width:220px">
+                  <div class="input-group-prepend"><div class="input-group-text">Speeds count</div></div>
+                  <input type="number" id="fanSpeedsCount" class="form-input" value="3" min="1" max="10">
+                </div>
+              </div>
+              <button type="button" class="btn btn-small" style="margin-top:8px"
+                      onclick="deviceManager._generateFanCommands()">Generate</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll('input[name="fan_model"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const isIncremental = container.querySelector('input[name="fan_model"]:checked')?.value === 'incremental';
+        const speedBoxes = document.getElementById('fanSpeedCheckboxes');
+        const incrOpts = document.getElementById('fanIncrementalOpts');
+        if (speedBoxes) speedBoxes.style.display = isIncremental ? 'none' : '';
+        if (incrOpts) incrOpts.style.display = isIncremental ? '' : 'none';
+      });
+    });
+  }
+
+  _buildFanTableHTML(cd) {
+    const cfg = cd.config || {};
+    const model = cfg.fan_model || 'direct';
+    const isTestMode = !!this._climateTestMode;
+
+    let cellsHTML;
+    if (model === 'incremental') {
+      cellsHTML = `
+        ${this._domainCell('__off__', 'off', cd.commands?.off || '', isTestMode, "deviceManager._onFanCellClick('__off__')")}
+        ${this._domainCell('__speed__', 'speed', cd.commands?.speed || '', isTestMode, "deviceManager._onFanCellClick('__speed__')")}
+      `;
+    } else {
+      const speeds = cfg.speeds || [];
+      cellsHTML = `
+        ${this._domainCell('__off__', 'off', cd.commands?.off || '', isTestMode, "deviceManager._onFanCellClick('__off__')")}
+        ${speeds.map(s =>
+          this._domainCell(`__speed_${s}__`, s, cd.commands?.[s] || '', isTestMode, `deviceManager._onFanCellClick('__speed_${s}__')`)
+        ).join('')}
+      `;
+    }
+
+    return `
+      <div class="climate-section">
+        <div id="climatePanelsWrap" style="display:none"></div>
+        <div id="fanTableSection">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+            <button type="button" class="btn btn-small btn-danger"
+                    onclick="deviceManager._resetDomainData()">Reset</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">${cellsHTML}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  _generateFanCommands() {
+    const model = document.querySelector('input[name="fan_model"]:checked')?.value || 'direct';
+    const cd = this._getClimateData();
+
+    if (model === 'incremental') {
+      const count = parseInt(document.getElementById('fanSpeedsCount')?.value ?? 3);
+      cd.config = { fan_model: 'incremental', speeds_count: count };
+      cd.commands = { off: '', speed: '' };
+    } else {
+      const speeds = [...document.querySelectorAll('input[name="fan_speed"]:checked')].map(cb => cb.value);
+      if (speeds.length === 0) { Notification.error('Select at least one speed'); return; }
+      cd.config = { fan_model: 'direct', speeds };
+      cd.commands = { off: '' };
+      for (const s of speeds) cd.commands[s] = cd.commands[s] || '';
+    }
+    cd.source = 'scratch';
+    cd.table = {};
+
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'fan');
+    Notification.success('Fan structure generated');
+  }
+
+  async _onFanCellClick(cellKey) {
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo?.interface) { Notification.error('Select an interface first'); return; }
+
+    const cd = this._getClimateData();
+    this._climateLearningCell = cellKey;
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'fan');
+
+    const spinner = this._startCellSpinner(cellKey);
+    const fakeInput = { value: '' };
+
+    try {
+      await this.performLearnCommand(deviceInfo, `fan_${cellKey}`, fakeInput);
+      if (fakeInput.value) {
+        cd.commands = cd.commands || {};
+        if (cellKey === '__off__') {
+          cd.commands.off = fakeInput.value;
+        } else if (cellKey === '__speed__') {
+          cd.commands.speed = fakeInput.value;
+        } else {
+          const speedName = cellKey.replace(/^__speed_/, '').replace(/__$/, '');
+          cd.commands[speedName] = fakeInput.value;
+        }
+      }
+    } finally {
+      this._stopCellSpinner(spinner);
+      this._climateLearningCell = null;
+      if (domainSection) this._renderDomainSection(domainSection, 'fan');
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Media player domain section
+  // ------------------------------------------------------------------
+
+  _renderMediaPlayerSection(container) {
+    const cd = this._getClimateData();
+    const cmds = cd.commands || {};
+    const hasCommands = Object.keys(cmds).filter(k => k !== 'sources').length > 0;
+
+    if (hasCommands) {
+      container.innerHTML = this._buildMediaPlayerTableHTML(cd);
+      return;
+    }
+
+    const allButtons = ['on', 'off', 'previousChannel', 'nextChannel', 'volumeUp', 'volumeDown', 'mute'];
+    const activeButtons = Object.keys(cmds).filter(k => k !== 'sources');
+    const defaultActive = activeButtons.length > 0 ? activeButtons : ['on', 'off', 'volumeUp', 'volumeDown', 'mute'];
+
+    const buttonCheckboxes = allButtons.map(b =>
+      `<label class="climate-checkbox">
+        <input type="checkbox" name="mp_button" value="${b}" ${defaultActive.includes(b) ? 'checked' : ''}>
+        <span>${b}</span>
+      </label>`
+    ).join('');
+
+    container.innerHTML = `
+      <div class="climate-section">
+        <div id="climatePanelsWrap">
+          <div class="climate-panel">
+            <div class="climate-panel-header"><span>📥 Learn from SmartIR</span></div>
+            <div class="climate-panel-body">
+              <div class="climate-smartir-row">
+                <div class="input-group" style="flex:1">
+                  <div class="input-group-prepend"><div class="input-group-text">Device #</div></div>
+                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1000"
+                         value="${this._escapeAttr(cd._smartirNum || '')}">
+                </div>
+                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
+                <a class="btn btn-small btn-outlined"
+                   href="https://github.com/smartHomeHub/SmartIR/blob/master/docs/MEDIA_PLAYER.md#available-codes-for-media-player-devices"
+                   target="_blank" rel="noopener">Find yours</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="climate-or-separator"><span>OR</span></div>
+
+          <div class="climate-panel">
+            <div class="climate-panel-header"><span>✏️ Start from scratch</span></div>
+            <div class="climate-panel-body">
+              <div class="climate-checkgroup">
+                <span class="climate-checkgroup-label">Buttons</span>
+                ${buttonCheckboxes}
+              </div>
+              <button type="button" class="btn btn-small" style="margin-top:8px"
+                      onclick="deviceManager._generateMediaPlayerCommands()">Generate</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _buildMediaPlayerTableHTML(cd) {
+    const isTestMode = !!this._climateTestMode;
+    const buttons = Object.keys(cd.commands || {}).filter(k => k !== 'sources');
+
+    const cells = buttons.map(key =>
+      this._domainCell(`__mp_${key}__`, key, cd.commands[key] || '', isTestMode, `deviceManager._onMediaPlayerCellClick('${key}')`)
+    ).join('');
+
+    const sourceEntries = Object.entries(cd.commands?.sources || {});
+    const sourceCells = sourceEntries.map(([name, code]) => {
+      const hasCode = Array.isArray(code) ? code.length > 0 : !!code;
+      const cellKey = `__mp_source_${name}__`;
+      const isLearning = this._climateLearningCell === cellKey;
+      let inner;
+      if (isLearning) {
+        inner = `<span class="climate-cell-icon learning"><span class="climate-spinner">⠋</span></span>`;
+      } else if (hasCode) {
+        inner = `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '📡' : '✓'}</span>`;
+      } else {
+        inner = `<span class="climate-cell-icon empty">⚠</span>`;
+      }
+      return `<div class="climate-cell" data-cell="${this._escapeAttr(cellKey)}"
+                   onclick="deviceManager._onMediaPlayerCellClick('source_${this._escapeAttr(name)}')"
+                   title="source: ${this._escapeHtml(name)}"
+                   style="display:inline-flex;flex-direction:column;align-items:center;padding:6px 10px;cursor:pointer;min-width:60px">
+        ${inner}<span style="font-size:0.75rem;margin-top:2px">${this._escapeHtml(name)}</span>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="climate-section">
+        <div id="climatePanelsWrap" style="display:none"></div>
+        <div id="mpTableSection">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:500">Commands</span>
+            <button type="button" class="btn btn-small btn-danger"
+                    onclick="deviceManager._resetDomainData()">Reset</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">${cells}</div>
+          ${sourceEntries.length ? `
+            <div style="margin-top:8px;font-weight:500">Sources</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">${sourceCells}</div>
+          ` : ''}
+          <button type="button" class="btn btn-small" style="margin-top:8px"
+                  onclick="deviceManager._addMediaPlayerSource()">+ Add source</button>
+        </div>
+      </div>
+    `;
+  }
+
+  _generateMediaPlayerCommands() {
+    const buttons = [...document.querySelectorAll('input[name="mp_button"]:checked')].map(cb => cb.value);
+    if (buttons.length === 0) { Notification.error('Select at least one button'); return; }
+
+    const cd = this._getClimateData();
+    cd.commands = {};
+    for (const b of buttons) cd.commands[b] = cd.commands[b] || '';
+    cd.commands.sources = cd.commands.sources || {};
+    cd.source = 'scratch';
+    cd.config = null;
+    cd.table = {};
+
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'media_player');
+    Notification.success('Media player structure generated');
+  }
+
+  async _onMediaPlayerCellClick(key) {
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo?.interface) { Notification.error('Select an interface first'); return; }
+
+    const cd = this._getClimateData();
+    const isSource = key.startsWith('source_');
+    const cellKey = isSource ? `__mp_source_${key.slice(7)}__` : `__mp_${key}__`;
+
+    this._climateLearningCell = cellKey;
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'media_player');
+
+    const spinner = this._startCellSpinner(cellKey);
+    const fakeInput = { value: '' };
+
+    try {
+      await this.performLearnCommand(deviceInfo, `mp_${key}`, fakeInput);
+      if (fakeInput.value) {
+        cd.commands = cd.commands || {};
+        if (isSource) {
+          const sourceName = key.slice(7);
+          cd.commands.sources = cd.commands.sources || {};
+          cd.commands.sources[sourceName] = fakeInput.value;
+        } else {
+          cd.commands[key] = fakeInput.value;
+        }
+      }
+    } finally {
+      this._stopCellSpinner(spinner);
+      this._climateLearningCell = null;
+      if (domainSection) this._renderDomainSection(domainSection, 'media_player');
+    }
+  }
+
+  _addMediaPlayerSource() {
+    const name = prompt('Source name (e.g. HDMI, Netflix):');
+    if (!name || !name.trim()) return;
+    const cd = this._getClimateData();
+    cd.commands = cd.commands || {};
+    cd.commands.sources = cd.commands.sources || {};
+    if (cd.commands.sources[name.trim()] !== undefined) {
+      Notification.warning('Source already exists');
+      return;
+    }
+    cd.commands.sources[name.trim()] = '';
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'media_player');
+  }
+
+  // ------------------------------------------------------------------
+  // Light domain section
+  // ------------------------------------------------------------------
+
+  _renderLightSection(container) {
+    const cd = this._getClimateData();
+    const hasCommands = Object.keys(cd.commands || {}).length > 0;
+
+    if (hasCommands) {
+      container.innerHTML = this._buildLightTableHTML(cd);
+      return;
+    }
+
+    const allButtons = ['on', 'off', 'brighten', 'dim', 'colder', 'warmer', 'night'];
+    const activeButtons = Object.keys(cd.commands || {});
+    const defaultActive = activeButtons.length > 0 ? activeButtons : ['on', 'off', 'brighten', 'dim'];
+
+    const buttonCheckboxes = allButtons.map(b =>
+      `<label class="climate-checkbox">
+        <input type="checkbox" name="light_button" value="${b}" ${defaultActive.includes(b) ? 'checked' : ''}>
+        <span>${b}</span>
+      </label>`
+    ).join('');
+
+    container.innerHTML = `
+      <div class="climate-section">
+        <div id="climatePanelsWrap">
+          <div class="climate-panel">
+            <div class="climate-panel-header"><span>📥 Learn from SmartIR</span></div>
+            <div class="climate-panel-body">
+              <div class="climate-smartir-row">
+                <div class="input-group" style="flex:1">
+                  <div class="input-group-prepend"><div class="input-group-text">Device #</div></div>
+                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1000"
+                         value="${this._escapeAttr(cd._smartirNum || '')}">
+                </div>
+                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
+                <a class="btn btn-small btn-outlined"
+                   href="https://github.com/smartHomeHub/SmartIR/tree/master/codes/light"
+                   target="_blank" rel="noopener">Find yours</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="climate-or-separator"><span>OR</span></div>
+
+          <div class="climate-panel">
+            <div class="climate-panel-header"><span>✏️ Start from scratch</span></div>
+            <div class="climate-panel-body">
+              <div class="climate-checkgroup">
+                <span class="climate-checkgroup-label">Buttons</span>
+                ${buttonCheckboxes}
+              </div>
+              <button type="button" class="btn btn-small" style="margin-top:8px"
+                      onclick="deviceManager._generateLightCommands()">Generate</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _buildLightTableHTML(cd) {
+    const isTestMode = !!this._climateTestMode;
+    const keys = Object.keys(cd.commands || {});
+
+    const cells = keys.map(key =>
+      this._domainCell(`__light_${key}__`, key, cd.commands[key] || '', isTestMode, `deviceManager._onLightCellClick('${key}')`)
+    ).join('');
+
+    return `
+      <div class="climate-section">
+        <div id="climatePanelsWrap" style="display:none"></div>
+        <div id="lightTableSection">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+            <button type="button" class="btn btn-small btn-danger"
+                    onclick="deviceManager._resetDomainData()">Reset</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">${cells}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  _generateLightCommands() {
+    const buttons = [...document.querySelectorAll('input[name="light_button"]:checked')].map(cb => cb.value);
+    if (buttons.length === 0) { Notification.error('Select at least one button'); return; }
+
+    const cd = this._getClimateData();
+    cd.commands = {};
+    for (const b of buttons) cd.commands[b] = '';
+    cd.source = 'scratch';
+    cd.config = null;
+    cd.table = {};
+
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'light');
+    Notification.success('Light structure generated');
+  }
+
+  async _onLightCellClick(key) {
+    const deviceInfo = this.getCurrentDeviceInfo();
+    if (!deviceInfo?.interface) { Notification.error('Select an interface first'); return; }
+
+    const cd = this._getClimateData();
+    const cellKey = `__light_${key}__`;
+
+    this._climateLearningCell = cellKey;
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'light');
+
+    const spinner = this._startCellSpinner(cellKey);
+    const fakeInput = { value: '' };
+
+    try {
+      await this.performLearnCommand(deviceInfo, `light_${key}`, fakeInput);
+      if (fakeInput.value) {
+        cd.commands = cd.commands || {};
+        cd.commands[key] = fakeInput.value;
+      }
+    } finally {
+      this._stopCellSpinner(spinner);
+      this._climateLearningCell = null;
+      if (domainSection) this._renderDomainSection(domainSection, 'light');
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Generic domain cell helper
+  // ------------------------------------------------------------------
+
+  _domainCell(cellKey, label, code, isTestMode, onclick) {
+    const hasCode = !!code;
+    const isLearning = this._climateLearningCell === cellKey;
+    let inner;
+    if (isLearning) {
+      inner = `<span class="climate-cell-icon learning"><span class="climate-spinner">⠋</span></span>`;
+    } else if (hasCode) {
+      inner = `<span class="climate-cell-icon present${isTestMode ? ' test' : ''}">${isTestMode ? '📡' : '✓'}</span>`;
+    } else {
+      inner = `<span class="climate-cell-icon empty">⚠</span>`;
+    }
+    return `<div class="climate-cell" data-cell="${this._escapeAttr(cellKey)}"
+                onclick="${onclick}" title="${this._escapeAttr(label)}"
+                style="display:inline-flex;flex-direction:column;align-items:center;padding:6px 10px;cursor:pointer;min-width:60px">
+      ${inner}
+      <span style="font-size:0.75rem;margin-top:2px">${this._escapeHtml(label)}</span>
+    </div>`;
+  }
+
   _renderClimateSection(container) {
     const cd = this._getClimateData();
     const cfg = cd.config || {};
@@ -2922,8 +3537,21 @@ const colspan = this._blePickMode ? 7 : 8;
     cd.commands = {};
     cd.source = 'scratch';
     cd._smartirNum = '';
-    const climateSection = document.getElementById('climateSection');
-    if (climateSection) this._renderClimateSection(climateSection);
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, 'climate');
+  }
+
+  _resetDomainData() {
+    const domain = this._getCurrentDomain();
+    if (!confirm('Reset will clear all learned IR codes and show the import/generate sections again. Continue?')) return;
+    const cd = this._getClimateData();
+    cd.config = null;
+    cd.table = {};
+    cd.commands = {};
+    cd.source = 'scratch';
+    cd._smartirNum = '';
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, domain);
   }
 
   _cancelClimateLearn() {
@@ -3025,8 +3653,10 @@ const colspan = this._blePickMode ? 7 : 8;
       return;
     }
 
-    const url = `https://raw.githubusercontent.com/smartHomeHub/SmartIR/master/codes/climate/${num}.json`;
-    Notification.info(`Fetching SmartIR device ${num}…`);
+    const domain = this._getCurrentDomain();
+    const subpath = domain === 'media_player' ? 'media_player' : domain;
+    const url = `https://raw.githubusercontent.com/smartHomeHub/SmartIR/master/codes/${subpath}/${num}.json`;
+    Notification.info(`Fetching SmartIR ${domain} device ${num}…`);
 
     let json;
     try {
@@ -3042,9 +3672,27 @@ const colspan = this._blePickMode ? 7 : 8;
     cd._smartirNum = num;
     cd.source = 'smartir';
 
+    if (domain === 'climate') {
+      this._parseSmartIRClimate(cd, json);
+      Notification.success(`SmartIR climate ${num} imported (${(cd.config?.modes || []).length} modes, ${(cd.config?.fan_modes || []).length} fan speeds)`);
+    } else if (domain === 'fan') {
+      this._parseSmartIRFan(cd, json);
+      Notification.success(`SmartIR fan ${num} imported (${(cd.config?.speeds || []).length} speeds)`);
+    } else if (domain === 'media_player') {
+      this._parseSmartIRMediaPlayer(cd, json);
+      Notification.success(`SmartIR media player ${num} imported`);
+    } else if (domain === 'light') {
+      this._parseSmartIRLight(cd, json);
+      Notification.success(`SmartIR light ${num} imported`);
+    }
+
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) this._renderDomainSection(domainSection, domain);
+  }
+
+  _parseSmartIRClimate(cd, json) {
     const modes = (json.operationModes || []).map(m => m.toLowerCase());
-    const fanModesRaw = json.fanModes || [];
-    const fans = fanModesRaw.map(f => f.toLowerCase());
+    const fans = (json.fanModes || []).map(f => f.toLowerCase());
     const minTemp = json.minTemperature ?? 16;
     const maxTemp = json.maxTemperature ?? 30;
 
@@ -3053,23 +3701,63 @@ const colspan = this._blePickMode ? 7 : 8;
     cd.table = {};
 
     for (const mode of modes) {
-      const modeKey = mode;
       const srcMode = json.commands?.[mode];
       if (!srcMode || typeof srcMode !== 'object') continue;
-      cd.table[modeKey] = {};
+      cd.table[mode] = {};
       for (const fan of fans) {
         const srcFan = srcMode[fan] || srcMode[fan.charAt(0).toUpperCase() + fan.slice(1)] || {};
         if (!srcFan || typeof srcFan !== 'object') continue;
-        cd.table[modeKey][fan] = {};
+        cd.table[mode][fan] = {};
         for (const [tempKey, code] of Object.entries(srcFan)) {
-          cd.table[modeKey][fan][String(tempKey)] = code;
+          cd.table[mode][fan][String(tempKey)] = code;
         }
       }
     }
+  }
 
-    const climateSection = document.getElementById('climateSection');
-    if (climateSection) this._renderClimateSection(climateSection);
-    Notification.success(`SmartIR device ${num} imported (${modes.length} modes, ${fans.length} fan speeds)`);
+  _parseSmartIRFan(cd, json) {
+    const speeds = json.speed || [];
+    // SmartIR fans may store codes under commands.forward or directly under commands[speed].
+    const speedSrc = json.commands?.forward || json.commands || {};
+    cd.config = { fan_model: 'direct', speeds };
+    cd.commands = {};
+    if (json.commands?.off) cd.commands.off = json.commands.off;
+    for (const speed of speeds) {
+      const raw = speedSrc[speed];
+      if (raw && typeof raw === 'string') {
+        cd.commands[speed] = raw;
+      }
+    }
+    cd.table = {};
+  }
+
+  _parseSmartIRMediaPlayer(cd, json) {
+    const flatKeys = ['on', 'off', 'previousChannel', 'nextChannel', 'volumeUp', 'volumeDown', 'mute'];
+    cd.commands = {};
+    for (const key of flatKeys) {
+      if (json.commands?.[key]) cd.commands[key] = json.commands[key];
+    }
+    if (json.commands?.sources) {
+      cd.commands.sources = {};
+      for (const [name, code] of Object.entries(json.commands.sources)) {
+        cd.commands.sources[name] = code;
+      }
+    }
+    cd.config = null;
+    cd.table = {};
+  }
+
+  _parseSmartIRLight(cd, json) {
+    const keys = ['on', 'off', 'brighten', 'dim', 'colder', 'warmer', 'night'];
+    cd.config = {
+      brightness: json.brightness || [],
+      colorTemperature: json.colorTemperature || []
+    };
+    cd.commands = {};
+    for (const key of keys) {
+      if (json.commands?.[key]) cd.commands[key] = json.commands[key];
+    }
+    cd.table = {};
   }
 
   _generateClimateTable() {
@@ -3107,8 +3795,7 @@ const colspan = this._blePickMode ? 7 : 8;
     Notification.success('Table generated');
   }
 
-  _collectClimateData() {
-    const cd = this._getClimateData();
+  _collectClimateData() {    const cd = this._getClimateData();
     const sensors = {
       power: document.getElementById('climatePowerSensor')?.value || null,
       humidity: document.getElementById('climateHumiditySensor')?.value || null,
@@ -3118,6 +3805,11 @@ const colspan = this._blePickMode ? 7 : 8;
       if (!sensors[k]) sensors[k] = null;
     }
     return { ...cd, sensors };
+  }
+
+  _collectDomainData(domain) {
+    if (domain === 'climate') return this._collectClimateData();
+    return { ...this._getClimateData() };
   }
 
   async _learnClimateCell(mode, fan, temp) {
@@ -3196,6 +3888,175 @@ const colspan = this._blePickMode ? 7 : 8;
       this._climateLearning = false;
     }
     Notification.success(`Fast learn for mode "${mode}" complete`);
+  }
+
+  // ------------------------------------------------------------------
+  // Fan / media player / light cards (main UI)
+  // ------------------------------------------------------------------
+
+  _renderFanCard(device) {
+    const { id, config = {}, commands = {} } = device;
+    const model = config.fan_model || 'direct';
+
+    if (model === 'incremental') {
+      const count = config.speeds_count || 3;
+      return `
+        <div class="climate-card-controls">
+          <div class="command-toggle-full-width">
+            <span class="command-toggle-label">off</span>
+            <div class="command-toggle off" onclick="deviceManager._fanSendCommand('${id}', 'off')"></div>
+          </div>
+          <div class="input-group-container">
+            <div class="input-group-prepend"><span class="input-group-text">Speed</span></div>
+            <div class="btn-group-wrapper">
+              <div class="btn-group" data-fan-speeds="${this._escapeAttr(id)}">
+                ${Array.from({ length: count }, (_, i) =>
+                  `<button class="btn-group-item" onclick="deviceManager._fanSendIncrementalTo('${id}', ${i + 1}, ${count})">${i + 1}</button>`
+                ).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const speeds = config.speeds || Object.keys(commands).filter(k => k !== 'off');
+    return `
+      <div class="climate-card-controls">
+        <div class="command-toggle-full-width">
+          <span class="command-toggle-label">off</span>
+          <div class="command-toggle off" onclick="deviceManager._fanSendCommand('${id}', 'off')"></div>
+        </div>
+        ${speeds.length ? `
+          <div class="input-group-container">
+            <div class="input-group-prepend"><span class="input-group-text">Speed</span></div>
+            <div class="btn-group-wrapper">
+              <div class="btn-group" data-fan-speeds="${this._escapeAttr(id)}">
+                ${speeds.map(s =>
+                  `<button class="btn-group-item" data-speed="${s}" onclick="deviceManager._fanSendCommand('${id}', '${s}')">${s}</button>`
+                ).join('')}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  _renderMediaPlayerCard(device) {
+    const { id, commands = {} } = device;
+    const sources = commands.sources ? Object.keys(commands.sources) : [];
+    const makeBtn = (cmd, label) => commands[cmd]
+      ? `<button class="btn btn-small" onclick="deviceManager._mpSendCommand('${id}', '${cmd}')">${label}</button>`
+      : '';
+
+    const powerRow = [makeBtn('on', '⏻ On'), makeBtn('off', '⏻ Off')].filter(Boolean).join(' ');
+    const volRow = [makeBtn('volumeDown', '🔉'), makeBtn('mute', '🔇'), makeBtn('volumeUp', '🔊')].filter(Boolean).join(' ');
+    const chRow = [makeBtn('previousChannel', '⏮'), makeBtn('nextChannel', '⏭')].filter(Boolean).join(' ');
+
+    const sourcesHTML = sources.length
+      ? `<div class="input-group-container">
+          <div class="input-group-prepend"><span class="input-group-text">Source</span></div>
+          <div class="btn-group-wrapper"><div class="btn-group">
+            ${sources.map(s =>
+              `<button class="btn-group-item" onclick="deviceManager._mpSendSource('${id}', '${this._escapeAttr(s)}')">${this._escapeHtml(s)}</button>`
+            ).join('')}
+          </div></div>
+        </div>`
+      : '';
+
+    return `
+      <div class="climate-card-controls">
+        ${powerRow ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${powerRow}</div>` : ''}
+        ${volRow ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${volRow}</div>` : ''}
+        ${chRow ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${chRow}</div>` : ''}
+        ${sourcesHTML}
+      </div>
+    `;
+  }
+
+  _renderLightCard(device) {
+    const { id, commands = {} } = device;
+    const makeBtn = (cmd, label) => commands[cmd] !== undefined
+      ? `<button class="btn btn-small" onclick="deviceManager._lightSendCommand('${id}', '${cmd}')">${label}</button>`
+      : '';
+
+    const row1 = [makeBtn('on', '💡 On'), makeBtn('off', '⭘ Off'), makeBtn('night', '🌙 Night')].filter(Boolean).join(' ');
+    const row2 = [makeBtn('brighten', '☀️ Brighter'), makeBtn('dim', '🔅 Dimmer')].filter(Boolean).join(' ');
+    const row3 = [makeBtn('warmer', '🔶 Warmer'), makeBtn('colder', '🔷 Cooler')].filter(Boolean).join(' ');
+
+    return `
+      <div class="climate-card-controls">
+        ${row1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${row1}</div>` : ''}
+        ${row2 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${row2}</div>` : ''}
+        ${row3 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${row3}</div>` : ''}
+      </div>
+    `;
+  }
+
+  async _fanSendCommand(deviceId, speedOrOff) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device) return;
+    const code = device.commands?.[speedOrOff];
+    if (!code) { Notification.warning(`No code learned for "${speedOrOff}"`); return; }
+    try {
+      await DataManager.sendCommand(deviceId, 'ir', speedOrOff, code);
+      document.querySelectorAll(`[data-fan-speeds="${deviceId}"] .btn-group-item`).forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.speed === speedOrOff);
+      });
+      Notification.success(`Fan: ${speedOrOff}`);
+    } catch (e) { Notification.error(e.message); }
+  }
+
+  async _fanSendIncrementalTo(deviceId, targetLevel, maxLevel) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device) return;
+    const code = device.commands?.speed;
+    if (!code) { Notification.warning('No speed code learned'); return; }
+    try {
+      for (let i = 0; i < targetLevel; i++) {
+        await DataManager.sendCommand(deviceId, 'ir', 'speed', code);
+        if (i < targetLevel - 1) await new Promise(r => setTimeout(r, 400));
+      }
+      Notification.success(`Fan speed: ${targetLevel}`);
+    } catch (e) { Notification.error(e.message); }
+  }
+
+  async _mpSendCommand(deviceId, cmdName) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device) return;
+    const code = device.commands?.[cmdName];
+    if (!code) { Notification.warning(`No code learned for "${cmdName}"`); return; }
+    try {
+      await DataManager.sendCommand(deviceId, 'ir', cmdName, code);
+      Notification.success(`Sent: ${cmdName}`);
+    } catch (e) { Notification.error(e.message); }
+  }
+
+  async _mpSendSource(deviceId, sourceName) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device) return;
+    const codeOrArr = device.commands?.sources?.[sourceName];
+    if (!codeOrArr) { Notification.warning(`No code for source "${sourceName}"`); return; }
+    try {
+      const codes = Array.isArray(codeOrArr) ? codeOrArr : [codeOrArr];
+      for (let i = 0; i < codes.length; i++) {
+        await DataManager.sendCommand(deviceId, 'ir', `source_${sourceName}`, codes[i]);
+        if (i < codes.length - 1) await new Promise(r => setTimeout(r, 400));
+      }
+      Notification.success(`Source: ${sourceName}`);
+    } catch (e) { Notification.error(e.message); }
+  }
+
+  async _lightSendCommand(deviceId, cmdName) {
+    const device = DataManager.getDevice(deviceId);
+    if (!device) return;
+    const code = device.commands?.[cmdName];
+    if (!code) { Notification.warning(`No code learned for "${cmdName}"`); return; }
+    try {
+      await DataManager.sendCommand(deviceId, 'ir', cmdName, code);
+      Notification.success(`Light: ${cmdName}`);
+    } catch (e) { Notification.error(e.message); }
   }
 
   // ------------------------------------------------------------------
