@@ -1,5 +1,11 @@
 # Whispeer Panel - Refactored Architecture
 
+Whispeer mission: remote control made easy.
+
+This panel is the UI layer for the Whispeer Home Assistant integration, including IR, RF, and BLE remote workflows with bidirectional synchronization between Home Assistant and the panel.
+
+![Whispeer logo](../../../whispeer.png)
+
 This document explains the refactored architecture of the Whispeer control panel, which has been transformed from a monolithic HTML file into a modern, modular micro-framework.
 
 ## Architecture Overview
@@ -18,6 +24,14 @@ The panel now follows a component-based architecture with clear separation of co
 ```
 
 ## Key Features
+
+### Integration Features Exposed in the Panel
+
+- IR and RF learning integrated with Home Assistant native learning.
+- Broadlink RF fast-learning support (sweep + capture or known-frequency capture).
+- BLE scanner and command emission support.
+- Multi-domain device support (switch, button, light, select, number, climate, fan, media_player).
+- Bidirectional synchronization between backend state and panel controls.
 
 ### 1. Micro-Framework (`ui-framework.js`)
 
@@ -239,3 +253,8 @@ The refactored code provides a clean, modern architecture. Core functionality ha
 - Comprehensive utility library
 
 This architecture provides a solid foundation for future enhancements and makes the codebase much more maintainable and scalable.
+
+## Related Documentation
+
+- Main project README: [../../../README.md](../../../README.md)
+- HACS info card: [../../../info.md](../../../info.md)
