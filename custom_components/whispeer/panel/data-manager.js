@@ -61,7 +61,6 @@ class DataManager {
   static devices = {};
   static automations = {};
   static settings = {
-    theme: 'auto',
     language: 'en'
   };
 

@@ -114,6 +114,53 @@ class WhispeerPanelView(HomeAssistantView):
                 }}
 
                 window.getHomeAssistantToken = getHomeAssistantToken;
+
+                function forEachElementDeep(root, cb) {{
+                    if (!root) return;
+                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+                    let node = walker.currentNode;
+                    while (node) {{
+                        cb(node);
+                        if (node.shadowRoot) {{
+                            forEachElementDeep(node.shadowRoot, cb);
+                        }}
+                        node = walker.nextNode();
+                    }}
+                }}
+
+                function setMainTitleText() {{
+                    try {{
+                        const parentDoc = window.parent?.document;
+                        if (!parentDoc) return;
+                        const title = 'Whispeer - Remote Control made simple';
+                        const classTargets = new Set(['main-title', 'toolbar-title']);
+                        forEachElementDeep(parentDoc, (el) => {{
+                            if (!el || !el.classList) return;
+                            const hasTargetClass = [...classTargets].some(c => el.classList.contains(c));
+                            if (!hasTargetClass) return;
+                            const text = (el.textContent || '').trim();
+                            if (!text) return;
+                            if (text.includes('Whispeer') || text.includes('Remote Control made simple')) {{
+                                el.textContent = title;
+                            }}
+                        }});
+                    }} catch (_) {{}}
+                }}
+
+                document.title = 'Whispeer - Remote Control made simple';
+                setMainTitleText();
+                setTimeout(setMainTitleText, 500);
+                setTimeout(setMainTitleText, 1500);
+                setTimeout(setMainTitleText, 3000);
+                window.addEventListener('load', setMainTitleText);
+
+                try {{
+                    const parentDoc = window.parent?.document;
+                    if (parentDoc) {{
+                        const observer = new MutationObserver(() => setMainTitleText());
+                        observer.observe(parentDoc.body, {{ childList: true, subtree: true }});
+                    }}
+                }} catch (_) {{}}
             </script>
             """
             
@@ -145,27 +192,39 @@ class WhispeerAssetsView(HomeAssistantView):
                 'websocket-manager.js': 'application/javascript',
                 'data-manager.js': 'application/javascript',
                 'device-manager.js': 'application/javascript',
-                'app.js': 'application/javascript'
+                'app.js': 'application/javascript',
+                'whispeer.png': 'image/png'
             }
             
             if filename not in allowed_files:
                 _LOGGER.error(f"Requested file not allowed: {filename}")
                 return web.Response(text="File not found", status=404)
             
-            file_path = os.path.join(
-                os.path.dirname(__file__), "panel", filename
-            )
+            if filename == 'whispeer.png':
+                file_path = os.path.join(os.path.dirname(__file__), filename)
+            else:
+                file_path = os.path.join(
+                    os.path.dirname(__file__), "panel", filename
+                )
             
             _LOGGER.debug(f"Attempting to serve asset: {file_path}")
             
             loop = asyncio.get_event_loop()
-            content = await loop.run_in_executor(
-                None,
-                lambda: open(file_path, "r", encoding="utf-8").read()
-            )
+            if filename.endswith('.png'):
+                content = await loop.run_in_executor(
+                    None,
+                    lambda: open(file_path, "rb").read()
+                )
+            else:
+                content = await loop.run_in_executor(
+                    None,
+                    lambda: open(file_path, "r", encoding="utf-8").read()
+                )
             
             content_type = allowed_files[filename]
             _LOGGER.debug(f"Successfully served asset: {filename}")
+            if filename.endswith('.png'):
+                return web.Response(body=content, content_type=content_type)
             return web.Response(text=content, content_type=content_type)
             
         except FileNotFoundError as e:
@@ -185,7 +244,7 @@ async def register_panel(hass):
             hass,
             component_name="iframe",
             sidebar_title="Whispeer",
-            sidebar_icon="mdi:microphone",
+            sidebar_icon="mdi:remote-tv",
             frontend_url_path="whispeer",
             config={
                 "url": "/api/whispeer/panel",

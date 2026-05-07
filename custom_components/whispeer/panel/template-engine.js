@@ -55,8 +55,7 @@ TemplateEngine.register('device-card', `
     <div class="device-header">
       <div class="device-name">{{name}}</div>
       <div class="device-header-right">
-        <span class="device-type-badge {{badgeClass}}">{{type}}</span>
-        <button class="pill-edit" onclick="deviceManager.configureDevice('{{id}}')">⚙️</button>
+        <button type="button" class="device-type-badge {{badgeClass}}" onclick="deviceManager.configureDevice('{{id}}')">{{type}}</button>
       </div>
     </div>
     <div class="device-info">{{interface}} • {{commandCount}} commands</div>

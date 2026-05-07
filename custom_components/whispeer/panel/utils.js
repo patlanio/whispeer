@@ -328,47 +328,39 @@ class Utils {
     },
 
     slideDown: (element, duration = 300) => {
-      element.style.overflow = 'hidden';
-      element.style.height = '0';
       element.style.display = 'block';
-      
-      const targetHeight = element.scrollHeight;
-      const start = performance.now();
-      
-      const animate = (timestamp) => {
-        const progress = (timestamp - start) / duration;
-        element.style.height = `${targetHeight * Math.min(progress, 1)}px`;
-        
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
-          element.style.height = '';
-          element.style.overflow = '';
-        }
-      };
-      
-      requestAnimationFrame(animate);
+      element.style.opacity = '0';
+      element.style.transform = 'translateY(-4px)';
+      element.style.transition = `opacity ${duration}ms ease, transform ${duration}ms ease`;
+
+      requestAnimationFrame(() => {
+        element.style.opacity = '1';
+        element.style.transform = 'translateY(0)';
+      });
+
+      setTimeout(() => {
+        element.style.transition = '';
+        element.style.transform = '';
+      }, duration);
     },
 
     slideUp: (element, duration = 300) => {
-      element.style.overflow = 'hidden';
-      const initialHeight = element.offsetHeight;
-      const start = performance.now();
-      
-      const animate = (timestamp) => {
-        const progress = (timestamp - start) / duration;
-        element.style.height = `${initialHeight * (1 - Math.min(progress, 1))}px`;
-        
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
-          element.style.display = 'none';
-          element.style.height = '';
-          element.style.overflow = '';
-        }
-      };
-      
-      requestAnimationFrame(animate);
+      const initialOpacity = parseFloat(getComputedStyle(element).opacity || '1');
+      element.style.transition = `opacity ${duration}ms ease, transform ${duration}ms ease`;
+      element.style.opacity = String(initialOpacity);
+      element.style.transform = 'translateY(0)';
+
+      requestAnimationFrame(() => {
+        element.style.opacity = '0';
+        element.style.transform = 'translateY(-4px)';
+      });
+
+      setTimeout(() => {
+        element.style.display = 'none';
+        element.style.transition = '';
+        element.style.opacity = '';
+        element.style.transform = '';
+      }, duration);
     }
   };
 }

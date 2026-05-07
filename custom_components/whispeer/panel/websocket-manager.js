@@ -260,7 +260,14 @@ class WSManager {
       WSManager._commandSubs.set(id, callback);
       WSManager._pending.set(id, {
         resolve: () => {
-          resolve(() => { WSManager._commandSubs.delete(id); });
+          resolve(() => {
+            WSManager._commandSubs.delete(id);
+            WSManager._rawSend({
+              id: WSManager._msgId++,
+              type: 'unsubscribe_events',
+              subscription: id,
+            });
+          });
         },
         reject,
       });

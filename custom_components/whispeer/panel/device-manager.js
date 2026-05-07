@@ -15,6 +15,7 @@ class DeviceManager extends Component {
     this._climateLearningCell = null;
     this._climateLearningGen = 0;
     this._climateTestMode = false;
+    this._bleScannerToken = 0;
   }
 
   init() {
@@ -29,8 +30,7 @@ class DeviceManager extends Component {
           <div class="device-header">
             <div class="device-name">{{automationBadge}}<span>{{name}}</span></div>
             <div class="device-header-right">
-              <span class="device-type-badge {{badgeClass}}">{{type}}</span>
-              <button class="pill-edit" onclick="deviceManager.configureDevice('{{id}}')">⚙️</button>
+                <button type="button" class="device-type-badge {{badgeClass}}" onclick="deviceManager.configureDevice('{{id}}')">{{type}}</button>
             </div>
           </div>
           <div class="device-commands">{{commands}}</div>
@@ -305,12 +305,14 @@ class DeviceManager extends Component {
   renderDeviceCard(device) {
     const { id, name, commands = {} } = device;
     const domain = device.domain || 'default';
+    const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[device.type] || { label: (device.type || '').toUpperCase(), badge: 'type-ir' };
+    const typePrefix = deviceTypeConfig.label || (device.type || '').toUpperCase();
 
     let typeLabel, badgeClass, commandsHTML;
     if (domain !== 'default') {
       const domainConfig = APP_CONFIG.DEVICE_DOMAINS[domain] || { label: domain, badge: 'type-ir' };
-      typeLabel = domainConfig.label;
-      badgeClass = domainConfig.badge;
+      typeLabel = `${typePrefix} ${domainConfig.label} ⚙️`;
+      badgeClass = deviceTypeConfig.badge;
       if (domain === 'climate') {
         commandsHTML = this._renderClimateCard(device);
       } else {
@@ -318,8 +320,7 @@ class DeviceManager extends Component {
         commandsHTML = this.renderDeviceCommands({ ...device, commands: genericCommands });
       }
     } else {
-      const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[device.type] || { label: device.type, badge: 'type-ir' };
-      typeLabel = deviceTypeConfig.label;
+      typeLabel = `${typePrefix} ⚙️`;
       badgeClass = deviceTypeConfig.badge;
       commandsHTML = this.renderDeviceCommands(device);
     }
@@ -564,7 +565,6 @@ class DeviceManager extends Component {
       <hr class="stored-codes-divider">
       <div class="stored-codes-header">
         <h3 class="stored-codes-title">Existing codes in Home Assistant</h3>
-        <button class="btn btn-small btn-outlined" onclick="deviceManager.loadAndRenderStoredCodes()">🔄 Refresh</button>
       </div>
       <div class="devices-grid">
         ${cardsHTML}${noCodesMsg}
@@ -970,19 +970,19 @@ class DeviceManager extends Component {
       ? device.frequency : '';
 
     const showFrequency = deviceType === 'rf';
-    const showCommunity = deviceDomain !== 'default';
+    const showCommunity = deviceDomain !== 'default' && deviceType === 'ir';
     const communityCode = (device._smartirNum !== undefined && device._smartirNum !== null)
       ? String(device._smartirNum)
       : '';
     const docsUrl = this._getSmartIRDocsUrl(deviceDomain);
 
     const frequencyField = `
-      <div class="device-field-group" id="frequencyField" data-field="frequency"${showFrequency ? '' : ' style="display:none"'}>
+      <div class="device-field-group ${showFrequency ? '' : 'hidden'}" id="frequencyField" data-field="frequency">
         <div class="input-group">
           <div class="input-group-prepend">
-            <div class="input-group-text">Frequency</div>
+            <label class="input-group-text" for="deviceFrequency">Frequency</label>
           </div>
-          <input type="number" name="frequency" class="form-input" step="any"
+          <input type="number" id="deviceFrequency" name="frequency" class="form-input" step="any"
                  placeholder="e.g. 433.92"
                  value="${this._escapeAttr(String(frequency))}">
           <button type="button" class="input-group-append-btn" id="findFrequencyBtn"
@@ -992,10 +992,10 @@ class DeviceManager extends Component {
     `;
 
     const communityField = `
-      <div class="device-field-group" id="communityField" data-field="community"${showCommunity ? '' : ' style="display:none"'}>
+      <div class="device-field-group ${showCommunity ? '' : 'hidden'}" id="communityField" data-field="community">
         <div class="input-group">
           <div class="input-group-prepend">
-            <div class="input-group-text">Community <a id="communityHelpLink" href="${this._escapeAttr(docsUrl)}" target="_blank" rel="noopener">(?)</a></div>
+            <label class="input-group-text" for="smartirCommunityCode">Community code <a id="communityHelpLink" href="${this._escapeAttr(docsUrl)}" target="_blank" rel="noopener">(?)</a></label>
           </div>
           <input type="text" id="smartirCommunityCode" class="form-input" placeholder="e.g. 1120"
                  value="${this._escapeAttr(communityCode)}">
@@ -1010,9 +1010,18 @@ class DeviceManager extends Component {
         <div class="device-field-group">
           <div class="input-group">
             <div class="input-group-prepend">
-              <div class="input-group-text">Domain</div>
+              <label class="input-group-text" for="deviceName">Name</label>
             </div>
-            <select name="domain" class="form-select">
+            <input type="text" id="deviceName" name="name" class="form-input" placeholder="Device name"
+                   value="${this._escapeAttr(device.name || '')}" required>
+          </div>
+        </div>
+        <div class="device-field-group">
+          <div class="input-group">
+            <div class="input-group-prepend">
+              <label class="input-group-text" for="deviceDomain">Domain</label>
+            </div>
+            <select id="deviceDomain" name="domain" class="form-select">
               ${domainOptions}
             </select>
           </div>
@@ -1020,9 +1029,9 @@ class DeviceManager extends Component {
         <div class="device-field-group">
           <div class="input-group">
             <div class="input-group-prepend">
-              <div class="input-group-text">Type</div>
+              <label class="input-group-text" for="deviceType">Type</label>
             </div>
-            <select name="type" class="form-select">
+            <select id="deviceType" name="type" class="form-select">
               ${typeOptions}
             </select>
           </div>
@@ -1030,34 +1039,23 @@ class DeviceManager extends Component {
         <div class="device-field-group">
           <div class="input-group">
             <div class="input-group-prepend">
-              <div class="input-group-text">Name</div>
+              <label class="input-group-text" for="deviceInterface">Learn/Send from</label>
             </div>
-            <input type="text" name="name" class="form-input" placeholder="Device name"
-                   value="${this._escapeAttr(device.name || '')}" required>
-          </div>
-        </div>
-        <div class="device-field-group">
-          <div class="input-group">
-            <div class="input-group-prepend">
-              <div class="input-group-text">Learn/Send from</div>
-            </div>
-            <select name="interface" class="form-select">
+            <select id="deviceInterface" name="interface" class="form-select">
               <option value="">&#8987; Loading...</option>
             </select>
           </div>
         </div>
-        <div class="device-field-row" id="rfToolsRow" style="display:none">
-          ${frequencyField}
-          ${communityField}
-          <div class="device-field-group" data-field="emit_interval">
-            <div class="input-group">
-              <div class="input-group-prepend">
-                <div class="input-group-text">Emit interval</div>
-              </div>
-              <input type="number" name="emit_interval" class="form-input"
-                     placeholder="0.4" step="any" min="0"
-                     value="${this._escapeAttr(String(emitInterval))}">
+        ${frequencyField}
+        ${communityField}
+        <div class="device-field-group hidden" data-field="emit_interval">
+          <div class="input-group">
+            <div class="input-group-prepend">
+              <label class="input-group-text" for="deviceEmitInterval">Emit interval</label>
             </div>
+            <input type="number" id="deviceEmitInterval" name="emit_interval" class="form-input"
+                   placeholder="0.4" step="any" min="0"
+                   value="${this._escapeAttr(String(emitInterval))}">
           </div>
         </div>
         <div class="device-field-row" id="broadlinkToolsRow" style="display:none">
@@ -1126,7 +1124,7 @@ class DeviceManager extends Component {
     }
     const bulkLearnBtn = document.getElementById('bulkLearnBtn');
     if (bulkLearnBtn) {
-      bulkLearnBtn.style.display = (!isDomainManaged && deviceType === 'ble') ? '' : 'none';
+      bulkLearnBtn.style.display = 'none';
     }
 
     const commandsSection = document.querySelector('#deviceForm .commands-section');
@@ -1178,10 +1176,26 @@ class DeviceManager extends Component {
     const field = document.getElementById('communityField');
     if (!field) return;
     const domain = this._getCurrentDomain();
-    const show = domain !== 'default';
-    field.style.display = show ? '' : 'none';
+    const show = domain !== 'default' && this._getCurrentDeviceType() === 'ir';
+    field.classList.toggle('hidden', !show);
     const link = document.getElementById('communityHelpLink');
     if (link) link.href = this._getSmartIRDocsUrl(domain);
+    document.querySelectorAll('.community-hint-link').forEach(el => {
+      el.style.display = show ? '' : 'none';
+    });
+  }
+
+  focusCommunityCode() {
+    const input = document.getElementById('smartirCommunityCode');
+    if (!input) return;
+    const field = document.getElementById('communityField');
+    if (field) field.classList.remove('hidden');
+    input.focus();
+    input.select();
+  }
+
+  _renderScratchTitle() {
+    return `Start from scratch <a href="#" class="community-hint-link" style="display:none" onclick="deviceManager.focusCommunityCode(); return false;">or learn from community</a>`;
   }
 
   createInlineCommandForm(command = null, isExisting = false) {
@@ -1350,7 +1364,7 @@ class DeviceManager extends Component {
     }
     const bulkLearnBtn = document.getElementById('bulkLearnBtn');
     if (bulkLearnBtn) {
-      bulkLearnBtn.style.display = (!isDomainManaged && deviceType === 'ble') ? '' : 'none';
+      bulkLearnBtn.style.display = 'none';
     }
 
     const currentDevice = this.currentDevice;
@@ -1412,18 +1426,12 @@ class DeviceManager extends Component {
 
   _updateFrequencyField(deviceType) {
     const freqField = document.getElementById('frequencyField');
-    const rfToolsRow = document.getElementById('rfToolsRow');
     const broadlinkToolsRow = document.getElementById('broadlinkToolsRow');
-    const domain = this._getCurrentDomain();
-
-    if (rfToolsRow) {
-      rfToolsRow.style.display = (domain !== 'default' || deviceType === 'rf' || deviceType === 'ir') ? '' : 'none';
-    }
 
     const freq = this.currentDevice?.frequency || this._detectedFrequency || '';
     if (freqField) {
       const show = deviceType === 'rf';
-      freqField.style.display = show ? '' : 'none';
+      freqField.classList.toggle('hidden', !show);
       if (show && (freq !== '' && freq != null)) {
         const freqInput = freqField.querySelector('input[name="frequency"]');
         if (freqInput) freqInput.value = freq;
@@ -2243,7 +2251,7 @@ class DeviceManager extends Component {
 
     const freqField = document.getElementById('frequencyField');
     if (freqField) {
-      freqField.style.display = '';
+      freqField.classList.remove('hidden');
       const freqInput = freqField.querySelector('input[name="frequency"]');
       if (freqInput) freqInput.value = frequency;
     }
@@ -2462,6 +2470,8 @@ class DeviceManager extends Component {
 
     this._closeBleScanner();
 
+    this._bleScannerToken += 1;
+
     this._bleDevices = [];
     this._bleSortCol = 'time';
     this._bleSortAsc = false;
@@ -2489,6 +2499,7 @@ class DeviceManager extends Component {
     const scannerHTML = `
       <div class="ble-adv-actions">
         <div class="ble-adv-actions-left">
+          <span class="ble-adv-warning">Still experimental</span>
           <button class="btn btn-small btn-outlined" id="bleListenBtn" onclick="deviceManager._toggleBleListening()">⏹ Stop Listening</button>
           <button class="btn btn-small btn-outlined" onclick="deviceManager._clearBleTable()">🗑 Clear</button>
         </div>
@@ -2544,11 +2555,17 @@ class DeviceManager extends Component {
   }
 
   async _subscribeBleAdvertisements() {
+    const token = this._bleScannerToken;
     try {
-      this._bleUnsub = await WSManager.subscribeCommand(
+      const unsub = await WSManager.subscribeCommand(
         'bluetooth/subscribe_advertisements', {},
         (event) => this._handleBleAdvEvent(event)
       );
+      if (token !== this._bleScannerToken) {
+        try { unsub(); } catch (_) {}
+        return;
+      }
+      this._bleUnsub = unsub;
     } catch (e) {
       console.error('Failed to subscribe to BLE advertisements:', e);
       Notification.error('Failed to subscribe to Bluetooth advertisements');
@@ -2971,6 +2988,8 @@ const colspan = this._blePickMode ? 7 : 8;
   }
 
   _closeBleScanner() {
+    this._bleListening = false;
+    this._bleScannerToken += 1;
     if (this._bleUnsub) {
       try { this._bleUnsub(); } catch (_) {}
       this._bleUnsub = null;
@@ -3052,26 +3071,7 @@ const colspan = this._blePickMode ? 7 : 8;
       <div class="climate-section">
         <div id="climatePanelsWrap">
           <div class="climate-panel">
-            <div class="climate-panel-header"><span>📥 Learn from SmartIR</span></div>
-            <div class="climate-panel-body">
-              <div class="climate-smartir-row">
-                <div class="input-group" style="flex:1">
-                  <div class="input-group-prepend"><div class="input-group-text">Device #</div></div>
-                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1000"
-                         value="${this._escapeAttr(cd._smartirNum || '')}">
-                </div>
-                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
-                <a class="btn btn-small btn-outlined"
-                   href="https://github.com/smartHomeHub/SmartIR/blob/master/docs/FAN.md#available-codes-for-fan-devices"
-                   target="_blank" rel="noopener">Find yours</a>
-              </div>
-            </div>
-          </div>
-
-          <div class="climate-or-separator"><span>OR</span></div>
-
-          <div class="climate-panel">
-            <div class="climate-panel-header"><span>✏️ Start from scratch</span></div>
+            <div class="climate-panel-header"><span>${this._renderScratchTitle()}</span></div>
             <div class="climate-panel-body">
               <div class="climate-scratch-row" style="gap:8px;align-items:center;flex-wrap:wrap">
                 <span class="climate-checkgroup-label" style="margin:0">Model</span>
@@ -3229,26 +3229,7 @@ const colspan = this._blePickMode ? 7 : 8;
       <div class="climate-section">
         <div id="climatePanelsWrap">
           <div class="climate-panel">
-            <div class="climate-panel-header"><span>📥 Learn from SmartIR</span></div>
-            <div class="climate-panel-body">
-              <div class="climate-smartir-row">
-                <div class="input-group" style="flex:1">
-                  <div class="input-group-prepend"><div class="input-group-text">Device #</div></div>
-                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1000"
-                         value="${this._escapeAttr(cd._smartirNum || '')}">
-                </div>
-                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
-                <a class="btn btn-small btn-outlined"
-                   href="https://github.com/smartHomeHub/SmartIR/blob/master/docs/MEDIA_PLAYER.md#available-codes-for-media-player-devices"
-                   target="_blank" rel="noopener">Find yours</a>
-              </div>
-            </div>
-          </div>
-
-          <div class="climate-or-separator"><span>OR</span></div>
-
-          <div class="climate-panel">
-            <div class="climate-panel-header"><span>✏️ Start from scratch</span></div>
+            <div class="climate-panel-header"><span>${this._renderScratchTitle()}</span></div>
             <div class="climate-panel-body">
               <div class="climate-checkgroup">
                 <span class="climate-checkgroup-label">Buttons</span>
@@ -3404,26 +3385,7 @@ const colspan = this._blePickMode ? 7 : 8;
       <div class="climate-section">
         <div id="climatePanelsWrap">
           <div class="climate-panel">
-            <div class="climate-panel-header"><span>📥 Learn from SmartIR</span></div>
-            <div class="climate-panel-body">
-              <div class="climate-smartir-row">
-                <div class="input-group" style="flex:1">
-                  <div class="input-group-prepend"><div class="input-group-text">Device #</div></div>
-                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1000"
-                         value="${this._escapeAttr(cd._smartirNum || '')}">
-                </div>
-                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
-                <a class="btn btn-small btn-outlined"
-                   href="https://github.com/smartHomeHub/SmartIR/tree/master/codes/light"
-                   target="_blank" rel="noopener">Find yours</a>
-              </div>
-            </div>
-          </div>
-
-          <div class="climate-or-separator"><span>OR</span></div>
-
-          <div class="climate-panel">
-            <div class="climate-panel-header"><span>✏️ Start from scratch</span></div>
+            <div class="climate-panel-header"><span>${this._renderScratchTitle()}</span></div>
             <div class="climate-panel-body">
               <div class="climate-checkgroup">
                 <span class="climate-checkgroup-label">Buttons</span>
@@ -3556,30 +3518,7 @@ const colspan = this._blePickMode ? 7 : 8;
         <div id="climatePanelsWrap" style="${panelsDisplay}">
           <div class="climate-panel">
             <div class="climate-panel-header">
-              <span>📥 Learn from SmartIR</span>
-            </div>
-            <div class="climate-panel-body">
-              <div class="climate-smartir-row">
-                <div class="input-group" style="flex:1">
-                  <div class="input-group-prepend">
-                    <div class="input-group-text">Device #</div>
-                  </div>
-                  <input type="text" id="smartirDeviceNum" class="form-input" placeholder="e.g. 1120"
-                         value="${this._escapeAttr(cd._smartirNum || '')}">
-                </div>
-                <button type="button" class="btn btn-small" onclick="deviceManager._importSmartIR()">Import</button>
-                <a class="btn btn-small btn-outlined"
-                   href="https://github.com/smartHomeHub/SmartIR/blob/master/docs/CLIMATE.md#available-codes-for-climate-devices"
-                   target="_blank" rel="noopener">Find yours</a>
-              </div>
-            </div>
-          </div>
-
-          <div class="climate-or-separator"><span>OR</span></div>
-
-          <div class="climate-panel">
-            <div class="climate-panel-header">
-              <span>✏️ Start from scratch</span>
+              <span>${this._renderScratchTitle()}</span>
             </div>
             <div class="climate-panel-body">
               <div class="climate-scratch-row">
@@ -4495,7 +4434,7 @@ const colspan = this._blePickMode ? 7 : 8;
       <div class="input-group-container">
         <div class="input-group-prepend"><span class="input-group-text">Temp</span></div>
         <div class="btn-group-wrapper">
-          <div class="btn-group climate-temp-group" data-climate-temps="${this._escapeAttr(id)}">
+          <div class="btn-group" data-climate-temps="${this._escapeAttr(id)}">
             ${temps.map(t =>
               `<button class="btn-group-item" data-temp="${t}" onclick="deviceManager._climateSetTemp('${id}', ${t})">${t}</button>`
             ).join('')}

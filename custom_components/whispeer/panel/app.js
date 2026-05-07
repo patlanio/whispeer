@@ -1,31 +1,14 @@
 class WhispeerApp {
   constructor() {
     this.deviceManager = null;
-    this.autoRefreshInterval = null;
-    this.settingsSubmitHandler = null;
     this.init();
   }
 
   init() {
-    this.loadSettings();
     WSManager.connect();
     this.initializeComponents();
     this.bindGlobalEvents();
     WSManager.onReady(() => this.startApplication());
-  }
-
-  loadSettings() {
-    DataManager.loadSettings();
-    this.applySettings();
-  }
-
-  applySettings() {
-    const settings = DataManager.settings;
-    
-    if (settings.theme && settings.theme !== 'auto') {
-      document.body.className = `theme-${settings.theme}`;
-    }
-
   }
 
   initializeComponents() {
@@ -39,34 +22,16 @@ class WhispeerApp {
     const header = Utils.$('.header-controls');
     if (!header) return;
 
+    const addDeviceBtn = Utils.createElement('button', {
+      className: 'btn',
+      innerHTML: 'Add device',
+      onclick: () => this.deviceManager?.openAddDeviceModal()
+    });
+
     const settingsBtn = Utils.createElement('button', {
-      className: 'btn btn-small',
-      innerHTML: '⚙️ Settings',
+      className: 'btn btn-outlined',
+      innerHTML: '⚙️',
       onclick: () => this.openSettingsModal()
-    });
-
-    const refreshBtn = Utils.createElement('button', {
-      className: 'btn btn-small btn-outlined',
-      innerHTML: '🔄 Refresh',
-      onclick: () => this.refreshDevices()
-    });
-
-    const clearBtn = Utils.createElement('button', {
-      className: 'btn btn-small btn-danger btn-outlined',
-      innerHTML: '🗑️ Clear Devices',
-      onclick: () => this.clearDevices()
-    });
-
-    const exportBtn = Utils.createElement('button', {
-      className: 'btn btn-small btn-outlined',
-      innerHTML: '⬇️ Export',
-      onclick: () => this.exportDevices()
-    });
-
-    const importBtn = Utils.createElement('button', {
-      className: 'btn btn-small btn-outlined',
-      innerHTML: '⬆️ Import',
-      onclick: () => this.importDevices()
     });
 
     this._importInput = Utils.createElement('input', {
@@ -77,11 +42,8 @@ class WhispeerApp {
     this._importInput.addEventListener('change', (e) => this._handleImportFile(e));
     document.body.appendChild(this._importInput);
 
-    header.appendChild(refreshBtn);
-    header.appendChild(exportBtn);
-    header.appendChild(importBtn);
-    header.appendChild(clearBtn);
     header.appendChild(settingsBtn);
+    header.appendChild(addDeviceBtn);
   }
 
   setupModals() {
@@ -89,33 +51,17 @@ class WhispeerApp {
   }
 
   setupSettingsModal() {
-    const settingsForm = FormBuilder.create()
-      .select('theme', [
-        { value: 'auto', label: 'Auto (System)' },
-        { value: 'light', label: 'Light' },
-        { value: 'dark', label: 'Dark' }
-      ], {
-        label: 'Theme',
-        value: DataManager.settings.theme
-      })
-      .build();
-
-    const submitBtn = Utils.createElement('button', {
-      type: 'submit',
-      className: 'btn',
-      innerHTML: 'Save Settings'
-    });
-
-    settingsForm.appendChild(submitBtn);
-
-    settingsForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.handleSettingsSubmit(e);
-    });
+    const content = `
+      <div class="advanced-actions">
+        <button type="button" class="btn btn-small btn-outlined" id="advancedExportBtn">⬇️ Export</button>
+        <button type="button" class="btn btn-small btn-outlined" id="advancedImportBtn">⬆️ Import</button>
+        <button type="button" class="btn btn-small btn-danger btn-outlined" id="advancedClearBtn">🗑️ Clear Devices</button>
+      </div>
+    `;
 
     this.settingsModal = new Modal({
-      title: 'Settings',
-      content: settingsForm.outerHTML,
+      title: 'Advanced',
+      content,
       className: 'settings-modal'
     });
   }
@@ -123,17 +69,6 @@ class WhispeerApp {
   bindGlobalEvents() {
     window.addEventListener('beforeunload', () => {
       this.cleanup();
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
-        e.preventDefault();
-        this.refreshDevices();
-      }
-    });
-
-    Utils.events.on('deviceUpdated', () => {
-      this.refreshDevices();
     });
 
     Utils.events.on('error', (e) => {
@@ -213,20 +148,6 @@ class WhispeerApp {
     const loading = Utils.$('.loading');
     if (loading) {
       Utils.animation.fadeOut(loading);
-    }
-  }
-
-  async refreshDevices() {
-    this.showLoadingState();
-    try {
-      await this.deviceManager.loadDevices();
-      Notification.success('Devices refreshed successfully');
-    } catch (error) {
-      Notification.error('Failed to refresh devices');
-      console.error('Refresh error:', error);
-      this.deviceManager.renderDevices();
-    } finally {
-      this.hideLoadingState();
     }
   }
 
@@ -341,40 +262,24 @@ class WhispeerApp {
 
   openSettingsModal() {
     this.settingsModal.open();
-    
-    setTimeout(() => {
-      const form = this.settingsModal.element.querySelector('form');
-      if (form) {
-        if (this.settingsSubmitHandler) {
-          form.removeEventListener('submit', this.settingsSubmitHandler);
-        }
-        
-        this.settingsSubmitHandler = (e) => {
-          e.preventDefault();
-          this.handleSettingsSubmit(e);
-        };
-        
-        form.addEventListener('submit', this.settingsSubmitHandler);
-      }
-    }, 100);
+    this._bindAdvancedActions();
   }
 
-  handleSettingsSubmit(e) {
-    const formData = new FormData(e.target);
-    const settings = Object.fromEntries(formData.entries());
-    
+  _bindAdvancedActions() {
+    if (!this.settingsModal?.element) return;
+    const root = this.settingsModal.element;
+    const exportBtn = root.querySelector('#advancedExportBtn');
+    const importBtn = root.querySelector('#advancedImportBtn');
+    const clearBtn = root.querySelector('#advancedClearBtn');
 
-    DataManager.updateSettings(settings);
-    this.applySettings();
-    this.settingsModal.close();
-    
-    Notification.success('Settings saved successfully');
-  }
-
-  startAutoRefresh(interval = 5000) {
-  }
-
-  stopAutoRefresh() {
+    if (exportBtn) exportBtn.onclick = () => this.exportDevices();
+    if (importBtn) importBtn.onclick = () => this.importDevices();
+    if (clearBtn) {
+      clearBtn.onclick = async () => {
+        await this.clearDevices();
+        this.settingsModal.close();
+      };
+    }
   }
 
   async syncWithBackend() {
@@ -386,8 +291,6 @@ class WhispeerApp {
   }
 
   cleanup() {
-    this.stopAutoRefresh();
-    
     if (this.deviceManager) {
       this.deviceManager.destroy();
     }
