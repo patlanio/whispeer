@@ -453,7 +453,6 @@ class Toast {
   }
 
   static show(message, type = 'info', duration = 3000) {
-    console.log(`[${new Date().toISOString()}] [Toast] type=${type} message="${message}"`);
     Toast.init();
 
     const toast = Utils.createElement('div', {

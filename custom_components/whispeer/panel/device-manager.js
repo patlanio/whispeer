@@ -1404,8 +1404,6 @@ class DeviceManager extends Component {
         if (selectedIndex !== null) {
           interfaceSelect.value = selectedIndex.toString();
         }
-
-        console.log(`Loaded ${interfaces.length} interfaces for ${interfaceDeviceType}:`, interfaces);
       } else {
         interfaceSelect.innerHTML = '<option value="">❌ No interfaces available</option>';
         console.log(`No interfaces found for device type: ${interfaceDeviceType}`);
@@ -2035,7 +2033,6 @@ class DeviceManager extends Component {
   }
 
   async learnCommand(buttonElement) {
-    console.log(`[${new Date().toISOString()}] [Learn] "Learn" button clicked`);
     const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo) {
       Notification.error('Please save the device first');
@@ -2064,7 +2061,6 @@ class DeviceManager extends Component {
   }
 
   async learnOptionCommand(buttonElement, optionKey = null) {
-    console.log(`[${new Date().toISOString()}] [Learn] "Learn" button clicked (option)`);
     const deviceInfo = this.getCurrentDeviceInfo();
     if (!deviceInfo) {
       Notification.error('Please save the device first');
@@ -2138,6 +2134,22 @@ class DeviceManager extends Component {
     }
 
     try {
+      if (isRF && isBroadlink && (emitterData.frequency == null || Number.isNaN(Number(emitterData.frequency)))) {
+        const entityId = interfaceObject?.entity_id;
+        if (!entityId) {
+          throw new Error('Please select a Broadlink interface first');
+        }
+
+        learningToast = Notification.permanent('Hold a button on the remote to identify the frequency...');
+        this._activeLearnToast = learningToast;
+
+        const detectedFrequency = await this._runFrequencySweep(entityId);
+
+        if (learningToast) { learningToast.close(); learningToast = null; }
+        this._setDetectedFrequency(detectedFrequency);
+        emitterData.frequency = detectedFrequency;
+      }
+
       learningToast = Notification.permanent(`Preparing ${deviceInfo.type.toUpperCase()} device for learning...`);
       this._activeLearnToast = learningToast;
 
@@ -2154,7 +2166,7 @@ class DeviceManager extends Component {
 
       const sessionId = prepareResult.session_id;
       let deviceReady = false;
-      let currentPhase = (isRF && isBroadlink && !emitterData.frequency) ? 'sweeping' : 'capturing';
+      let currentPhase = 'capturing';
 
       if (learningToast) { learningToast.close(); learningToast = null; }
       learningToast = Notification.permanent('⏳ Preparing device, please wait…');
@@ -2165,7 +2177,7 @@ class DeviceManager extends Component {
         const timeoutHandle = setTimeout(() => {
           unsubscribe();
           reject(new Error('Learning timed out - no button press detected within timeout'));
-        }, 90000);
+        }, 30000);
 
         const unsubscribe = WSManager.subscribe('whispeer_learn_update', (event) => {
           const data = event.data;
@@ -2397,42 +2409,13 @@ class DeviceManager extends Component {
     let learningToast = null;
 
     try {
-      const result = await WSManager.call('whispeer/find_frequency', { entity_id: entityId });
-      if (result?.status !== 'success') {
-        throw new Error(result?.message || 'Failed to start frequency sweep');
-      }
-
-      const sessionId = result.session_id;
       learningToast = Notification.permanent('Hold a button on the remote to identify the frequency...');
-
-      await new Promise((resolve, reject) => {
-        const timeoutHandle = setTimeout(() => {
-          unsubscribe();
-          reject(new Error('Frequency sweep timed out'));
-        }, 45000);
-
-        const unsubscribe = WSManager.subscribe('whispeer_frequency_update', (event) => {
-          const data = event.data;
-          if (data.session_id !== sessionId) return;
-
-          if (data.status === 'completed' && data.frequency != null) {
-            clearTimeout(timeoutHandle);
-            unsubscribe();
-            if (learningToast) { learningToast.close(); learningToast = null; }
-            Notification.success(`Frequency detected: ${data.frequency} MHz`);
-            this._setDetectedFrequency(data.frequency);
-            resolve(true);
-          } else if (data.status === 'error' || data.status === 'timeout') {
-            clearTimeout(timeoutHandle);
-            unsubscribe();
-            reject(new Error(data.message || 'Frequency sweep failed'));
-          }
-        });
-      });
+      const frequency = await this._runFrequencySweep(entityId);
+      Notification.success(`Frequency detected: ${frequency} MHz`);
+      this._setDetectedFrequency(frequency);
 
     } catch (error) {
       console.error('Find frequency error:', error);
-      if (learningToast) { learningToast.close(); learningToast = null; }
       Notification.error(`Failed to find frequency: ${error.message}`);
     } finally {
       if (findBtn) {
@@ -2441,6 +2424,37 @@ class DeviceManager extends Component {
       }
       if (learningToast) learningToast.close();
     }
+  }
+
+  async _runFrequencySweep(entityId) {
+    const result = await WSManager.call('whispeer/find_frequency', { entity_id: entityId });
+    if (result?.status !== 'success') {
+      throw new Error(result?.message || 'Failed to start frequency sweep');
+    }
+
+    const sessionId = result.session_id;
+
+    return await new Promise((resolve, reject) => {
+      const timeoutHandle = setTimeout(() => {
+        unsubscribe();
+        reject(new Error('Frequency sweep timed out'));
+      }, 30000);
+
+      const unsubscribe = WSManager.subscribe('whispeer_frequency_update', (event) => {
+        const data = event.data;
+        if (data.session_id !== sessionId) return;
+
+        if (data.status === 'completed' && data.frequency != null) {
+          clearTimeout(timeoutHandle);
+          unsubscribe();
+          resolve(Number(data.frequency));
+        } else if (data.status === 'error' || data.status === 'timeout') {
+          clearTimeout(timeoutHandle);
+          unsubscribe();
+          reject(new Error(data.message || 'Frequency sweep failed'));
+        }
+      });
+    });
   }
 
 

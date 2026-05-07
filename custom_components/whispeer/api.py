@@ -32,10 +32,18 @@ _LEARN_PROVIDERS: list[type[LearnProvider]] = [
 
 
 def _pick_learn_provider(device_type: str, manufacturer: str, hass) -> LearnProvider:
-    """Return the first provider that can handle *device_type* / *manufacturer*."""
-    for Provider in _LEARN_PROVIDERS:
-        if Provider.can_handle(device_type, manufacturer):
-            return Provider(hass)
+    """Return provider for learn flow.
+
+    Routing rules:
+      - RF + Broadlink => BroadlinkLearnProvider
+      - everything else => HassLearnProvider
+    """
+    normalized_type = (device_type or "").strip().lower()
+    normalized_manufacturer = (manufacturer or "").strip().lower()
+
+    if normalized_type == "rf" and "broadlink" in normalized_manufacturer:
+        return BroadlinkLearnProvider(hass)
+
     return HassLearnProvider(hass)
 
 

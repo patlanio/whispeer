@@ -11,12 +11,68 @@ Handles:
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from .learn_provider import LearnProvider, LearnSession
 
-_LOGGER = logging.getLogger(__package__)
+_RF_COMMON_FREQS = (315.0, 433.92)
+
+
+def _parse_check_frequency_result(result: Any) -> tuple[bool, float | None]:
+    """Normalize broadlink check_frequency() output.
+
+    Some broadlink variants return `(found, freq)`, while others can expose
+    a usable `freq` even when `found` is false.
+    """
+    found = False
+    detected_freq: float | None = None
+
+    if isinstance(result, (tuple, list)) and len(result) >= 2:
+        first, second = result[0], result[1]
+        if isinstance(first, bool):
+            found = first
+            try:
+                detected_freq = float(second)
+            except (TypeError, ValueError):
+                detected_freq = None
+        elif isinstance(second, bool):
+            found = second
+            try:
+                detected_freq = float(first)
+            except (TypeError, ValueError):
+                detected_freq = None
+        else:
+            try:
+                detected_freq = float(second)
+            except (TypeError, ValueError):
+                detected_freq = None
+    return found, detected_freq
+
+
+def _is_plausible_rf_frequency(freq: float | None) -> bool:
+    """Return True when *freq* looks like a real RF carrier for RM4 use-cases."""
+    if freq is None:
+        return False
+    return any(abs(freq - base) <= 5.0 for base in _RF_COMMON_FREQS)
+
+
+def _normalize_rf_frequency(freq: float | None) -> float | None:
+    """Normalize a detected RF frequency to canonical values when close enough.
+
+    Broadlink can report approximate values (for example ~430.0 for 433.92).
+    """
+    if freq is None:
+        return None
+    nearest = min(_RF_COMMON_FREQS, key=lambda base: abs(freq - base))
+    if abs(freq - nearest) <= 6.0:
+        return nearest
+    return freq
+
+
+def _is_storage_full_error(exc: Exception) -> bool:
+    """Return True when Broadlink reports the known transient storage-full error."""
+    msg = str(exc)
+    return "[Errno -5]" in msg and "storage is full" in msg.lower()
 
 
 def _broadlink_connect(ip: str, mac: str | None = None, device_type: str | None = None):
@@ -38,7 +94,8 @@ def _broadlink_connect(ip: str, mac: str | None = None, device_type: str | None 
             if not device:
                 return None
 
-        return device if device.auth() else None
+        authenticated = device.auth()
+        return device if authenticated else None
     except Exception:
         return None
 
@@ -51,6 +108,7 @@ class BroadlinkLearnProvider(LearnProvider):
     """
 
     NAME = "broadlink"
+    PHASE_TIMEOUT_SECONDS = 30
 
     @classmethod
     def can_handle(cls, device_type: str, manufacturer: str) -> bool:
@@ -64,11 +122,6 @@ class BroadlinkLearnProvider(LearnProvider):
         the session, otherwise performs the full sweep+capture cycle.
         """
         try:
-            _LOGGER.info(
-                "BroadlinkLearnProvider: starting session %s on %s",
-                session.session_id, session.hub_entity_id,
-            )
-
             ip_address, mac_address = await self._resolve_connection(session)
             if not ip_address:
                 return
@@ -85,19 +138,11 @@ class BroadlinkLearnProvider(LearnProvider):
                 )
 
         except Exception as exc:
-            _LOGGER.exception(
-                "BroadlinkLearnProvider: session %s failed", session.session_id
-            )
             session.update_status("error", error_message=str(exc))
 
     async def find_frequency(self, session: LearnSession) -> None:
         """Sweep only — detect RF frequency without capturing a command."""
         try:
-            _LOGGER.info(
-                "BroadlinkLearnProvider: frequency sweep for session %s on %s",
-                session.session_id, session.hub_entity_id,
-            )
-
             ip_address, mac_address = await self._resolve_connection(session)
             if not ip_address:
                 return
@@ -107,9 +152,6 @@ class BroadlinkLearnProvider(LearnProvider):
             )
 
         except Exception as exc:
-            _LOGGER.exception(
-                "BroadlinkLearnProvider: frequency sweep %s failed", session.session_id
-            )
             session.update_status("error", error_message=str(exc))
 
 
@@ -133,15 +175,35 @@ class BroadlinkLearnProvider(LearnProvider):
         session.update_status("learning")
 
         freq = None
-        for _ in range(60):
-            _time.sleep(1)
-            try:
-                found, detected_freq = device.check_frequency()
-                if found:
-                    freq = detected_freq
-                    break
-            except Exception:
-                continue
+        candidate_hits = 0
+        last_candidate: float | None = None
+        try:
+            for attempt in range(1, self.PHASE_TIMEOUT_SECONDS + 1):
+                _time.sleep(1)
+                try:
+                    found, detected_freq = _parse_check_frequency_result(
+                        device.check_frequency()
+                    )
+                    if found:
+                        normalized = _normalize_rf_frequency(detected_freq)
+                        freq = normalized
+                        break
+
+                    if _is_plausible_rf_frequency(detected_freq):
+                        if last_candidate is not None and abs(detected_freq - last_candidate) <= 1.0:
+                            candidate_hits += 1
+                        else:
+                            candidate_hits = 1
+                        last_candidate = detected_freq
+
+                        if candidate_hits >= 2:
+                            normalized = _normalize_rf_frequency(detected_freq)
+                            freq = normalized
+                            break
+                except Exception:
+                    continue
+        finally:
+            self._cancel_sweep_frequency(device, session.session_id, "full-sweep")
 
         if freq is None:
             session.update_status(
@@ -151,10 +213,14 @@ class BroadlinkLearnProvider(LearnProvider):
 
         session.detected_frequency = freq
 
-        device.find_rf_packet(freq)
         session.phase = "capturing"
 
-        code = self._poll_check_data(device)
+        code = self._capture_with_frequency_fallback(
+            device,
+            session_id=session.session_id,
+            preferred_frequency=freq,
+            context="capture",
+        )
         if code:
             session.phase = "completed"
             session.update_status("completed", command_data=code)
@@ -171,6 +237,8 @@ class BroadlinkLearnProvider(LearnProvider):
         frequency: float,
     ) -> None:
         """Fast RF learning: skip sweep, go directly to capture with known frequency."""
+        normalized_frequency = _normalize_rf_frequency(frequency)
+
         device = _broadlink_connect(ip_address, mac_address)
         if not device:
             session.update_status(
@@ -178,10 +246,14 @@ class BroadlinkLearnProvider(LearnProvider):
             )
             return
 
-        device.find_rf_packet(frequency)
         session.update_status("learning")
 
-        code = self._poll_check_data(device, max_attempts=30)
+        code = self._capture_with_frequency_fallback(
+            device,
+            session_id=session.session_id,
+            preferred_frequency=normalized_frequency,
+            context="fast-capture",
+        )
         if code:
             session.phase = "completed"
             session.update_status("completed", command_data=code)
@@ -209,15 +281,35 @@ class BroadlinkLearnProvider(LearnProvider):
         device.sweep_frequency()
 
         freq = None
-        for _ in range(30):
-            _time.sleep(1)
-            try:
-                found, detected_freq = device.check_frequency()
-                if found:
-                    freq = detected_freq
-                    break
-            except Exception:
-                continue
+        candidate_hits = 0
+        last_candidate: float | None = None
+        try:
+            for attempt in range(1, self.PHASE_TIMEOUT_SECONDS + 1):
+                _time.sleep(1)
+                try:
+                    found, detected_freq = _parse_check_frequency_result(
+                        device.check_frequency()
+                    )
+                    if found:
+                        normalized = _normalize_rf_frequency(detected_freq)
+                        freq = normalized
+                        break
+
+                    if _is_plausible_rf_frequency(detected_freq):
+                        if last_candidate is not None and abs(detected_freq - last_candidate) <= 1.0:
+                            candidate_hits += 1
+                        else:
+                            candidate_hits = 1
+                        last_candidate = detected_freq
+
+                        if candidate_hits >= 2:
+                            normalized = _normalize_rf_frequency(detected_freq)
+                            freq = normalized
+                            break
+                except Exception:
+                    continue
+        finally:
+            self._cancel_sweep_frequency(device, session.session_id, "sweep-only")
 
         if freq:
             session.detected_frequency = freq
@@ -228,19 +320,91 @@ class BroadlinkLearnProvider(LearnProvider):
                 "timeout", error_message="No frequency detected within timeout"
             )
 
-    def _poll_check_data(self, device, max_attempts: int = 90) -> str | None:
+    def _poll_check_data(
+        self,
+        device,
+        max_attempts: int = 30,
+        session_id: str | None = None,
+        context: str = "capture",
+    ) -> str | None:
         """Poll device.check_data() until a code arrives or attempts are exhausted."""
         import time as _time
 
-        for _ in range(max_attempts):
+        attempt = 0
+        wall_attempt = 0
+        max_wall_attempts = max_attempts
+
+        while attempt < max_attempts and wall_attempt < max_wall_attempts:
+            wall_attempt += 1
             _time.sleep(1)
             try:
                 packet = device.check_data()
                 if packet:
                     return packet.hex()
-            except Exception:
+                attempt += 1
+            except Exception as exc:
+                if _is_storage_full_error(exc):
+                    continue
+
+                attempt += 1
                 continue
         return None
+
+    def _capture_with_frequency_fallback(
+        self,
+        device,
+        session_id: str,
+        preferred_frequency: float | None,
+        context: str,
+    ) -> str | None:
+        """Capture RF packet trying preferred frequency first, then no-frequency fallback."""
+        total_budget = self.PHASE_TIMEOUT_SECONDS
+
+        preferred_budget = total_budget
+        if preferred_frequency is not None:
+            preferred_budget = max(20, total_budget - 10)
+
+        self._start_rf_capture(device, preferred_frequency, session_id, context)
+        code = self._poll_check_data(
+            device,
+            max_attempts=preferred_budget,
+            session_id=session_id,
+            context=context,
+        )
+        if code or preferred_frequency is None or preferred_budget >= total_budget:
+            return code
+
+        fallback_budget = total_budget - preferred_budget
+        self._start_rf_capture(device, None, session_id, f"{context}-fallback")
+        return self._poll_check_data(
+            device,
+            max_attempts=fallback_budget,
+            session_id=session_id,
+            context=f"{context}-fallback",
+        )
+
+    def _start_rf_capture(
+        self,
+        device,
+        frequency: float | None,
+        session_id: str,
+        context: str,
+    ) -> None:
+        """Start RF capture mode, preferring explicit frequency when provided."""
+        try:
+            if frequency is None:
+                device.find_rf_packet()
+            else:
+                device.find_rf_packet(frequency)
+        except TypeError:
+            device.find_rf_packet()
+
+    def _cancel_sweep_frequency(self, device, session_id: str, context: str) -> None:
+        """Best-effort sweep cancellation after RF detection phase."""
+        try:
+            device.cancel_sweep_frequency()
+        except Exception:
+            pass
 
 
     async def _resolve_connection(
