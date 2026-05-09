@@ -87,6 +87,8 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
 
     def __init__(self, device_data: dict[str, Any], api_client: Any) -> None:
         super().__init__(device_data, "fan", {}, api_client)
+        self._attr_has_entity_name = False
+        self._attr_name = device_data.get("name", device_data.get("id", "fan"))
         self._config = device_data.get("config") or {}
         self._commands = device_data.get("commands") or {}
         self._fan_model: str = self._config.get("fan_model", "direct")

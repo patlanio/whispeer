@@ -30,7 +30,7 @@ class DeviceManager extends Component {
           <div class="device-header">
             <div class="device-name">{{automationBadge}}<span>{{name}}</span></div>
             <div class="device-header-right">
-                <button type="button" class="device-type-badge {{badgeClass}}" onclick="deviceManager.configureDevice('{{id}}')">{{type}}</button>
+                <button type="button" class="device-type-badge {{badgeClass}}" onclick="deviceManager.configureDevice('{{configureId}}')">{{type}}</button>
             </div>
           </div>
           <div class="device-commands">{{commands}}</div>
@@ -307,6 +307,7 @@ class DeviceManager extends Component {
     const domain = device.domain || 'default';
     const deviceTypeConfig = APP_CONFIG.DEVICE_TYPES[device.type] || { label: (device.type || '').toUpperCase(), badge: 'type-ir' };
     const typePrefix = deviceTypeConfig.label || (device.type || '').toUpperCase();
+    const configureId = this._escapeJsSingleQuote(id);
 
     let typeLabel, badgeClass, commandsHTML;
     if (domain !== 'default') {
@@ -332,6 +333,7 @@ class DeviceManager extends Component {
 
     return this.template('deviceCard', {
       id,
+      configureId,
       name,
       type: typeLabel,
       badgeClass,
@@ -350,9 +352,7 @@ class DeviceManager extends Component {
 
     if (domain === 'fan') {
       const out = {};
-      if (commands.off) {
-        out.power = this._createCommand('button', { code: commands.off }, { display: 'text', icon: '' });
-      }
+      out.off = this._createCommand('button', { code: commands.off || '' }, { display: 'text', icon: '' });
       const forwardMap = (commands.forward && typeof commands.forward === 'object')
         ? commands.forward
         : commands;
@@ -380,7 +380,7 @@ class DeviceManager extends Component {
         out.reverse_speed = this._createCommand('options', reverseValues, { display: 'text', icon: '' });
       }
       for (const [key, value] of Object.entries(commands)) {
-        if (['off', 'speed', 'default', 'forward', 'reverse'].includes(key)) continue;
+        if (['off', 'power', 'speed', 'default', 'forward', 'reverse'].includes(key)) continue;
         if (speeds.includes(key)) continue;
         if (typeof value === 'string') {
           out[key] = this._createCommand('button', { code: value }, { display: 'text', icon: '' });
@@ -432,9 +432,9 @@ class DeviceManager extends Component {
       const outCommands = {};
       const cfg = { fan_model: 'direct', speeds: [] };
 
-      const power = genericCommands.power;
-      if (power?.type === 'button') outCommands.off = power.values?.code || '';
-      if (power?.type === 'switch') outCommands.off = power.values?.off || '';
+      const offCommand = genericCommands.off || genericCommands.power;
+      if (offCommand?.type === 'button') outCommands.off = offCommand.values?.code || '';
+      if (offCommand?.type === 'switch') outCommands.off = offCommand.values?.off || '';
 
       const speed = genericCommands.speed;
       const values = speed?.values || {};
@@ -455,7 +455,7 @@ class DeviceManager extends Component {
       }
 
       for (const [key, cmd] of Object.entries(genericCommands)) {
-        if (['power', 'speed', 'reverse_speed'].includes(key)) continue;
+        if (['off', 'power', 'speed', 'reverse_speed'].includes(key)) continue;
         if (cmd?.type === 'button') {
           outCommands[key] = cmd.values?.code || '';
         }
@@ -947,10 +947,10 @@ class DeviceManager extends Component {
 
     const domainOptions = [
       { value: 'default',      label: 'Default (commands)' },
-      { value: 'climate',      label: 'Climate (A/C)' },
+      { value: 'climate',      label: 'Climate' },
       { value: 'fan',          label: 'Fan' },
       { value: 'media_player', label: 'Media Player' },
-      { value: 'light',        label: 'Light (IR)' },
+      { value: 'light',        label: 'Light' },
     ].map(opt =>
       `<option value="${opt.value}"${opt.value === deviceDomain ? ' selected' : ''}>${opt.label}</option>`
     ).join('');
@@ -1196,6 +1196,12 @@ class DeviceManager extends Component {
 
   _renderScratchTitle() {
     return `Start from scratch <a href="#" class="community-hint-link" style="display:none" onclick="deviceManager.focusCommunityCode(); return false;">or learn from community</a>`;
+  }
+
+  _escapeJsSingleQuote(str) {
+    return String(str)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'");
   }
 
   createInlineCommandForm(command = null, isExisting = false) {

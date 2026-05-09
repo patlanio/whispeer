@@ -95,6 +95,8 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
 
     def __init__(self, device_data: dict[str, Any], api_client: Any) -> None:
         super().__init__(device_data, "climate", {}, api_client)
+        self._attr_has_entity_name = False
+        self._attr_name = device_data.get("name", device_data.get("id", "climate"))
 
         config = device_data.get("config") or {}
         modes = config.get("modes") or ["cool", "heat", "fan_only"]

@@ -144,6 +144,8 @@ class WhispeerDomainLight(WhispeerBaseEntity, LightEntity):
 
     def __init__(self, device_data: dict[str, Any], api_client: Any) -> None:
         super().__init__(device_data, "domain_light", {}, api_client)
+        self._attr_has_entity_name = False
+        self._attr_name = device_data.get("name", device_data.get("id", "light"))
         self._commands = device_data.get("commands") or {}
         self._attr_is_on = False
 

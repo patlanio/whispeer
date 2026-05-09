@@ -53,7 +53,7 @@ const APP_CONFIG = {
     climate:      { label: 'Climate', badge: 'type-climate' },
     fan:          { label: 'Fan', badge: 'type-fan' },
     media_player: { label: 'Media Player', badge: 'type-media-player' },
-    light:        { label: 'Light (IR)', badge: 'type-light-ir' }
+    light:        { label: 'Light', badge: 'type-light-ir' }
   }
 };
 
@@ -89,7 +89,7 @@ class DataManager {
       const result = await WSManager.call('whispeer/add_device', { device });
       if (result?.status === 'success') {
         const id = String(result.id);
-        DataManager.devices[id] = { id, ...device };
+        DataManager.devices[id] = { ...device, id };
         await DataManager.syncWithBackend();
         Utils.events.emit('deviceUpdated', { deviceId: id });
         return id;

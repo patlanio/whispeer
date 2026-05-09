@@ -23,13 +23,13 @@ class WhispeerApp {
     if (!header) return;
 
     const addDeviceBtn = Utils.createElement('button', {
-      className: 'btn',
+      className: 'btn btn-small',
       innerHTML: 'Add device',
       onclick: () => this.deviceManager?.openAddDeviceModal()
     });
 
     const settingsBtn = Utils.createElement('button', {
-      className: 'btn btn-outlined',
+      className: 'btn btn-small btn-outlined',
       innerHTML: '⚙️',
       onclick: () => this.openSettingsModal()
     });
