@@ -316,6 +316,12 @@ class DeviceManager extends Component {
       badgeClass = deviceTypeConfig.badge;
       if (domain === 'climate') {
         commandsHTML = this._renderClimateCard(device);
+      } else if (domain === 'fan') {
+        commandsHTML = this._renderFanCard(device);
+      } else if (domain === 'media_player') {
+        commandsHTML = this._renderMediaPlayerCard(device);
+      } else if (domain === 'light') {
+        commandsHTML = this._renderLightCard(device);
       } else {
         const genericCommands = this._domainToGenericCommands(domain, device);
         commandsHTML = this.renderDeviceCommands({ ...device, commands: genericCommands });
@@ -353,34 +359,24 @@ class DeviceManager extends Component {
     if (domain === 'fan') {
       const out = {};
       out.off = this._createCommand('button', { code: commands.off || '' }, { display: 'text', icon: '' });
-      const forwardMap = (commands.forward && typeof commands.forward === 'object')
-        ? commands.forward
-        : commands;
-      const reverseMap = (commands.reverse && typeof commands.reverse === 'object')
-        ? commands.reverse
-        : null;
+      const speedMap = (commands.speeds && typeof commands.speeds === 'object')
+        ? commands.speeds
+        : ((commands.forward && typeof commands.forward === 'object') ? commands.forward : commands);
       const speeds = config.fan_model === 'incremental'
         ? Array.from({ length: Number(config.speeds_count || 3) }, (_, i) => String(i + 1))
         : ((config.speeds && config.speeds.length > 0)
           ? config.speeds
-          : (Object.keys(forwardMap).filter(k => k !== 'off' && k !== 'forward' && k !== 'reverse').length > 0
-            ? Object.keys(forwardMap).filter(k => k !== 'off' && k !== 'forward' && k !== 'reverse')
+          : (Object.keys(speedMap).filter(k => k !== 'off' && k !== 'forward' && k !== 'reverse').length > 0
+            ? Object.keys(speedMap).filter(k => k !== 'off' && k !== 'forward' && k !== 'reverse')
             : ['low', 'medium', 'high']));
       const values = {};
       for (const s of speeds) {
-        const code = config.fan_model === 'incremental' ? commands.speed : forwardMap[s];
+        const code = config.fan_model === 'incremental' ? commands.speed : speedMap[s];
         values[s] = code || '';
       }
       out.speed = this._createCommand('options', values, { display: 'text', icon: '' });
-      if (reverseMap) {
-        const reverseValues = {};
-        for (const s of speeds) {
-          reverseValues[s] = reverseMap[s] || '';
-        }
-        out.reverse_speed = this._createCommand('options', reverseValues, { display: 'text', icon: '' });
-      }
       for (const [key, value] of Object.entries(commands)) {
-        if (['off', 'power', 'speed', 'default', 'forward', 'reverse'].includes(key)) continue;
+        if (['off', 'power', 'speed', 'default', 'forward', 'reverse', 'speeds'].includes(key)) continue;
         if (speeds.includes(key)) continue;
         if (typeof value === 'string') {
           out[key] = this._createCommand('button', { code: value }, { display: 'text', icon: '' });
@@ -429,7 +425,7 @@ class DeviceManager extends Component {
 
   _genericToDomainCommands(domain, genericCommands = {}) {
     if (domain === 'fan') {
-      const outCommands = {};
+      const outCommands = { speeds: {} };
       const cfg = { fan_model: 'direct', speeds: [] };
 
       const offCommand = genericCommands.off || genericCommands.power;
@@ -440,17 +436,8 @@ class DeviceManager extends Component {
       const values = speed?.values || {};
       cfg.speeds = Object.keys(values).filter(k => values[k] !== undefined);
       for (const [k, v] of Object.entries(values)) {
-        outCommands[k] = v;
-      }
-
-      const reverse = genericCommands.reverse_speed;
-      const reverseValues = reverse?.values || {};
-      const hasReverse = Object.keys(reverseValues).some(k => (reverseValues[k] || '').trim() !== '');
-      if (hasReverse) {
-        outCommands.forward = { ...values };
-        outCommands.reverse = {};
-        for (const [k, v] of Object.entries(reverseValues)) {
-          outCommands.reverse[k] = v;
+        if ((v || '').trim() !== '') {
+          outCommands.speeds[k] = v;
         }
       }
 
@@ -459,6 +446,10 @@ class DeviceManager extends Component {
         if (cmd?.type === 'button') {
           outCommands[key] = cmd.values?.code || '';
         }
+      }
+
+      if (Object.keys(outCommands.speeds).length === 0) {
+        delete outCommands.speeds;
       }
 
       return { config: cfg, commands: outCommands, table: {} };
@@ -3070,7 +3061,9 @@ const colspan = this._blePickMode ? 7 : 8;
   _renderFanSection(container) {
     const cd = this._getClimateData();
     const cfg = cd.config || {};
-    const hasCommands = cfg.speeds !== undefined || (cfg.fan_model === 'incremental' && cd.commands?.speed !== undefined);
+    const hasDirectSpeeds = (cfg.speeds || []).length > 0 || Object.keys(cd.commands?.speeds || {}).length > 0;
+    const hasIncremental = cfg.fan_model === 'incremental' && cd.commands?.speed !== undefined;
+    const hasCommands = hasDirectSpeeds || hasIncremental;
 
     if (hasCommands) {
       container.innerHTML = this._buildFanTableHTML(cd);
@@ -3137,6 +3130,9 @@ const colspan = this._blePickMode ? 7 : 8;
     const cfg = cd.config || {};
     const model = cfg.fan_model || 'direct';
     const isTestMode = !!this._climateTestMode;
+    const speedMap = (cd.commands && typeof cd.commands.speeds === 'object')
+      ? cd.commands.speeds
+      : cd.commands;
 
     let cellsHTML;
     if (model === 'incremental') {
@@ -3145,11 +3141,13 @@ const colspan = this._blePickMode ? 7 : 8;
         ${this._domainCell('__speed__', 'speed', cd.commands?.speed || '', isTestMode, "deviceManager._onFanCellClick('__speed__')")}
       `;
     } else {
-      const speeds = cfg.speeds || [];
+      const speeds = (cfg.speeds && cfg.speeds.length > 0)
+        ? cfg.speeds
+        : Object.keys(speedMap || {}).filter(k => !['off', 'speed', 'forward', 'reverse', 'default', 'speeds'].includes(k));
       cellsHTML = `
         ${this._domainCell('__off__', 'off', cd.commands?.off || '', isTestMode, "deviceManager._onFanCellClick('__off__')")}
         ${speeds.map(s =>
-          this._domainCell(`__speed_${s}__`, s, cd.commands?.[s] || '', isTestMode, `deviceManager._onFanCellClick('__speed_${s}__')`)
+          this._domainCell(`__speed_${s}__`, s, speedMap?.[s] || '', isTestMode, `deviceManager._onFanCellClick('__speed_${s}__')`)
         ).join('')}
       `;
     }
@@ -3180,8 +3178,9 @@ const colspan = this._blePickMode ? 7 : 8;
       const speeds = [...document.querySelectorAll('input[name="fan_speed"]:checked')].map(cb => cb.value);
       if (speeds.length === 0) { Notification.error('Select at least one speed'); return; }
       cd.config = { fan_model: 'direct', speeds };
-      cd.commands = { off: '' };
-      for (const s of speeds) cd.commands[s] = cd.commands[s] || '';
+      const previousSpeeds = (cd.commands && typeof cd.commands.speeds === 'object') ? cd.commands.speeds : {};
+      cd.commands = { off: cd.commands?.off || '', speeds: {} };
+      for (const s of speeds) cd.commands.speeds[s] = previousSpeeds[s] || '';
     }
     cd.source = 'scratch';
     cd.table = {};
@@ -3213,7 +3212,8 @@ const colspan = this._blePickMode ? 7 : 8;
           cd.commands.speed = fakeInput.value;
         } else {
           const speedName = cellKey.replace(/^__speed_/, '').replace(/__$/, '');
-          cd.commands[speedName] = fakeInput.value;
+          cd.commands.speeds = cd.commands.speeds || {};
+          cd.commands.speeds[speedName] = fakeInput.value;
         }
       }
     } finally {
@@ -3958,34 +3958,21 @@ const colspan = this._blePickMode ? 7 : 8;
     const speeds = declaredSpeeds.length > 0 ? declaredSpeeds : derivedSpeeds;
 
     cd.config = { fan_model: 'direct', speeds };
-    cd.commands = {};
-    if (commandsRoot.off) cd.commands.off = commandsRoot.off;
-    for (const [key, value] of Object.entries(commandsRoot)) {
-      if (['off', 'default', 'speed', 'forward', 'reverse'].includes(key)) continue;
-      if (typeof value === 'string') {
-        cd.commands[key] = value;
-      }
-    }
+    cd.commands = { off: commandsRoot.off || '', speeds: {} };
     for (const speed of speeds) {
       const raw = forwardSrc[speed];
       if (raw && typeof raw === 'string') {
-        cd.commands[speed] = raw;
+        cd.commands.speeds[speed] = raw;
       } else if (raw && typeof raw === 'object' && typeof raw.code === 'string') {
-        cd.commands[speed] = raw.code;
+        cd.commands.speeds[speed] = raw.code;
       }
     }
-    const hasReverse = speeds.some(speed => {
-      const raw = reverseSrc[speed];
-      return (typeof raw === 'string' && raw) || (raw && typeof raw === 'object' && typeof raw.code === 'string');
-    });
-    if (hasReverse) {
-      cd.commands.forward = {};
-      cd.commands.reverse = {};
-      for (const speed of speeds) {
-        const fRaw = forwardSrc[speed];
-        const rRaw = reverseSrc[speed];
-        cd.commands.forward[speed] = typeof fRaw === 'string' ? fRaw : (fRaw?.code || '');
-        cd.commands.reverse[speed] = typeof rRaw === 'string' ? rRaw : (rRaw?.code || '');
+    if (Object.keys(cd.commands.speeds).length === 0) {
+      for (const [key, value] of Object.entries(commandsRoot)) {
+        if (['off', 'default', 'speed', 'forward', 'reverse', 'speeds'].includes(key)) continue;
+        if (typeof value === 'string' && value) {
+          cd.commands.speeds[key] = value;
+        }
       }
     }
     cd.table = {};
@@ -4190,7 +4177,12 @@ const colspan = this._blePickMode ? 7 : 8;
       `;
     }
 
-    const speeds = config.speeds || Object.keys(commands).filter(k => k !== 'off');
+    const directSpeedMap = (commands.speeds && typeof commands.speeds === 'object')
+      ? commands.speeds
+      : commands;
+    const speeds = (config.speeds && config.speeds.length > 0)
+      ? config.speeds
+      : Object.keys(directSpeedMap).filter(k => !['off', 'speed', 'forward', 'reverse', 'default', 'speeds'].includes(k));
     return `
       <div class="climate-card-controls">
         <div class="command-toggle-full-width" data-fan-power="${this._escapeAttr(id)}">
@@ -4288,7 +4280,12 @@ const colspan = this._blePickMode ? 7 : 8;
           throw new Error(result?.message || `Failed fan action ${speedOrOff}`);
         }
       } else {
-        const code = device.commands?.[speedOrOff];
+        const speedMap = (device.commands?.speeds && typeof device.commands.speeds === 'object')
+          ? device.commands.speeds
+          : (device.commands || {});
+        const code = speedOrOff === 'off'
+          ? device.commands?.off
+          : speedMap?.[speedOrOff];
         if (!code) { Notification.warning(`No code learned for "${speedOrOff}"`); return; }
         await DataManager.sendCommand(deviceId, 'ir', speedOrOff, code);
       }

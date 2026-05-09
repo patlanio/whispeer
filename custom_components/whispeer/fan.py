@@ -93,16 +93,22 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
         self._commands = device_data.get("commands") or {}
         self._fan_model: str = self._config.get("fan_model", "direct")
         self._speeds: list[str] = self._config.get("speeds", [])
+        self._speed_codes: dict[str, str] = self._extract_speed_codes(self._commands)
         self._speeds_count: int = int(self._config.get("speeds_count", 3))
         self._current_preset: str | None = None
         self._current_level: int = 0
         self._is_on: bool = False
 
+        base_features = FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF
+
+        if self._fan_model == "direct" and not self._speeds:
+            self._speeds = list(self._speed_codes.keys())
+
         if self._fan_model == "incremental":
-            self._attr_supported_features = FanEntityFeature.SET_SPEED
+            self._attr_supported_features = base_features | FanEntityFeature.SET_SPEED
             self._attr_percentage_step = 100.0 / self._speeds_count
         else:
-            self._attr_supported_features = FanEntityFeature.PRESET_MODE
+            self._attr_supported_features = base_features | FanEntityFeature.PRESET_MODE
             self._attr_preset_modes = self._speeds
 
     @property
@@ -146,7 +152,7 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
         self._fire_state_update()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        code = self._commands.get(preset_mode)
+        code = self._speed_codes.get(preset_mode)
         if not code:
             _LOGGER.warning("No IR code for fan speed '%s'", preset_mode)
             return
@@ -205,3 +211,24 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
                 "percentage": self.percentage,
             },
         })
+
+    @staticmethod
+    def _extract_speed_codes(commands: dict[str, Any]) -> dict[str, str]:
+        """Return direct fan speed codes from new and legacy schemas."""
+        if not isinstance(commands, dict):
+            return {}
+
+        structured = commands.get("speeds")
+        if isinstance(structured, dict):
+            return {
+                str(k): v
+                for k, v in structured.items()
+                if isinstance(v, str) and v
+            }
+
+        ignored = {"off", "speed", "forward", "reverse", "default", "speeds"}
+        return {
+            str(k): v
+            for k, v in commands.items()
+            if isinstance(v, str) and k not in ignored and v
+        }
