@@ -89,9 +89,6 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
     """Representation of an IR-controlled AC unit via Whispeer."""
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE
-    )
 
     def __init__(self, device_data: dict[str, Any], api_client: Any) -> None:
         super().__init__(device_data, "climate", {}, api_client)
@@ -109,6 +106,11 @@ class WhispeerClimate(WhispeerBaseEntity, ClimateEntity):
         self._attr_min_temp = float(config.get("min_temp", 16))
         self._attr_max_temp = float(config.get("max_temp", 30))
         self._attr_target_temperature_step = 1.0
+
+        features = ClimateEntityFeature.TARGET_TEMPERATURE
+        if fan_modes:
+            features |= ClimateEntityFeature.FAN_MODE
+        self._attr_supported_features = features
 
         self._attr_hvac_mode = HVACMode.OFF
         self._attr_fan_mode = fan_modes[0] if fan_modes else "auto"

@@ -17,6 +17,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.components import frontend
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .api import WhispeerApiClient
@@ -280,23 +281,48 @@ async def async_cleanup_removed_entities(
         stored_device_ids: The set of device IDs **currently** present in
             Whispeer storage after the mutation (add / remove / sync).
     """
+    def _is_uid_for_stored_device(uid: str) -> bool:
+        if not uid.startswith("whispeer_"):
+            return False
+        for did in sorted(stored_device_ids, key=len, reverse=True):
+            if uid.startswith(f"whispeer_{did}_"):
+                return True
+        return False
+
     registry = er.async_get(hass)
     entry_entities = er.async_entries_for_config_entry(registry, entry.entry_id)
     for entity_entry in entry_entities:
         uid = entity_entry.unique_id
         if not uid.startswith("whispeer_"):
             continue
-        parts = uid.split("_", 2)
-        if len(parts) < 3:
-            continue
-        device_id = parts[1]
-        if device_id not in stored_device_ids:
+        if not _is_uid_for_stored_device(uid):
             _LOGGER.debug(
-                "Removing stale entity %s (device %s no longer in storage)",
+                "Removing stale entity %s (no matching stored device)",
                 entity_entry.entity_id,
-                device_id,
             )
             registry.async_remove(entity_entry.entity_id)
+
+    device_registry = dr.async_get(hass)
+    entry_devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    for dev_entry in entry_devices:
+        whispeer_identifier = None
+        for domain, did in dev_entry.identifiers:
+            if domain == DOMAIN:
+                whispeer_identifier = str(did)
+                break
+        if not whispeer_identifier:
+            continue
+        if whispeer_identifier in stored_device_ids:
+            continue
+        _LOGGER.debug(
+            "Removing stale device registry entry %s (device %s no longer in storage)",
+            dev_entry.id,
+            whispeer_identifier,
+        )
+        try:
+            device_registry.async_remove_device(dev_entry.id)
+        except Exception as exc:
+            _LOGGER.debug("Failed removing stale device entry %s: %s", dev_entry.id, exc)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):

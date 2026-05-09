@@ -133,6 +133,10 @@ class DataManager {
     return result;
   }
 
+  static async clearWhispeerEntities() {
+    return await WSManager.call('whispeer/clear_entities');
+  }
+
   static getDevice(id) {
     return DataManager.devices[id] || null;
   }

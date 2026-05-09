@@ -13,6 +13,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     CMD_TYPE_BUTTON,
     CMD_TYPE_GROUP,
+    DEVICE_DOMAIN_LIGHT,
+    DEVICE_DOMAIN_MEDIA_PLAYER,
     DOMAIN,
     SIGNAL_WHISPEER_DATA_UPDATED,
     SIGNAL_WHISPEER_NEW_DEVICE,
@@ -20,6 +22,19 @@ from .const import (
 from .entity import WhispeerBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+_DOMAIN_BUTTON_COMMANDS: dict[str, tuple[str, ...]] = {
+    DEVICE_DOMAIN_LIGHT: ("brighten", "dim", "colder", "warmer", "night"),
+    DEVICE_DOMAIN_MEDIA_PLAYER: (
+        "on",
+        "off",
+        "mute",
+        "volumeUp",
+        "volumeDown",
+        "previousChannel",
+        "nextChannel",
+    ),
+}
 
 
 async def async_setup_entry(
@@ -54,6 +69,26 @@ async def async_setup_entry(
                             )
                         )
                         registered.add(uid)
+
+        domain = device.get("domain")
+        if domain in _DOMAIN_BUTTON_COMMANDS:
+            for command_key in _DOMAIN_BUTTON_COMMANDS[domain]:
+                code = (device.get("commands") or {}).get(command_key)
+                if not isinstance(code, str):
+                    continue
+                uid = f"whispeer_{device['id']}_domain_btn_{command_key}"
+                if uid in registered:
+                    continue
+                result.append(
+                    WhispeerDomainCommandButton(
+                        device,
+                        command_key,
+                        code,
+                        api,
+                    )
+                )
+                registered.add(uid)
+
         return result
 
     devices = await api.async_get_devices()
@@ -147,6 +182,37 @@ class WhispeerGroupButton(WhispeerBaseEntity, ButtonEntity):
             "device_id": self._device_data["id"],
             "command_name": self._command_name,
             "option_key": self._option_key,
+            "action": "press",
+        })
+
+
+class WhispeerDomainCommandButton(WhispeerBaseEntity, ButtonEntity):
+    """ButtonEntity for flat string commands on domain devices."""
+
+    def __init__(
+        self,
+        device_data: dict[str, Any],
+        command_name: str,
+        command_code: str,
+        api_client: Any,
+    ) -> None:
+        super().__init__(
+            device_data,
+            f"domain_btn_{command_name}",
+            {"values": {"code": command_code}},
+            api_client,
+        )
+        self._flat_command_name = command_name
+        self._attr_name = command_name
+
+    async def async_press(self) -> None:
+        code = self._command_cfg.get("values", {}).get("code", "")
+        if code:
+            await self._async_send_code(code)
+        self.hass.bus.async_fire("whispeer_state_update", {
+            "entity_id": self.entity_id,
+            "device_id": self._device_data["id"],
+            "command_name": self._flat_command_name,
             "action": "press",
         })
 

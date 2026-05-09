@@ -226,6 +226,21 @@ class WhispeerFan(WhispeerBaseEntity, FanEntity):
                 if isinstance(v, str) and v
             }
 
+        forward = commands.get("forward")
+        if isinstance(forward, dict):
+            forward_default = forward.get("default")
+            if isinstance(forward_default, dict):
+                return {
+                    str(k): v
+                    for k, v in forward_default.items()
+                    if isinstance(v, str) and v
+                }
+            return {
+                str(k): v
+                for k, v in forward.items()
+                if isinstance(v, str) and v and k not in {"off", "speed", "forward", "reverse", "default"}
+            }
+
         ignored = {"off", "speed", "forward", "reverse", "default", "speeds"}
         return {
             str(k): v

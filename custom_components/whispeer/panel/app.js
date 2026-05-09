@@ -56,6 +56,7 @@ class WhispeerApp {
         <button type="button" class="btn btn-small btn-outlined" id="advancedExportBtn">⬇️ Export</button>
         <button type="button" class="btn btn-small btn-outlined" id="advancedImportBtn">⬆️ Import</button>
         <button type="button" class="btn btn-small btn-danger btn-outlined" id="advancedClearBtn">🗑️ Clear Devices</button>
+        <button type="button" class="btn btn-small btn-danger btn-outlined" id="advancedClearEntitiesBtn">🧹 Clear All Whispeer Entities</button>
       </div>
     `;
 
@@ -160,6 +161,22 @@ class WhispeerApp {
     } catch (error) {
       Notification.error('Failed to clear devices');
       console.error('Clear error:', error);
+      this.deviceManager.renderDevices();
+    } finally {
+      this.hideLoadingState();
+    }
+  }
+
+  async clearWhispeerEntities() {
+    this.showLoadingState();
+    try {
+      const result = await DataManager.clearWhispeerEntities();
+      await this.deviceManager.loadDevices();
+      const removed = Number(result?.removed_entities || 0);
+      Notification.success(`Whispeer entities rebuilt (${removed} removed)`);
+    } catch (error) {
+      Notification.error('Failed to clear Whispeer entities');
+      console.error('Clear entities error:', error);
       this.deviceManager.renderDevices();
     } finally {
       this.hideLoadingState();
@@ -271,12 +288,19 @@ class WhispeerApp {
     const exportBtn = root.querySelector('#advancedExportBtn');
     const importBtn = root.querySelector('#advancedImportBtn');
     const clearBtn = root.querySelector('#advancedClearBtn');
+    const clearEntitiesBtn = root.querySelector('#advancedClearEntitiesBtn');
 
     if (exportBtn) exportBtn.onclick = () => this.exportDevices();
     if (importBtn) importBtn.onclick = () => this.importDevices();
     if (clearBtn) {
       clearBtn.onclick = async () => {
         await this.clearDevices();
+        this.settingsModal.close();
+      };
+    }
+    if (clearEntitiesBtn) {
+      clearEntitiesBtn.onclick = async () => {
+        await this.clearWhispeerEntities();
         this.settingsModal.close();
       };
     }

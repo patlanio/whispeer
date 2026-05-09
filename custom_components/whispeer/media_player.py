@@ -93,15 +93,15 @@ class WhispeerMediaPlayer(WhispeerBaseEntity, MediaPlayerEntity):
         self._current_source: str | None = None
 
         features = MediaPlayerEntityFeature(0)
-        if self._commands.get("on") or self._commands.get("off"):
+        if "on" in self._commands or "off" in self._commands:
             features |= MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
-        if self._commands.get("volumeUp") or self._commands.get("volumeDown"):
+        if "volumeUp" in self._commands or "volumeDown" in self._commands:
             features |= MediaPlayerEntityFeature.VOLUME_STEP
-        if self._commands.get("mute"):
+        if "mute" in self._commands:
             features |= MediaPlayerEntityFeature.VOLUME_MUTE
-        if self._commands.get("previousChannel"):
+        if "previousChannel" in self._commands:
             features |= MediaPlayerEntityFeature.PREVIOUS_TRACK
-        if self._commands.get("nextChannel"):
+        if "nextChannel" in self._commands:
             features |= MediaPlayerEntityFeature.NEXT_TRACK
         if self._sources:
             features |= MediaPlayerEntityFeature.SELECT_SOURCE

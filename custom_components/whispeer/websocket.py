@@ -12,6 +12,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 from .learn_provider import LEARNING_SESSIONS
@@ -35,6 +36,40 @@ def _get_coordinator(hass: HomeAssistant):
         if hasattr(entry_data, "api"):
             return entry_id, entry_data
     return None, None
+
+
+async def _async_clear_whispeer_registry_entries(
+    hass: HomeAssistant,
+    entry_id: str | None = None,
+) -> dict[str, int]:
+    """Remove all Whispeer entities from entity registry and stale Whispeer devices."""
+    entity_registry = er.async_get(hass)
+    removed_entities = 0
+
+    whispeer_entities = [
+        entry.entity_id
+        for entry in entity_registry.entities.values()
+        if entry.platform == DOMAIN
+    ]
+    for eid in whispeer_entities:
+        entity_registry.async_remove(eid)
+        removed_entities += 1
+
+    removed_devices = 0
+    if entry_id:
+        device_registry = dr.async_get(hass)
+        for dev_entry in dr.async_entries_for_config_entry(device_registry, entry_id):
+            if any(domain == DOMAIN for domain, _ in dev_entry.identifiers):
+                try:
+                    device_registry.async_remove_device(dev_entry.id)
+                    removed_devices += 1
+                except Exception as exc:
+                    _LOGGER.debug("Failed removing device registry entry %s: %s", dev_entry.id, exc)
+
+    return {
+        "removed_entities": removed_entities,
+        "removed_devices": removed_devices,
+    }
 
 
 @callback
@@ -84,11 +119,57 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         connection: websocket_api.ActiveConnection,
         msg: dict,
     ) -> None:
+        entry_id, _coordinator = _get_coordinator(hass)
         api = _get_api(hass)
         if not api:
             connection.send_error(msg["id"], "not_found", "Whispeer not initialized")
             return
         result = await api.async_remove_device(msg["device_id"])
+
+        if result.get("status") == "success" and entry_id:
+            try:
+                await hass.config_entries.async_reload(entry_id)
+                result["reloaded"] = True
+            except Exception as reload_err:
+                _LOGGER.error(
+                    "Failed to reload entry %s after remove: %s", entry_id, reload_err
+                )
+                result["reloaded"] = False
+
+        connection.send_result(msg["id"], result)
+
+    @websocket_api.websocket_command({
+        vol.Required("type"): "whispeer/clear_entities",
+    })
+    @websocket_api.async_response
+    async def ws_clear_entities(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        entry_id, coordinator = _get_coordinator(hass)
+        if not coordinator:
+            connection.send_error(msg["id"], "not_found", "Whispeer not initialized")
+            return
+
+        cleanup = await _async_clear_whispeer_registry_entries(hass, entry_id)
+        result: dict[str, Any] = {
+            "status": "success",
+            "message": "Whispeer entities cleared",
+            **cleanup,
+        }
+
+        try:
+            await hass.config_entries.async_reload(entry_id)
+            result["reloaded"] = True
+        except Exception as reload_err:
+            _LOGGER.error(
+                "Failed to reload entry %s after clear_entities: %s",
+                entry_id,
+                reload_err,
+            )
+            result["reloaded"] = False
+
         connection.send_result(msg["id"], result)
 
     @websocket_api.websocket_command({
@@ -122,16 +203,8 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
             connection.send_error(msg["id"], "not_found", "Whispeer not initialized")
             return
 
-        entity_registry = er.async_get(hass)
-        whispeer_entities = [
-            entry.entity_id
-            for entry in entity_registry.entities.values()
-            if entry.platform == DOMAIN
-        ]
-        for eid in whispeer_entities:
-            entity_registry.async_remove(eid)
-
         result = await coordinator.api.async_clear_devices()
+        result.update(await _async_clear_whispeer_registry_entries(hass, entry_id))
 
         try:
             await hass.config_entries.async_reload(entry_id)
@@ -753,6 +826,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         ws_get_devices,
         ws_add_device,
         ws_remove_device,
+        ws_clear_entities,
         ws_sync_devices,
         ws_clear_devices,
         ws_send_command,
