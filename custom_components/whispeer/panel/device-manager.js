@@ -38,33 +38,33 @@ class DeviceManager extends Component {
       `,
       
       addDeviceCard: `
-        <div class="add-device-card" onclick="deviceManager.openAddDeviceModal()">
+        <div class="add-device-card" data-testid="add-device-card" onclick="deviceManager.openAddDeviceModal()">
           <div class="add-device-icon">➕</div>
           <div>Add New Device</div>
         </div>
       `,
 
       deviceForm: `
-        <form id="deviceForm">
+        <form id="deviceForm" data-testid="device-form">
           {{formFields}}
           <div class="commands-section">
             <div class="commands-header">
               <h4>Commands</h4>
               <div class="commands-header-actions">
-                <button type="button" class="btn btn-small btn-outlined" id="fastLearnBtn" style="display:none" onclick="deviceManager.startFastLearn()">⚡ Fast Learn</button>
-                <button type="button" class="btn btn-small btn-danger" id="fastLearnStopBtn" style="display:none" onclick="deviceManager.stopFastLearn()">⏹ Stop</button>
-                <button type="button" class="btn btn-small btn-outlined" id="bulkLearnBtn" style="display:none" onclick="deviceManager.openBulkLearnModal()">📡 Bulk Learn</button>
-                <button type="button" class="btn btn-small" onclick="deviceManager.addInlineCommand()">+ Add Command</button>
+                <button type="button" class="btn btn-small btn-outlined" id="fastLearnBtn" data-testid="fast-learn-button" style="display:none" onclick="deviceManager.startFastLearn()">⚡ Fast Learn</button>
+                <button type="button" class="btn btn-small btn-danger" id="fastLearnStopBtn" data-testid="fast-learn-stop-button" style="display:none" onclick="deviceManager.stopFastLearn()">⏹ Stop</button>
+                <button type="button" class="btn btn-small btn-outlined" id="bulkLearnBtn" data-testid="bulk-learn-button" style="display:none" onclick="deviceManager.openBulkLearnModal()">📡 Bulk Learn</button>
+                <button type="button" class="btn btn-small" data-testid="add-command-button" onclick="deviceManager.addInlineCommand()">+ Add Command</button>
               </div>
             </div>
-            <div class="commands-list" id="commandsList">{{commandsList}}</div>
+            <div class="commands-list" id="commandsList" data-testid="commands-list">{{commandsList}}</div>
           </div>
           <div class="modal-controls">
             <div class="modal-controls-left">
-              <button type="button" class="btn btn-outlined" onclick="deviceManager.closeDeviceModal()">Cancel</button>
+              <button type="button" class="btn btn-outlined" data-testid="cancel-device-button" onclick="deviceManager.closeDeviceModal()">Cancel</button>
               {{deleteButton}}
             </div>
-            <button type="submit" class="btn">{{saveButtonText}}</button>
+            <button type="submit" class="btn" data-testid="save-device-button">{{saveButtonText}}</button>
           </div>
         </form>
         {{automationsSection}}
@@ -904,7 +904,7 @@ class DeviceManager extends Component {
     const commandsList = this.renderCommandsList(this.tempCommands);
 
     const deleteButton = isEdit ?
-      '<button type="button" class="btn btn-delete" onclick="deviceManager.deleteDevice()">Delete Device</button>' : '';
+      '<button type="button" class="btn btn-delete" data-testid="delete-device-button" onclick="deviceManager.deleteDevice()">Delete Device</button>' : '';
 
     const automationsSection = isEdit ? this._renderAutomationsSection(device.id) : '';
 
@@ -973,10 +973,10 @@ class DeviceManager extends Component {
           <div class="input-group-prepend">
             <label class="input-group-text" for="deviceFrequency">Frequency</label>
           </div>
-          <input type="number" id="deviceFrequency" name="frequency" class="form-input" step="any"
+          <input type="number" id="deviceFrequency" name="frequency" class="form-input" data-testid="device-frequency-input" step="any"
                  placeholder="e.g. 433.92"
                  value="${this._escapeAttr(String(frequency))}">
-          <button type="button" class="input-group-append-btn" id="findFrequencyBtn"
+          <button type="button" class="input-group-append-btn" id="findFrequencyBtn" data-testid="find-frequency-button"
                   onclick="deviceManager.findFrequency()">Find</button>
         </div>
       </div>
@@ -988,9 +988,9 @@ class DeviceManager extends Component {
           <div class="input-group-prepend">
             <label class="input-group-text" for="smartirCommunityCode">Community code <a id="communityHelpLink" href="${this._escapeAttr(docsUrl)}" target="_blank" rel="noopener">(?)</a></label>
           </div>
-          <input type="text" id="smartirCommunityCode" class="form-input" placeholder="e.g. 1120"
+          <input type="text" id="smartirCommunityCode" class="form-input" data-testid="community-code-input" placeholder="e.g. 1120"
                  value="${this._escapeAttr(communityCode)}">
-          <button type="button" class="input-group-append-btn" id="communityImportBtn"
+          <button type="button" class="input-group-append-btn" id="communityImportBtn" data-testid="community-import-button"
                   onclick="deviceManager._importSmartIR()">Import</button>
         </div>
       </div>
@@ -1003,7 +1003,7 @@ class DeviceManager extends Component {
             <div class="input-group-prepend">
               <label class="input-group-text" for="deviceName">Name</label>
             </div>
-            <input type="text" id="deviceName" name="name" class="form-input" placeholder="Device name"
+                 <input type="text" id="deviceName" name="name" class="form-input" data-testid="device-name-input" placeholder="Device name"
                    value="${this._escapeAttr(device.name || '')}" required>
           </div>
         </div>
@@ -1012,7 +1012,7 @@ class DeviceManager extends Component {
             <div class="input-group-prepend">
               <label class="input-group-text" for="deviceDomain">Domain</label>
             </div>
-            <select id="deviceDomain" name="domain" class="form-select">
+            <select id="deviceDomain" name="domain" class="form-select" data-testid="device-domain-select">
               ${domainOptions}
             </select>
           </div>
@@ -1022,7 +1022,7 @@ class DeviceManager extends Component {
             <div class="input-group-prepend">
               <label class="input-group-text" for="deviceType">Type</label>
             </div>
-            <select id="deviceType" name="type" class="form-select">
+            <select id="deviceType" name="type" class="form-select" data-testid="device-type-select">
               ${typeOptions}
             </select>
           </div>
@@ -1032,7 +1032,7 @@ class DeviceManager extends Component {
             <div class="input-group-prepend">
               <label class="input-group-text" for="deviceInterface">Learn/Send from</label>
             </div>
-            <select id="deviceInterface" name="interface" class="form-select">
+            <select id="deviceInterface" name="interface" class="form-select" data-testid="device-interface-select">
               <option value="">&#8987; Loading...</option>
             </select>
           </div>
@@ -1044,7 +1044,7 @@ class DeviceManager extends Component {
             <div class="input-group-prepend">
               <label class="input-group-text" for="deviceEmitInterval">Emit interval</label>
             </div>
-            <input type="number" id="deviceEmitInterval" name="emit_interval" class="form-input"
+                 <input type="number" id="deviceEmitInterval" name="emit_interval" class="form-input" data-testid="device-emit-interval-input"
                    placeholder="0.4" step="any" min="0"
                    value="${this._escapeAttr(String(emitInterval))}">
           </div>
@@ -1203,20 +1203,20 @@ class DeviceManager extends Component {
     
     const id = Utils.generateId();
     const deleteButton = isExisting
-      ? `<button type="button" class="command-inline-btn delete" onclick="deviceManager.deleteCommand('${this._escapeAttr(name)}')">Delete</button>`
-      : `<button type="button" class="command-inline-btn delete" onclick="this.closest('.command-container').remove()">Delete</button>`;
+      ? `<button type="button" class="command-inline-btn delete" data-testid="delete-command-button" onclick="deviceManager.deleteCommand('${this._escapeAttr(name)}')">Delete</button>`
+      : `<button type="button" class="command-inline-btn delete" data-testid="delete-command-button" onclick="this.closest('.command-container').remove()">Delete</button>`;
 
     let codeField = '';
     if (type === 'button') {
-      const learnButton = `<button type="button" class="command-inline-btn learn" 
+      const learnButton = `<button type="button" class="command-inline-btn learn" data-testid="learn-command-button"
                 onclick="deviceManager.learnCommand(this)">Learn</button>`;
       
       codeField = `
-        <input type="text" class="command-inline-input code" 
+        <input type="text" class="command-inline-input code" data-testid="command-code-input"
                placeholder="code" value="${this._escapeAttr(values.code || '')}" 
                data-field="code">
         ${learnButton}
-        <button type="button" class="command-inline-btn test" 
+        <button type="button" class="command-inline-btn test" data-testid="test-command-button"
                 onclick="deviceManager.testInlineCommand(this)">Test</button>
       `;
     }
@@ -1229,24 +1229,24 @@ class DeviceManager extends Component {
       let optionsHtml = '';
       
       if (type === 'light' || type === 'switch') {
-        const learnButtonOn = `<button type="button" class="command-inline-btn learn" 
+        const learnButtonOn = `<button type="button" class="command-inline-btn learn" data-testid="learn-option-button"
                   onclick="deviceManager.learnOptionCommand(this, 'on')">Learn</button>`;
-        const learnButtonOff = `<button type="button" class="command-inline-btn learn" 
+        const learnButtonOff = `<button type="button" class="command-inline-btn learn" data-testid="learn-option-button"
                   onclick="deviceManager.learnOptionCommand(this, 'off')">Learn</button>`;
         
         optionsHtml += `
           <div class="option-field">
             <input type="text" value="on" readonly class="command-inline-input">
-            <input type="text" placeholder="On command code" value="${options.on || ''}" class="command-inline-input" data-option="on">
+              <input type="text" placeholder="On command code" value="${options.on || ''}" class="command-inline-input" data-testid="command-option-code-input" data-option="on">
             ${learnButtonOn}
-            <button type="button" class="command-inline-btn test" 
+              <button type="button" class="command-inline-btn test" data-testid="test-option-button"
                     onclick="deviceManager.testOptionCommand(this, 'on')">Test</button>
           </div>
           <div class="option-field">
             <input type="text" value="off" readonly class="command-inline-input">
-            <input type="text" placeholder="Off command code" value="${options.off || ''}" class="command-inline-input" data-option="off">
+              <input type="text" placeholder="Off command code" value="${options.off || ''}" class="command-inline-input" data-testid="command-option-code-input" data-option="off">
             ${learnButtonOff}
-            <button type="button" class="command-inline-btn test" 
+              <button type="button" class="command-inline-btn test" data-testid="test-option-button"
                     onclick="deviceManager.testOptionCommand(this, 'off')">Test</button>
           </div>
         `;
@@ -1256,7 +1256,7 @@ class DeviceManager extends Component {
         );
         
         filteredOptions.forEach(([key, value]) => {
-          const learnButton = `<button type="button" class="command-inline-btn learn"
+          const learnButton = `<button type="button" class="command-inline-btn learn" data-testid="learn-option-button"
                     onclick="deviceManager.learnOptionCommand(this)">Learn</button>`;
 
           optionsHtml += `
@@ -1264,17 +1264,17 @@ class DeviceManager extends Component {
               <input type="${type === 'numeric' ? 'number' : 'text'}"
                      placeholder="${type === 'numeric' ? 'Number' : 'Option'}"
                      value="${key}" class="command-inline-input" data-option-key>
-              <input type="text" placeholder="Command code" value="${value}" class="command-inline-input" data-option-value>
+              <input type="text" placeholder="Command code" value="${value}" class="command-inline-input" data-testid="command-option-code-input" data-option-value>
               ${learnButton}
-              <button type="button" class="command-inline-btn test"
+              <button type="button" class="command-inline-btn test" data-testid="test-option-button"
                       onclick="deviceManager.testOptionCommand(this, '${key}')">Test</button>
-              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">Delete</button>
+              <button type="button" class="command-inline-btn delete" data-testid="delete-option-button" onclick="deviceManager.removeOptionField(this)">Delete</button>
             </div>
           `;
         });
 
         if (filteredOptions.length === 0) {
-          const learnButton = `<button type="button" class="command-inline-btn learn"
+          const learnButton = `<button type="button" class="command-inline-btn learn" data-testid="learn-option-button"
                     onclick="deviceManager.learnOptionCommand(this)">Learn</button>`;
 
           optionsHtml += `
@@ -1282,11 +1282,11 @@ class DeviceManager extends Component {
               <input type="${type === 'numeric' ? 'number' : 'text'}"
                      placeholder="${type === 'numeric' ? 'Number' : 'Option'}"
                      value="" class="command-inline-input" data-option-key>
-              <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
+              <input type="text" placeholder="Command code" value="" class="command-inline-input" data-testid="command-option-code-input" data-option-value>
               ${learnButton}
-              <button type="button" class="command-inline-btn test"
+              <button type="button" class="command-inline-btn test" data-testid="test-option-button"
                       onclick="deviceManager.testOptionCommand(this)">Test</button>
-              <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">Delete</button>
+              <button type="button" class="command-inline-btn delete" data-testid="delete-option-button" onclick="deviceManager.removeOptionField(this)">Delete</button>
             </div>
           `;
         }
@@ -1298,20 +1298,20 @@ class DeviceManager extends Component {
             ${optionsHtml}
           </div>
           ${(type === 'numeric' || type === 'options' || type === 'group') ? 
-            `<button type="button" class="btn btn-small" onclick="deviceManager.addOptionField(this, '${type}')">+ Add Option</button>` : ''}
+            `<button type="button" class="btn btn-small" data-testid="add-option-button" onclick="deviceManager.addOptionField(this, '${type}')">+ Add Option</button>` : ''}
         </div>
       `;
     }
 
     return `
-      <div class="command-container" data-command-id="${id}">
+      <div class="command-container" data-command-id="${id}" data-testid="command-container">
         <div class="command-inline-form">
-          <select class="command-inline-select" onchange="deviceManager.onInlineTypeChange(this)">
+          <select class="command-inline-select" data-testid="command-type-select" onchange="deviceManager.onInlineTypeChange(this)">
             ${Object.entries(APP_CONFIG.COMMAND_TYPES).map(([key, config]) => 
               `<option value="${key}" ${key === type ? 'selected' : ''}>${config.title}</option>`
             ).join('')}
           </select>
-          <input type="text" class="command-inline-input name" 
+          <input type="text" class="command-inline-input name" data-testid="command-name-input"
                  placeholder="Command name" value="${name}">
           ${isExisting && name ? `<input type="hidden" class="original-command-name" value="${name}">` : ''}
           ${codeField}
@@ -1479,11 +1479,15 @@ class DeviceManager extends Component {
         }
         deviceData.commands = domainData.commands;
         deviceData.source = domainData.source;
+        if (domainData._smartirNum) {
+          deviceData._smartirNum = domainData._smartirNum;
+        }
         if (deviceDomain === 'climate') {
           deviceData.sensors = domainData.sensors;
         }
       }
     } else if (deviceDomain !== 'default') {
+      const domainData = this._collectDomainData(deviceDomain);
       const mapped = this._genericToDomainCommands(deviceDomain, this.tempCommands);
       deviceData.config = mapped.config;
       deviceData.commands = mapped.commands;
@@ -1492,7 +1496,10 @@ class DeviceManager extends Component {
       } else {
         delete deviceData.table;
       }
-      deviceData.source = deviceData.source || 'scratch';
+      deviceData.source = domainData?.source || deviceData.source || 'scratch';
+      if (domainData?._smartirNum) {
+        deviceData._smartirNum = domainData._smartirNum;
+      }
     }
 
     if (deviceData.emit_interval !== undefined && deviceData.emit_interval !== '') {
@@ -1916,18 +1923,18 @@ class DeviceManager extends Component {
 
   addOptionField(button, type) {
     const optionsList = button.closest('.command-options-section').querySelector('.options-list');
-    const learnButton = `<button type="button" class="command-inline-btn learn"
+    const learnButton = `<button type="button" class="command-inline-btn learn" data-testid="learn-option-button"
               onclick="deviceManager.learnOptionCommand(this)">Learn</button>`;
     const newField = `
       <div class="option-field">
         <input type="${type === 'numeric' ? 'number' : 'text'}"
                placeholder="${type === 'numeric' ? 'Number' : 'Option'}"
                value="" class="command-inline-input" data-option-key>
-        <input type="text" placeholder="Command code" value="" class="command-inline-input" data-option-value>
+        <input type="text" placeholder="Command code" value="" class="command-inline-input" data-testid="command-option-code-input" data-option-value>
         ${learnButton}
-        <button type="button" class="command-inline-btn test"
+        <button type="button" class="command-inline-btn test" data-testid="test-option-button"
                 onclick="deviceManager.testOptionCommand(this)">Test</button>
-        <button type="button" class="command-inline-btn delete" onclick="deviceManager.removeOptionField(this)">Delete</button>
+        <button type="button" class="command-inline-btn delete" data-testid="delete-option-button" onclick="deviceManager.removeOptionField(this)">Delete</button>
       </div>
     `;
     optionsList.insertAdjacentHTML('beforeend', newField);
