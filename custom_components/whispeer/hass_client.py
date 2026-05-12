@@ -13,6 +13,8 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er, device_registry as dr
 
+from .test_support import get_test_harness
+
 _LOGGER = logging.getLogger(__name__)
 
 class HassClient:
@@ -22,6 +24,10 @@ class HassClient:
         self._hass = hass
         self._ble_buffer: dict[str, dict] = {}
         self._ble_cancel_cb = None
+        self._test_harness = get_test_harness(hass)
+
+    def _record_test_event(self, category: str, action: str, **details: Any) -> None:
+        self._test_harness.record(category, action, **details)
 
 
     async def async_discover_hubs(self) -> list[dict[str, Any]]:
@@ -59,6 +65,7 @@ class HassClient:
                 "capabilities": caps,
             })
 
+        self._record_test_event("hass", "discover_hubs_completed", count=len(hubs))
         return hubs
 
 
@@ -80,6 +87,13 @@ class HassClient:
             len(b64),
         )
 
+        self._record_test_event(
+            "hass",
+            "remote_send_command_requested",
+            entity_id=entity_id,
+            command=[f"b64:{b64}"],
+        )
+
         try:
             await self._hass.services.async_call(
                 "remote",
@@ -90,9 +104,21 @@ class HassClient:
                 },
                 blocking=True,
             )
+            self._record_test_event(
+                "hass",
+                "remote_send_command_completed",
+                entity_id=entity_id,
+                success=True,
+            )
             return True
         except Exception:
             _LOGGER.exception("Failed to send command on %s", entity_id)
+            self._record_test_event(
+                "hass",
+                "remote_send_command_completed",
+                entity_id=entity_id,
+                success=False,
+            )
             return False
 
 
@@ -128,6 +154,16 @@ class HassClient:
             timeout,
         )
 
+        self._record_test_event(
+            "hass",
+            "remote_learn_command_requested",
+            entity_id=entity_id,
+            command=command,
+            command_type=command_type,
+            timeout=timeout,
+            device=device,
+        )
+
         wait_timeout = timeout * 1.5 if command_type.lower() == "rf" else timeout
 
         try:
@@ -142,9 +178,23 @@ class HassClient:
             )
         except asyncio.TimeoutError:
             _LOGGER.warning("Learn command timed out on %s", entity_id)
+            self._record_test_event(
+                "hass",
+                "remote_learn_command_completed",
+                entity_id=entity_id,
+                success=False,
+                reason="timeout",
+            )
             return None
         except Exception:
             _LOGGER.exception("Error during learn_command on %s", entity_id)
+            self._record_test_event(
+                "hass",
+                "remote_learn_command_completed",
+                entity_id=entity_id,
+                success=False,
+                reason="exception",
+            )
             return None
 
         _LOGGER.info(
@@ -155,12 +205,26 @@ class HassClient:
             _LOGGER.info(
                 "Learned %s code on %s (length=%d)", command_type, entity_id, len(code)
             )
+            self._record_test_event(
+                "hass",
+                "remote_learn_command_completed",
+                entity_id=entity_id,
+                success=True,
+                code_length=len(code),
+            )
             return _b64_to_hex(code)
 
         _LOGGER.warning(
             "learn_command returned but no code found in storage for device=%s command=%s",
             device,
             command,
+        )
+        self._record_test_event(
+            "hass",
+            "remote_learn_command_completed",
+            entity_id=entity_id,
+            success=False,
+            reason="no_code_found",
         )
         return None
 
@@ -330,7 +394,9 @@ class HassClient:
         """Return local BLE adapters (via ``ble_emitter.get_ble_adapters``)."""
         from .ble_emitter import get_ble_adapters
 
-        return await self._hass.async_add_executor_job(get_ble_adapters)
+        adapters = await self._hass.async_add_executor_job(get_ble_adapters)
+        self._record_test_event("ble", "ha_ble_adapters_loaded", count=len(adapters))
+        return adapters
 
     async def async_ensure_ble_monitoring(self) -> str | None:
         """Register a real-time BLE advertisement callback if not already active.
@@ -420,6 +486,13 @@ class HassClient:
         for addr in to_pop:
             self._ble_buffer.pop(addr, None)
 
+        self._record_test_event(
+            "ble",
+            "ha_ble_scan_completed",
+            adapter_mac=adapter_mac,
+            device_count=len(result),
+            error=error,
+        )
         return result, None
 
     async def async_find_remote_by_identifier(self, identifier: str) -> str | None:
@@ -448,6 +521,11 @@ class HassClient:
                 if needle in ident_val.lower().replace(":", "").replace("-", ""):
                     return state.entity_id
 
+        self._record_test_event(
+            "storage",
+            "remote_lookup_missed",
+            identifier=identifier,
+        )
         return None
 
 
