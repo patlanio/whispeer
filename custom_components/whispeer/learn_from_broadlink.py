@@ -14,7 +14,6 @@ from __future__ import annotations
 from typing import Any
 
 from .learn_provider import LearnProvider, LearnSession
-from .test_support import get_test_harness
 
 _RF_COMMON_FREQS = (315.0, 433.92)
 
@@ -115,9 +114,6 @@ class BroadlinkLearnProvider(LearnProvider):
     def can_handle(cls, device_type: str, manufacturer: str) -> bool:
         return device_type.lower() == "rf" and "broadlink" in manufacturer.lower()
 
-    def _record_test_event(self, action: str, **details: Any) -> None:
-        get_test_harness(self._hass).record("broadlink", action, **details)
-
 
     async def start(self, session: LearnSession) -> None:
         """Start learning an RF command.
@@ -130,16 +126,6 @@ class BroadlinkLearnProvider(LearnProvider):
             if not ip_address:
                 return
 
-            mode = "fast" if session.detected_frequency else "full"
-            self._record_test_event(
-                "learn_started",
-                session_id=session.session_id,
-                entity_id=session.hub_entity_id,
-                mode=mode,
-                detected_frequency=session.detected_frequency,
-                ip_address=ip_address,
-            )
-
             if session.detected_frequency:
                 await self._hass.async_add_executor_job(
                     self._do_fast_rf_learn,
@@ -151,20 +137,7 @@ class BroadlinkLearnProvider(LearnProvider):
                     session, ip_address, mac_address,
                 )
 
-            self._record_test_event(
-                "learn_completed",
-                session_id=session.session_id,
-                status=session.status,
-                phase=session.phase,
-                detected_frequency=session.detected_frequency,
-            )
-
         except Exception as exc:
-            self._record_test_event(
-                "learn_failed",
-                session_id=session.session_id,
-                error_message=str(exc),
-            )
             session.update_status("error", error_message=str(exc))
 
     async def find_frequency(self, session: LearnSession) -> None:
@@ -174,30 +147,11 @@ class BroadlinkLearnProvider(LearnProvider):
             if not ip_address:
                 return
 
-            self._record_test_event(
-                "frequency_started",
-                session_id=session.session_id,
-                entity_id=session.hub_entity_id,
-                ip_address=ip_address,
-            )
-
             await self._hass.async_add_executor_job(
                 self._do_sweep_only, session, ip_address, mac_address
             )
 
-            self._record_test_event(
-                "frequency_completed",
-                session_id=session.session_id,
-                status=session.status,
-                detected_frequency=session.detected_frequency,
-            )
-
         except Exception as exc:
-            self._record_test_event(
-                "frequency_failed",
-                session_id=session.session_id,
-                error_message=str(exc),
-            )
             session.update_status("error", error_message=str(exc))
 
 

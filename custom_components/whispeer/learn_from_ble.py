@@ -10,7 +10,6 @@ import logging
 from typing import Any
 
 from .learn_provider import LearnProvider, LearnSession
-from .test_support import get_test_harness
 
 _LOGGER = logging.getLogger(__package__)
 
@@ -29,9 +28,6 @@ class BleLearnProvider(LearnProvider):
     def can_handle(cls, device_type: str, manufacturer: str) -> bool:
         return device_type.lower() == "ble"
 
-    def _record_test_event(self, action: str, **details: Any) -> None:
-        get_test_harness(self._hass).record("ble", action, **details)
-
     async def start(self, session: LearnSession) -> None:
         raise NotImplementedError(
             "BLE learning is done through the advertisement scanner, not the learn session flow"
@@ -43,9 +39,7 @@ class BleLearnProvider(LearnProvider):
         from .hass_client import HassClient
 
         client = HassClient(self._hass)
-        interfaces = await client.async_get_ble_adapters()
-        self._record_test_event("provider_interfaces_loaded", count=len(interfaces))
-        return interfaces
+        return await client.async_get_ble_adapters()
 
 
     async def scan(self, adapter_mac: str) -> tuple[list[dict], str | None]:
@@ -53,14 +47,7 @@ class BleLearnProvider(LearnProvider):
         from .hass_client import HassClient
 
         client = HassClient(self._hass)
-        devices, error = await client.async_scan_ble_devices(adapter_mac)
-        self._record_test_event(
-            "provider_scan_completed",
-            adapter_mac=adapter_mac,
-            device_count=len(devices),
-            error=error,
-        )
-        return devices, error
+        return await client.async_scan_ble_devices(adapter_mac)
 
 
     async def send_command(self, command_code: str, adapter: str) -> dict:
@@ -82,11 +69,6 @@ class BleLearnProvider(LearnProvider):
         except (ValueError, TypeError):
             success = await self.emit_raw(adapter, command_code)
 
-        self._record_test_event(
-            "provider_send_completed",
-            adapter=adapter,
-            success=success,
-        )
         return {"status": "success" if success else "error"}
 
     async def emit(

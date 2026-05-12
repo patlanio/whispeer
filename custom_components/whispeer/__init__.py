@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Custom integration to integrate Whispeer with Home Assistant.
 
@@ -9,63 +7,27 @@ https://github.com/patlanio/whispeer
 import asyncio
 import logging
 import os
-from types import SimpleNamespace
-from typing import Any
 
-try:
-    from aiohttp import web
-except ModuleNotFoundError as exc:
-    web = SimpleNamespace(Response=None)
-    _AIOHTTP_IMPORT_ERROR: Exception | None = exc
-else:
-    _AIOHTTP_IMPORT_ERROR = None
+from aiohttp import web
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core_config import Config
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.components import frontend
+from homeassistant.components.http import HomeAssistantView
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-try:
-    from homeassistant.config_entries import ConfigEntry
-    from homeassistant.core_config import Config
-    from homeassistant.core import HomeAssistant, callback
-    from homeassistant.exceptions import ConfigEntryNotReady
-    from homeassistant.helpers.aiohttp_client import async_get_clientsession
-    from homeassistant.components import frontend
-    from homeassistant.components.http import HomeAssistantView
-    from homeassistant.helpers import entity_registry as er
-    from homeassistant.helpers import device_registry as dr
-    from homeassistant.helpers.dispatcher import async_dispatcher_connect
-except ModuleNotFoundError as exc:
-    ConfigEntry = Config = HomeAssistant = Any
-    ConfigEntryNotReady = RuntimeError
-    async_get_clientsession = None
-    frontend = None
-    HomeAssistantView = object
-    er = dr = None
-    async_dispatcher_connect = None
-
-    def callback(func):
-        return func
-
-    _HOMEASSISTANT_IMPORT_ERROR: Exception | None = exc
-else:
-    _HOMEASSISTANT_IMPORT_ERROR = None
-
+from .api import WhispeerApiClient
 from .const import DOMAIN
+from .websocket import async_setup_websocket
 from .const import PLATFORMS
 from .const import STARTUP_MESSAGE
 from .const import SIGNAL_WHISPEER_DATA_UPDATED
-from .test_support import get_test_harness
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
-
-
-def _ensure_runtime_dependencies() -> None:
-    """Raise a clear error when HA runtime dependencies are unavailable."""
-    if _AIOHTTP_IMPORT_ERROR is not None:
-        raise ModuleNotFoundError(
-            "aiohttp is required to run the Whispeer integration"
-        ) from _AIOHTTP_IMPORT_ERROR
-    if _HOMEASSISTANT_IMPORT_ERROR is not None:
-        raise ModuleNotFoundError(
-            "Home Assistant is required to run the Whispeer integration"
-        ) from _HOMEASSISTANT_IMPORT_ERROR
 
 
 class WhispeerPanelView(HomeAssistantView):
@@ -276,7 +238,6 @@ class WhispeerAssetsView(HomeAssistantView):
 
 async def register_panel(hass):
     """Register the Whispeer panel (HTML + static assets only)."""
-    _ensure_runtime_dependencies()
     try:
         hass.http.register_view(WhispeerPanelView())
         hass.http.register_view(WhispeerAssetsView())
@@ -299,7 +260,6 @@ async def register_panel(hass):
 
 async def async_setup(hass: HomeAssistant, config: Config):
     """Set up this integration using YAML is not supported."""
-    _ensure_runtime_dependencies()
     return True
 
 
@@ -321,8 +281,6 @@ async def async_cleanup_removed_entities(
         stored_device_ids: The set of device IDs **currently** present in
             Whispeer storage after the mutation (add / remove / sync).
     """
-    _ensure_runtime_dependencies()
-
     def _is_uid_for_stored_device(uid: str) -> bool:
         if not uid.startswith("whispeer_"):
             return False
@@ -369,18 +327,9 @@ async def async_cleanup_removed_entities(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up this integration using UI."""
-    _ensure_runtime_dependencies()
-
-    from .api import WhispeerApiClient
-    from .websocket import async_setup_websocket
-
     if hass.data.get(DOMAIN) is None:
         hass.data.setdefault(DOMAIN, {})
         _LOGGER.info(STARTUP_MESSAGE)
-
-    test_harness = get_test_harness(hass)
-    if test_harness.enabled:
-        _LOGGER.info("Whispeer test mode enabled")
 
     session = async_get_clientsession(hass)
     client = WhispeerApiClient(session, hass)
@@ -436,7 +385,6 @@ class WhispeerDataUpdateCoordinator:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle removal of an entry."""
-    _ensure_runtime_dependencies()
     try:
         frontend.async_remove_panel(hass, "whispeer")
     except Exception:
@@ -460,6 +408,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
-    _ensure_runtime_dependencies()
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)

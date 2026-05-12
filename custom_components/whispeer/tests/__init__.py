@@ -1,1 +1,0 @@
-"""Whispeer test package."""

@@ -22,7 +22,6 @@ from .learn_provider import LearnProvider, LearnSession, LEARNING_SESSIONS
 from .learn_from_broadlink import BroadlinkLearnProvider
 from .learn_from_hass import HassLearnProvider
 from .learn_from_ble import BleLearnProvider
-from .test_support import get_test_harness
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -73,10 +72,6 @@ class WhispeerApiClient:
         self._devices_cache: Dict[str, Dict[str, Any]] = {}
         self._hubs_cache: Dict[str, Dict[str, Any]] = {}
         self._hass_client = HassClient(hass)
-        self._test_harness = get_test_harness(hass)
-
-    def _record_test_event(self, category: str, action: str, **details: Any) -> None:
-        self._test_harness.record(category, action, **details)
 
 
     async def async_get_data(self) -> dict:
@@ -185,15 +180,6 @@ class WhispeerApiClient:
         device_info = {"id": str(device_id), **info}
         async_dispatcher_send(self._hass, SIGNAL_WHISPEER_NEW_DEVICE, device_info)
 
-        self._record_test_event(
-            "device",
-            "added",
-            device_id=str(device_id),
-            name=info["name"],
-            device_type=info["type"],
-            interface_id=info["interface_id"],
-        )
-
         return _ok("Device added successfully", id=str(device_id), **info)
 
     async def async_remove_device(self, device_id) -> dict:
@@ -201,13 +187,11 @@ class WhispeerApiClient:
         removed = devices.pop(str(device_id), None)
         await self._save_devices(devices)
         if removed is None:
-            self._record_test_event("device", "remove_missed", device_id=str(device_id))
             return _err(f"Device {device_id} not found")
 
         async_dispatcher_send(
             self._hass, SIGNAL_WHISPEER_DATA_UPDATED, set(devices.keys())
         )
-        self._record_test_event("device", "removed", device_id=str(device_id))
         return _ok(f"Device {device_id} removed successfully")
 
     async def async_sync_devices(self, devices: dict, replace: bool = False) -> dict:
@@ -237,14 +221,6 @@ class WhispeerApiClient:
             self._hass, SIGNAL_WHISPEER_DATA_UPDATED, set(merged.keys())
         )
 
-        self._record_test_event(
-            "device",
-            "synced",
-            incoming_count=len(devices),
-            merged_count=len(merged),
-            replace=replace,
-        )
-
         return _ok(
             f"Synced {len(devices)} devices",
             device_count=len(devices),
@@ -255,7 +231,6 @@ class WhispeerApiClient:
     async def async_clear_devices(self) -> dict:
         await self._save_devices({})
         async_dispatcher_send(self._hass, SIGNAL_WHISPEER_DATA_UPDATED, set())
-        self._record_test_event("device", "cleared")
         return _ok("All devices cleared")
 
     async def async_test_device(self, device_id) -> dict:
@@ -271,68 +246,13 @@ class WhispeerApiClient:
         emitter_data: dict | None = None,
     ) -> dict:
         """Send a command through the associated HA remote entity."""
-        self._record_test_event(
-            "api",
-            "send_command_requested",
-            device_id=device_id,
-            device_type=device_type,
-            command_name=command_name,
-            emitter=emitter_data,
-        )
-
         if not command_code:
             return _err(f"No command code for '{command_name}' on device '{device_id}'")
 
-        send_override = self._test_harness.get_send_command_override(
-            device_id=device_id,
-            device_type=device_type,
-            command_name=command_name,
-        )
-        if send_override:
-            entity_id = self._resolve_entity_id(device_id, emitter_data) or send_override.get(
-                "entity_id", ""
-            )
-            extra = {
-                "device_id": device_id,
-                "command_name": command_name,
-                "entity_id": entity_id,
-            }
-            result_extra = send_override.get("result") or {}
-            if isinstance(result_extra, dict):
-                extra.update(result_extra)
-
-            success = bool(send_override.get("success", True))
-            message = send_override.get("message") or (
-                f"Mock send completed for '{command_name}'"
-                if success
-                else f"Mock send failed for '{command_name}'"
-            )
-            self._record_test_event(
-                "api",
-                "send_command_overridden",
-                device_id=device_id,
-                device_type=device_type,
-                command_name=command_name,
-                entity_id=entity_id,
-                success=success,
-            )
-            if success:
-                return _ok(message, **extra)
-            return _err(message, **extra)
-
         if device_type == "ble":
-            result = await self._send_ble_command(
+            return await self._send_ble_command(
                 device_id, command_name, command_code, emitter_data
             )
-            self._record_test_event(
-                "api",
-                "send_command_completed",
-                device_id=device_id,
-                device_type=device_type,
-                command_name=command_name,
-                result=result,
-            )
-            return result
 
         entity_id = self._resolve_entity_id(device_id, emitter_data)
         if not entity_id:
@@ -344,38 +264,18 @@ class WhispeerApiClient:
         success = await self._hass_client.async_send_command(entity_id, command_code)
 
         if success:
-            result = _ok(
+            return _ok(
                 f"Command '{command_name}' sent on {entity_id}",
                 device_id=device_id,
                 command_name=command_name,
                 entity_id=entity_id,
             )
-            self._record_test_event(
-                "api",
-                "send_command_completed",
-                device_id=device_id,
-                device_type=device_type,
-                command_name=command_name,
-                entity_id=entity_id,
-                success=True,
-            )
-            return result
-        result = _err(
+        return _err(
             f"Failed to send '{command_name}' on {entity_id}",
             device_id=device_id,
             command_name=command_name,
             entity_id=entity_id,
         )
-        self._record_test_event(
-            "api",
-            "send_command_completed",
-            device_id=device_id,
-            device_type=device_type,
-            command_name=command_name,
-            entity_id=entity_id,
-            success=False,
-        )
-        return result
 
     def _resolve_entity_id(
         self, device_id: str, emitter_data: dict | None
@@ -399,21 +299,6 @@ class WhispeerApiClient:
 
     async def async_get_interfaces(self, device_type: str, hass=None) -> dict:
         """Return available hubs/interfaces for the given device type."""
-        self._record_test_event("api", "interfaces_requested", device_type=device_type)
-
-        interface_override = self._test_harness.get_interface_override(device_type)
-        if interface_override is not None:
-            self._record_test_event(
-                "api",
-                "interfaces_overridden",
-                device_type=device_type,
-                count=len(interface_override),
-            )
-            return _ok(
-                f"Found {len(interface_override)} interface(s)",
-                interfaces=interface_override,
-            )
-
         if device_type == "ble":
             return await self.async_get_ble_interfaces()
 
@@ -462,55 +347,16 @@ class WhispeerApiClient:
         session = LearnSession(session_id, device_type, entity_id)
         LEARNING_SESSIONS[session_id] = session
 
-        self._record_test_event(
-            "learn",
-            "session_created",
-            session_id=session_id,
-            device_type=device_type,
-            entity_id=entity_id,
-            manufacturer=manufacturer,
-            frequency=frequency,
-        )
-
         if frequency is not None:
             session.detected_frequency = frequency
             session.phase = "capturing"
 
         provider = _pick_learn_provider(device_type, manufacturer, self._hass)
-        self._record_test_event(
-            "learn",
-            "provider_selected",
-            session_id=session_id,
-            provider=provider.NAME,
-            device_type=device_type,
-            entity_id=entity_id,
-        )
         _LOGGER.info(
             "async_prepare_to_learn: session %s → %s provider",
             session_id, provider.NAME,
         )
-
-        learn_override = self._test_harness.consume_learn_override(
-            device_type=device_type,
-            entity_id=entity_id,
-        )
-        if learn_override is not None:
-            self._record_test_event(
-                "learn",
-                "override_selected",
-                session_id=session_id,
-                provider=provider.NAME,
-            )
-            asyncio.ensure_future(
-                self._test_harness.async_run_session_override(
-                    session,
-                    learn_override,
-                    default_phase=session.phase,
-                    journal_category="learn",
-                )
-            )
-        else:
-            asyncio.ensure_future(provider.start(session))
+        asyncio.ensure_future(provider.start(session))
 
         return _ok(
             f"Learning session started on {entity_id}",
@@ -533,33 +379,8 @@ class WhispeerApiClient:
         session.update_status("learning")
         LEARNING_SESSIONS[session_id] = session
 
-        self._record_test_event(
-            "frequency",
-            "session_created",
-            session_id=session_id,
-            entity_id=entity_id,
-        )
-
         provider = BroadlinkLearnProvider(self._hass)
-        frequency_override = self._test_harness.consume_frequency_override(
-            entity_id=entity_id,
-        )
-        if frequency_override is not None:
-            self._record_test_event(
-                "frequency",
-                "override_selected",
-                session_id=session_id,
-            )
-            asyncio.ensure_future(
-                self._test_harness.async_run_session_override(
-                    session,
-                    frequency_override,
-                    default_phase=session.phase,
-                    journal_category="frequency",
-                )
-            )
-        else:
-            asyncio.ensure_future(provider.find_frequency(session))
+        asyncio.ensure_future(provider.find_frequency(session))
 
         return _ok(
             f"Frequency sweep started on {entity_id}",
@@ -608,7 +429,6 @@ class WhispeerApiClient:
     async def async_get_stored_codes(self) -> dict:
         """Return all learned remote codes found in HA storage."""
         codes = await self._hass_client.async_get_stored_codes()
-        self._record_test_event("storage", "codes_loaded", count=len(codes))
         return {"codes": codes}
 
     async def async_send_stored_code(
@@ -619,13 +439,6 @@ class WhispeerApiClient:
         command: str = "",
     ) -> dict:
         """Send a stored code by resolving the hub from its MAC identifier."""
-        self._record_test_event(
-            "storage",
-            "send_stored_code_requested",
-            identifier=identifier,
-            device=device,
-            command=command,
-        )
         entity_id = await self._hass_client.async_find_remote_by_identifier(identifier)
         if not entity_id:
             return _err(
@@ -634,30 +447,14 @@ class WhispeerApiClient:
             )
         success = await self._hass_client.async_send_command(entity_id, code)
         if success:
-            result = _ok(
+            return _ok(
                 f"Stored code '{command}' on '{device}' sent via {entity_id}",
                 entity_id=entity_id,
             )
-            self._record_test_event(
-                "storage",
-                "send_stored_code_completed",
-                identifier=identifier,
-                entity_id=entity_id,
-                success=True,
-            )
-            return result
-        result = _err(
+        return _err(
             f"Failed to send stored code '{command}' on '{device}' via {entity_id}",
             entity_id=entity_id,
         )
-        self._record_test_event(
-            "storage",
-            "send_stored_code_completed",
-            identifier=identifier,
-            entity_id=entity_id,
-            success=False,
-        )
-        return result
 
 
     def _resolve_ble_adapter(
@@ -692,18 +489,6 @@ class WhispeerApiClient:
 
     async def async_get_ble_interfaces(self) -> dict:
         """Return available BLE adapters as interfaces."""
-        interface_override = self._test_harness.get_interface_override("ble")
-        if interface_override is not None:
-            self._record_test_event(
-                "ble",
-                "interfaces_overridden",
-                count=len(interface_override),
-            )
-            return _ok(
-                f"Found {len(interface_override)} BLE adapter(s)",
-                interfaces=interface_override,
-            )
-
         provider = BleLearnProvider(self._hass)
         adapters = await provider.get_interfaces()
         if not adapters:
@@ -722,36 +507,14 @@ class WhispeerApiClient:
                 "can_emit": a["can_emit"],
                 "source": "ble",
             })
-        self._record_test_event("ble", "interfaces_loaded", count=len(interfaces))
         return _ok(f"Found {len(interfaces)} BLE adapter(s)", interfaces=interfaces)
 
     async def async_scan_ble(self, adapter_mac: str) -> dict:
         """Return BLE advertisements visible to the adapter with *adapter_mac*."""
-        scan_override = self._test_harness.get_ble_scan_override(adapter_mac)
-        if scan_override is not None:
-            devices = scan_override.get("devices") or []
-            error = scan_override.get("error")
-            self._record_test_event(
-                "ble",
-                "scan_overridden",
-                adapter_mac=adapter_mac,
-                device_count=len(devices),
-                error=error,
-            )
-            if error:
-                return _err(error, devices=devices)
-            return _ok(f"Found {len(devices)} device(s)", devices=devices)
-
         provider = BleLearnProvider(self._hass)
         devices, error = await provider.scan(adapter_mac)
         if error:
             return _err(error, devices=devices)
-        self._record_test_event(
-            "ble",
-            "scan_completed",
-            adapter_mac=adapter_mac,
-            device_count=len(devices),
-        )
         return _ok(f"Found {len(devices)} device(s)", devices=devices)
 
     async def async_emit_ble(
@@ -762,94 +525,19 @@ class WhispeerApiClient:
         data_hex: str,
     ) -> dict:
         """Emit a BLE advertisement."""
-        emit_override = self._test_harness.get_ble_emit_override(adapter=adapter)
-        if emit_override is not None:
-            extra = emit_override.get("result") or {}
-            success = bool(emit_override.get("success", True))
-            message = emit_override.get("message") or (
-                f"Mock BLE advertisement emitted on {adapter}"
-                if success
-                else f"Mock BLE emit failed on {adapter}"
-            )
-            self._record_test_event(
-                "ble",
-                "emit_overridden",
-                adapter=adapter,
-                ad_type=ad_type,
-                field_id=field_id,
-                success=success,
-            )
-            if success:
-                return _ok(message, **extra)
-            return _err(message, **extra)
-
         provider = BleLearnProvider(self._hass)
         success = await provider.emit(adapter, ad_type, field_id, data_hex)
         if success:
-            result = _ok(f"BLE advertisement emitted on {adapter}")
-            self._record_test_event(
-                "ble",
-                "emit_completed",
-                adapter=adapter,
-                ad_type=ad_type,
-                field_id=field_id,
-                success=True,
-            )
-            return result
-        result = _err(f"Failed to emit BLE on {adapter}")
-        self._record_test_event(
-            "ble",
-            "emit_completed",
-            adapter=adapter,
-            ad_type=ad_type,
-            field_id=field_id,
-            success=False,
-        )
-        return result
+            return _ok(f"BLE advertisement emitted on {adapter}")
+        return _err(f"Failed to emit BLE on {adapter}")
 
     async def async_emit_ble_raw(self, adapter: str, raw_hex: str) -> dict:
         """Emit a raw BLE advertisement PDU."""
-        emit_override = self._test_harness.get_ble_emit_override(adapter=adapter)
-        if emit_override is not None:
-            extra = emit_override.get("result") or {}
-            success = bool(emit_override.get("success", True))
-            message = emit_override.get("message") or (
-                f"Mock raw BLE advertisement emitted on {adapter}"
-                if success
-                else f"Mock raw BLE emit failed on {adapter}"
-            )
-            self._record_test_event(
-                "ble",
-                "emit_raw_overridden",
-                adapter=adapter,
-                raw_hex_length=len(raw_hex),
-                success=success,
-            )
-            if success:
-                return _ok(message, **extra)
-            return _err(message, **extra)
-
         provider = BleLearnProvider(self._hass)
         success = await provider.emit_raw(adapter, raw_hex)
         if success:
-            result = _ok(f"Raw BLE advertisement emitted on {adapter}")
-            self._record_test_event(
-                "ble",
-                "emit_raw_completed",
-                adapter=adapter,
-                raw_hex_length=len(raw_hex),
-                success=True,
-            )
-            return result
-        result = _err(f"Failed to emit raw BLE on {adapter}")
-        self._record_test_event(
-            "ble",
-            "emit_raw_completed",
-            adapter=adapter,
-            raw_hex_length=len(raw_hex),
-            success=False,
-        )
-        return result
+            return _ok(f"Raw BLE advertisement emitted on {adapter}")
+        return _err(f"Failed to emit raw BLE on {adapter}")
 
 
 

@@ -12,8 +12,6 @@ ICON = "mdi:remote"
 
 SIGNAL_WHISPEER_NEW_DEVICE = f"{DOMAIN}_new_device"
 SIGNAL_WHISPEER_DATA_UPDATED = f"{DOMAIN}_data_updated"
-TEST_HARNESS_KEY = "_test_harness"
-WHISPEER_TEST_MODE_ENV = "WHISPEER_TEST_MODE"
 
 CMD_TYPE_BUTTON = "button"
 CMD_TYPE_SWITCH = "switch"

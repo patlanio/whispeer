@@ -16,7 +16,6 @@ from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 from .learn_provider import LEARNING_SESSIONS
-from .test_support import get_test_harness
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,51 +36,6 @@ def _get_coordinator(hass: HomeAssistant):
         if hasattr(entry_data, "api"):
             return entry_id, entry_data
     return None, None
-
-
-def _get_enabled_test_harness(hass: HomeAssistant):
-    harness = get_test_harness(hass)
-    return harness if harness.enabled else None
-
-
-def _record_test_event(
-    hass: HomeAssistant,
-    category: str,
-    action: str,
-    **details: Any,
-) -> None:
-    harness = _get_enabled_test_harness(hass)
-    if harness is None:
-        return
-    harness.record(category, action, **details)
-
-
-def _serialize_learning_sessions() -> list[dict[str, Any]]:
-    sessions: list[dict[str, Any]] = []
-    for session_id, session in LEARNING_SESSIONS.items():
-        sessions.append({
-            "session_id": session_id,
-            "command_type": session.command_type,
-            "hub_entity_id": session.hub_entity_id,
-            "status": session.status,
-            "phase": session.phase,
-            "command_data": session.command_data,
-            "detected_frequency": session.detected_frequency,
-            "error_message": session.error_message,
-            "created_at": session.created_at,
-        })
-    sessions.sort(key=lambda item: item["created_at"])
-    return sessions
-
-
-def _build_test_state(hass: HomeAssistant) -> dict[str, Any]:
-    harness = _get_enabled_test_harness(hass)
-    if harness is None:
-        return {"enabled": False, "learning_sessions": []}
-
-    state = harness.snapshot()
-    state["learning_sessions"] = _serialize_learning_sessions()
-    return state
 
 
 async def _async_clear_whispeer_registry_entries(
@@ -281,16 +235,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         connection: websocket_api.ActiveConnection,
         msg: dict,
     ) -> None:
-        _record_test_event(
-            hass,
-            "websocket",
-            "send_command_requested",
-            device_id=msg["device_id"],
-            device_type=msg["device_type"],
-            command_name=msg["command_name"],
-            sub_command=msg.get("sub_command"),
-        )
-
         sub_command = msg.get("sub_command")
 
         if sub_command in ("on", "off"):
@@ -313,32 +257,9 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                         {"entity_id": target_entity_id},
                         blocking=True,
                     )
-                    _record_test_event(
-                        hass,
-                        "service",
-                        "direct_command_completed",
-                        domain=target_domain,
-                        service=service,
-                        entity_id=target_entity_id,
-                        device_id=msg["device_id"],
-                        command_name=msg["command_name"],
-                        success=True,
-                    )
                     connection.send_result(msg["id"], {"status": "success"})
                     return
                 except Exception as exc:
-                    _record_test_event(
-                        hass,
-                        "service",
-                        "direct_command_completed",
-                        domain=target_domain,
-                        service=service,
-                        entity_id=target_entity_id,
-                        device_id=msg["device_id"],
-                        command_name=msg["command_name"],
-                        success=False,
-                        error_message=str(exc),
-                    )
                     _LOGGER.warning(
                         "Failed to call %s.%s for %s, falling back to direct send: %s",
                         target_domain, service, target_entity_id, exc,
@@ -363,34 +284,9 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                         {"entity_id": target_entity_id, "option": sub_command},
                         blocking=True,
                     )
-                    _record_test_event(
-                        hass,
-                        "service",
-                        "direct_command_completed",
-                        domain="select",
-                        service="select_option",
-                        entity_id=target_entity_id,
-                        device_id=msg["device_id"],
-                        command_name=msg["command_name"],
-                        option=sub_command,
-                        success=True,
-                    )
                     connection.send_result(msg["id"], {"status": "success"})
                     return
                 except Exception as exc:
-                    _record_test_event(
-                        hass,
-                        "service",
-                        "direct_command_completed",
-                        domain="select",
-                        service="select_option",
-                        entity_id=target_entity_id,
-                        device_id=msg["device_id"],
-                        command_name=msg["command_name"],
-                        option=sub_command,
-                        success=False,
-                        error_message=str(exc),
-                    )
                     _LOGGER.warning(
                         "Failed to call select.select_option for %s, falling back: %s",
                         target_entity_id, exc,
@@ -404,34 +300,9 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                         {"entity_id": target_entity_id, "value": native_value},
                         blocking=True,
                     )
-                    _record_test_event(
-                        hass,
-                        "service",
-                        "direct_command_completed",
-                        domain="number",
-                        service="set_value",
-                        entity_id=target_entity_id,
-                        device_id=msg["device_id"],
-                        command_name=msg["command_name"],
-                        value=native_value,
-                        success=True,
-                    )
                     connection.send_result(msg["id"], {"status": "success"})
                     return
                 except Exception as exc:
-                    _record_test_event(
-                        hass,
-                        "service",
-                        "direct_command_completed",
-                        domain="number",
-                        service="set_value",
-                        entity_id=target_entity_id,
-                        device_id=msg["device_id"],
-                        command_name=msg["command_name"],
-                        value=sub_command,
-                        success=False,
-                        error_message=str(exc),
-                    )
                     _LOGGER.warning(
                         "Failed to call number.set_value for %s, falling back: %s",
                         target_entity_id, exc,
@@ -447,14 +318,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
             msg["command_name"],
             msg["command_code"],
             msg.get("emitter"),
-        )
-        _record_test_event(
-            hass,
-            "websocket",
-            "send_command_completed",
-            device_id=msg["device_id"],
-            command_name=msg["command_name"],
-            result=result,
         )
         connection.send_result(msg["id"], result)
 
@@ -786,15 +649,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         connection: websocket_api.ActiveConnection,
         msg: dict,
     ) -> None:
-        _record_test_event(
-            hass,
-            "websocket",
-            "domain_action_requested",
-            device_id=msg["device_id"],
-            domain=msg.get("domain"),
-            action=msg.get("action"),
-        )
-
         entity_reg = er.async_get(hass)
         domain = (msg.get("domain") or "").lower()
         action = (msg.get("action") or "").lower()
@@ -928,100 +782,16 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                     "light", service, {"entity_id": entity_id}, blocking=True
                 )
 
-            _record_test_event(
-                hass,
-                "service",
-                "domain_action_completed",
-                device_id=device_id,
-                domain=domain,
-                action=action,
-                entity_id=entity_id,
-                success=True,
-            )
             connection.send_result(msg["id"], {
                 "status": "success",
                 "entity_id": entity_id,
             })
         except Exception as exc:
-            _record_test_event(
-                hass,
-                "service",
-                "domain_action_completed",
-                device_id=device_id,
-                domain=domain,
-                action=action,
-                entity_id=entity_id,
-                success=False,
-                error_message=str(exc),
-            )
             connection.send_result(msg["id"], {
                 "status": "error",
                 "message": str(exc),
                 "entity_id": entity_id,
             })
-
-    @websocket_api.websocket_command({
-        vol.Required("type"): "whispeer/test/get_state",
-    })
-    @websocket_api.async_response
-    async def ws_test_get_state(
-        hass: HomeAssistant,
-        connection: websocket_api.ActiveConnection,
-        msg: dict,
-    ) -> None:
-        harness = _get_enabled_test_harness(hass)
-        if harness is None:
-            connection.send_error(msg["id"], "not_allowed", "Whispeer test mode is disabled")
-            return
-        connection.send_result(msg["id"], _build_test_state(hass))
-
-    @websocket_api.websocket_command({
-        vol.Required("type"): "whispeer/test/configure",
-        vol.Required("config"): dict,
-    })
-    @websocket_api.async_response
-    async def ws_test_configure(
-        hass: HomeAssistant,
-        connection: websocket_api.ActiveConnection,
-        msg: dict,
-    ) -> None:
-        harness = _get_enabled_test_harness(hass)
-        if harness is None:
-            connection.send_error(msg["id"], "not_allowed", "Whispeer test mode is disabled")
-            return
-        harness.configure(msg["config"])
-        connection.send_result(msg["id"], {
-            "status": "success",
-            "state": _build_test_state(hass),
-        })
-
-    @websocket_api.websocket_command({
-        vol.Required("type"): "whispeer/test/reset",
-        vol.Optional("clear_config", default=True): bool,
-        vol.Optional("clear_learning_sessions", default=True): bool,
-    })
-    @websocket_api.async_response
-    async def ws_test_reset(
-        hass: HomeAssistant,
-        connection: websocket_api.ActiveConnection,
-        msg: dict,
-    ) -> None:
-        harness = _get_enabled_test_harness(hass)
-        if harness is None:
-            connection.send_error(msg["id"], "not_allowed", "Whispeer test mode is disabled")
-            return
-
-        harness.reset(clear_config=msg.get("clear_config", True))
-        cleared_learning_sessions = 0
-        if msg.get("clear_learning_sessions", True):
-            cleared_learning_sessions = len(LEARNING_SESSIONS)
-            LEARNING_SESSIONS.clear()
-
-        connection.send_result(msg["id"], {
-            "status": "success",
-            "cleared_learning_sessions": cleared_learning_sessions,
-            "state": _build_test_state(hass),
-        })
 
     @websocket_api.websocket_command({
         vol.Required("type"): "whispeer/get_ha_entities",
@@ -1071,9 +841,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
         ws_get_entity_states,
         ws_domain_action,
         ws_get_ha_entities,
-        ws_test_get_state,
-        ws_test_configure,
-        ws_test_reset,
     ]:
         websocket_api.async_register_command(hass, _handler)
 
