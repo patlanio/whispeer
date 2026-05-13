@@ -50,4 +50,4 @@ def test_build_test_settings_uses_defaults_when_values_missing() -> None:
     assert settings.headed is False
     assert settings.slowmo_ms == 0
     assert settings.browser_name == "chromium"
-    assert settings.timeout_ms == 30000
+    assert settings.timeout_ms == 4000

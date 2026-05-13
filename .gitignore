@@ -6,4 +6,5 @@ venv
 .venv
 .DS_Store
 .pytest-cache/
-.venv-tests/
+.venv-whispeer/
+.homeassistant/

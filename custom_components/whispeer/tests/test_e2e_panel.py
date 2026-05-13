@@ -1,13 +1,9 @@
-from __future__ import annotations
-
-import json
-
 import pytest
 
-from whispeer.tests.browser_support import (
-    assert_ws_success,
-    call_ha_ws_command,
-    wait_for_panel_ready,
+
+pytest.skip(
+    "Superseded by tests/test_whispeer_rspec.py.",
+    allow_module_level=True,
 )
 
 
@@ -30,6 +26,12 @@ RF_MANUAL_CODE = "mock-rf-manual-code"
 RF_FAST_LEARN_CODE = "mock-rf-fast-learn-code"
 RF_FREQUENCY = 433.92
 SMARTIR_COMMUNITY_CODE = "1000"
+SMARTIR_FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "smartir"
+
+
+def _load_smartir_fixture(domain: str) -> dict:
+    fixture_path = SMARTIR_FIXTURES_DIR / f"{domain}_{SMARTIR_COMMUNITY_CODE}.json"
+    return json.loads(fixture_path.read_text())
 
 DEFAULT_DOMAIN_COMMAND_SPECS = (
     {"name": "power", "type": "button"},
@@ -41,69 +43,18 @@ DEFAULT_DOMAIN_COMMAND_SPECS = (
 )
 
 SMARTIR_FIXTURES = {
-    "climate": {
-        "minTemperature": 24,
-        "maxTemperature": 24,
-        "operationModes": ["cool"],
-        "fanModes": ["auto"],
-        "commands": {
-            "off": "climate_off_1000",
-            "cool": {"auto": {"24": "climate_cool_auto_24_1000"}},
-        },
-    },
-    "fan": {
-        "speed": ["low", "medium", "high"],
-        "commands": {
-            "off": "fan_off_1000",
-            "low": "fan_low_1000",
-            "medium": "fan_medium_1000",
-            "high": "fan_high_1000",
-        },
-    },
-    "media_player": {
-        "commands": {
-            "on": "media_on_1000",
-            "off": "media_off_1000",
-            "mute": "media_mute_1000",
-            "volumeUp": "media_volume_up_1000",
-            "volumeDown": "media_volume_down_1000",
-            "previousChannel": "media_previous_channel_1000",
-            "nextChannel": "media_next_channel_1000",
-            "sources": {
-                "HDMI1": "media_source_hdmi1_1000",
-                "HDMI2": "media_source_hdmi2_1000",
-            },
-        },
-    },
-    "light": {
-        "commands": {
-            "on": "light_on_1000",
-            "off": "light_off_1000",
-            "brighten": "light_brighten_1000",
-            "dim": "light_dim_1000",
-            "warmer": "light_warmer_1000",
-            "colder": "light_colder_1000",
-            "night": "light_night_1000",
-        },
-    },
+    "climate": _load_smartir_fixture("climate"),
+    "media_player": _load_smartir_fixture("media_player"),
 }
 
 COMMUNITY_DOMAIN_CASES = (
     {
         "domain": "climate",
-        "name": "Playwright Climate Community Device",
-    },
-    {
-        "domain": "fan",
-        "name": "Playwright Fan Community Device",
+        "name": "CMTY AC",
     },
     {
         "domain": "media_player",
-        "name": "Playwright Media Player Community Device",
-    },
-    {
-        "domain": "light",
-        "name": "Playwright Light Community Device",
+        "name": "CMTY media player",
     },
 )
 
@@ -456,33 +407,20 @@ def _assert_community_domain_device(device: dict, domain: str) -> None:
     assert device["_smartirNum"] == SMARTIR_COMMUNITY_CODE
 
     if domain == "climate":
-        assert device["config"]["modes"] == ["cool"]
-        assert device["config"]["fan_modes"] == ["auto"]
-        assert device["commands"]["off"] == "climate_off_1000"
-        assert device["table"]["cool"]["auto"]["24"] == "climate_cool_auto_24_1000"
-        return
-
-    if domain == "fan":
-        assert device["config"]["fan_model"] == "direct"
-        assert device["config"]["speeds"] == ["low", "medium", "high"]
-        assert device["commands"]["off"] == "fan_off_1000"
-        assert device["commands"]["speeds"]["low"] == "fan_low_1000"
-        assert device["commands"]["speeds"]["medium"] == "fan_medium_1000"
-        assert device["commands"]["speeds"]["high"] == "fan_high_1000"
+        assert device["config"]["min_temp"] == 16
+        assert device["config"]["max_temp"] == 30
+        assert device["config"]["modes"] == ["heat", "cool", "fan_only"]
+        assert device["config"]["fan_modes"] == ["low", "mid", "high", "auto"]
+        assert device["commands"]["off"] == "toyotomi_off_1000"
+        assert device["table"]["cool"]["auto"]["24"] == "toyotomi_cool_auto_24_1000"
+        assert device["table"]["heat"]["mid"]["20"] == "toyotomi_heat_mid_20_1000"
         return
 
     if domain == "media_player":
-        assert device["commands"]["on"] == "media_on_1000"
-        assert device["commands"]["off"] == "media_off_1000"
-        assert device["commands"]["sources"]["HDMI1"] == "media_source_hdmi1_1000"
-        assert device["commands"]["sources"]["HDMI2"] == "media_source_hdmi2_1000"
-        return
-
-    if domain == "light":
-        assert device["commands"]["on"] == "light_on_1000"
-        assert device["commands"]["off"] == "light_off_1000"
-        assert device["commands"]["brighten"] == "light_brighten_1000"
-        assert device["commands"]["night"] == "light_night_1000"
+        assert device["commands"]["on"] == "JgAcABweHR07HhweHR0dHhw8HR0dHhweHB4dHhwADQUAAAAAAAAAAAAAAAA="
+        assert device["commands"]["off"] == "JgAaAB0dOx4cHhweHR4cHhw8HR0dHhweOzsdAA0FAAAAAAAAAAAAAAAAAAA="
+        assert device["commands"]["sources"]["HDMI"] == "JgAaAB8cHxs9Gx8cHzkfGx8cHhwfGz0cHjofAA0FAAAAAAAAAAAAAAAAAAA="
+        assert device["commands"]["sources"]["EXT1"] == "JgAYAB8bHxs9HB4cHzkfHDwcHxsfOjwcHwANBQ=="
 
 
 @pytest.mark.e2e
@@ -773,6 +711,9 @@ def test_panel_creates_non_default_domain_devices_from_community_code(
         )
 
     devices = _get_devices(page, whispeer_test_settings)
+    assert {device["name"] for device in devices} == {
+        case["name"] for case in COMMUNITY_DOMAIN_CASES
+    }
     for case in COMMUNITY_DOMAIN_CASES:
         device = _find_device_by_name(devices, case["name"])
         _assert_community_domain_device(device, case["domain"])
@@ -784,4 +725,4 @@ def test_panel_creates_non_default_domain_devices_from_community_code(
         if entry.get("category") == "device"
         and entry.get("action") == "added"
     ]
-    assert len(added_devices) >= 4
+    assert len(added_devices) == len(COMMUNITY_DOMAIN_CASES)

@@ -1,0 +1,1 @@
+- All tests timeouts has to be 4 seconds

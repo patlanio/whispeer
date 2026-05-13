@@ -218,7 +218,11 @@ class DataManager {
       if (subCommand) payload.sub_command = subCommand;
       const device = DataManager.getDevice(deviceId);
       if (device?.emitter) payload.emitter = device.emitter;
-      return await WSManager.call('whispeer/send_command', payload);
+      const result = await WSManager.call('whispeer/send_command', payload);
+      if (result?.status !== 'success') {
+        throw new Error(result?.message || result?.error?.message || 'Unknown error');
+      }
+      return result;
     } catch (error) {
       console.error('[DataManager] Failed to send command:', error);
       throw error;

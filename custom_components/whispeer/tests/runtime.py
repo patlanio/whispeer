@@ -104,7 +104,7 @@ def build_test_settings(
             options.get("whispeer_timeout_ms"),
             env.get("WHISPEER_TIMEOUT_MS"),
         ),
-        default=30000,
+        default=4000,
     )
 
     storage_state_path = Path(storage_state_raw).expanduser()

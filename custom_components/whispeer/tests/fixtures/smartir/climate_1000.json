@@ -1,0 +1,139 @@
+{
+  "manufacturer": "Toyotomi",
+  "supportedModels": [
+    "AKIRA GAN/GAG-A128VL"
+  ],
+  "supportedController": "Broadlink",
+  "commandsEncoding": "Base64",
+  "minTemperature": 16,
+  "maxTemperature": 30,
+  "precision": 1,
+  "operationModes": [
+    "heat",
+    "cool",
+    "fan_only"
+  ],
+  "fanModes": [
+    "low",
+    "mid",
+    "high",
+    "auto"
+  ],
+  "commands": {
+    "off": "toyotomi_off_1000",
+    "heat": {
+      "low": {
+        "16": "toyotomi_heat_low_16_1000",
+        "18": "toyotomi_heat_low_18_1000",
+        "20": "toyotomi_heat_low_20_1000",
+        "22": "toyotomi_heat_low_22_1000",
+        "24": "toyotomi_heat_low_24_1000",
+        "26": "toyotomi_heat_low_26_1000",
+        "28": "toyotomi_heat_low_28_1000",
+        "30": "toyotomi_heat_low_30_1000"
+      },
+      "mid": {
+        "16": "toyotomi_heat_mid_16_1000",
+        "18": "toyotomi_heat_mid_18_1000",
+        "20": "toyotomi_heat_mid_20_1000",
+        "22": "toyotomi_heat_mid_22_1000",
+        "24": "toyotomi_heat_mid_24_1000",
+        "26": "toyotomi_heat_mid_26_1000",
+        "28": "toyotomi_heat_mid_28_1000",
+        "30": "toyotomi_heat_mid_30_1000"
+      },
+      "high": {
+        "16": "toyotomi_heat_high_16_1000",
+        "18": "toyotomi_heat_high_18_1000",
+        "20": "toyotomi_heat_high_20_1000",
+        "22": "toyotomi_heat_high_22_1000",
+        "24": "toyotomi_heat_high_24_1000",
+        "26": "toyotomi_heat_high_26_1000",
+        "28": "toyotomi_heat_high_28_1000",
+        "30": "toyotomi_heat_high_30_1000"
+      },
+      "auto": {
+        "16": "toyotomi_heat_auto_16_1000",
+        "18": "toyotomi_heat_auto_18_1000",
+        "20": "toyotomi_heat_auto_20_1000",
+        "22": "toyotomi_heat_auto_22_1000",
+        "24": "toyotomi_heat_auto_24_1000",
+        "26": "toyotomi_heat_auto_26_1000",
+        "28": "toyotomi_heat_auto_28_1000",
+        "30": "toyotomi_heat_auto_30_1000"
+      }
+    },
+    "cool": {
+      "low": {
+        "16": "toyotomi_cool_low_16_1000",
+        "18": "toyotomi_cool_low_18_1000",
+        "20": "toyotomi_cool_low_20_1000",
+        "22": "toyotomi_cool_low_22_1000",
+        "24": "toyotomi_cool_low_24_1000",
+        "26": "toyotomi_cool_low_26_1000",
+        "28": "toyotomi_cool_low_28_1000",
+        "30": "toyotomi_cool_low_30_1000"
+      },
+      "mid": {
+        "16": "toyotomi_cool_mid_16_1000",
+        "18": "toyotomi_cool_mid_18_1000",
+        "20": "toyotomi_cool_mid_20_1000",
+        "22": "toyotomi_cool_mid_22_1000",
+        "24": "toyotomi_cool_mid_24_1000",
+        "26": "toyotomi_cool_mid_26_1000",
+        "28": "toyotomi_cool_mid_28_1000",
+        "30": "toyotomi_cool_mid_30_1000"
+      },
+      "high": {
+        "16": "toyotomi_cool_high_16_1000",
+        "18": "toyotomi_cool_high_18_1000",
+        "20": "toyotomi_cool_high_20_1000",
+        "22": "toyotomi_cool_high_22_1000",
+        "24": "toyotomi_cool_high_24_1000",
+        "26": "toyotomi_cool_high_26_1000",
+        "28": "toyotomi_cool_high_28_1000",
+        "30": "toyotomi_cool_high_30_1000"
+      },
+      "auto": {
+        "16": "toyotomi_cool_auto_16_1000",
+        "18": "toyotomi_cool_auto_18_1000",
+        "20": "toyotomi_cool_auto_20_1000",
+        "22": "toyotomi_cool_auto_22_1000",
+        "24": "toyotomi_cool_auto_24_1000",
+        "26": "toyotomi_cool_auto_26_1000",
+        "28": "toyotomi_cool_auto_28_1000",
+        "30": "toyotomi_cool_auto_30_1000"
+      }
+    },
+    "fan_only": {
+      "low": {
+        "16": "toyotomi_fan_only_low_16_1000",
+        "20": "toyotomi_fan_only_low_20_1000",
+        "24": "toyotomi_fan_only_low_24_1000",
+        "28": "toyotomi_fan_only_low_28_1000",
+        "30": "toyotomi_fan_only_low_30_1000"
+      },
+      "mid": {
+        "16": "toyotomi_fan_only_mid_16_1000",
+        "20": "toyotomi_fan_only_mid_20_1000",
+        "24": "toyotomi_fan_only_mid_24_1000",
+        "28": "toyotomi_fan_only_mid_28_1000",
+        "30": "toyotomi_fan_only_mid_30_1000"
+      },
+      "high": {
+        "16": "toyotomi_fan_only_high_16_1000",
+        "20": "toyotomi_fan_only_high_20_1000",
+        "24": "toyotomi_fan_only_high_24_1000",
+        "28": "toyotomi_fan_only_high_28_1000",
+        "30": "toyotomi_fan_only_high_30_1000"
+      },
+      "auto": {
+        "16": "toyotomi_fan_only_auto_16_1000",
+        "20": "toyotomi_fan_only_auto_20_1000",
+        "24": "toyotomi_fan_only_auto_24_1000",
+        "28": "toyotomi_fan_only_auto_28_1000",
+        "30": "toyotomi_fan_only_auto_30_1000"
+      }
+    }
+  }
+}

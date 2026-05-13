@@ -1,16 +1,21 @@
 """Shared Playwright helpers for Whispeer integration and E2E tests."""
 from __future__ import annotations
 
+import asyncio
 import os
 import platform
 import re
+import threading
 import warnings
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+import aiohttp
+
 
 DEFAULT_VIEWPORT = {"width": 1600, "height": 1000}
+AUTH_STABILIZATION_TIMEOUT_MS = 7000
 
 
 def launch_browser(playwright_api, settings):
@@ -31,11 +36,7 @@ def launch_browser(playwright_api, settings):
 
 def open_authenticated_page(browser, settings):
     """Open an authenticated Home Assistant page using cached storage state."""
-    context = _create_authenticated_context(browser, settings)
-    page = context.new_page()
-    _configure_page(page, settings)
-    page.goto(settings.base_url, wait_until="domcontentloaded")
-    return context, page
+    return _create_authenticated_context(browser, settings)
 
 
 def open_panel_page(browser, settings):
@@ -81,10 +82,20 @@ def get_access_token(page, settings=None) -> str:
     return token
 
 
-def call_ha_ws_command(page, settings, payload: dict[str, Any]) -> dict[str, Any]:
+def call_ha_ws_command(
+    page,
+    settings,
+    payload: dict[str, Any],
+    access_token: str | None = None,
+) -> dict[str, Any]:
     """Send a single Home Assistant websocket command through the browser."""
-    token = get_access_token(page, settings)
+    token = access_token or get_access_token(page, settings)
     command = {**payload, "id": int(payload.get("id", 1))}
+    if access_token is not None:
+        return _run_async_in_thread(
+            _call_ha_ws_command_async(settings.ws_url, token, command, settings.timeout_ms)
+        )
+
     return page.evaluate(
         """async ({ wsUrl, token, command, timeoutMs }) => {
             return await new Promise((resolve) => {
@@ -190,6 +201,78 @@ def call_ha_ws_command(page, settings, payload: dict[str, Any]) -> dict[str, Any
     )
 
 
+async def _call_ha_ws_command_async(
+    ws_url: str,
+    access_token: str,
+    command: dict[str, Any],
+    timeout_ms: int,
+) -> dict[str, Any]:
+    timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(ws_url, heartbeat=timeout_ms / 2000) as socket:
+            auth_required = await socket.receive_json(timeout=timeout_ms / 1000)
+            if auth_required.get("type") != "auth_required":
+                return {
+                    "success": False,
+                    "result": None,
+                    "error": {
+                        "code": "unexpected_message",
+                        "message": f"Expected auth_required, got {auth_required.get('type')}",
+                    },
+                }
+
+            await socket.send_json({"type": "auth", "access_token": access_token})
+            auth_response = await socket.receive_json(timeout=timeout_ms / 1000)
+            if auth_response.get("type") == "auth_invalid":
+                return {
+                    "success": False,
+                    "result": None,
+                    "error": {
+                        "code": "auth_invalid",
+                        "message": auth_response.get("message") or "Home Assistant rejected the access token",
+                    },
+                }
+            if auth_response.get("type") != "auth_ok":
+                return {
+                    "success": False,
+                    "result": None,
+                    "error": {
+                        "code": "unexpected_message",
+                        "message": f"Expected auth_ok, got {auth_response.get('type')}",
+                    },
+                }
+
+            await socket.send_json(command)
+            while True:
+                message = await socket.receive_json(timeout=timeout_ms / 1000)
+                if message.get("type") != "result" or message.get("id") != command["id"]:
+                    continue
+                return {
+                    "success": bool(message.get("success")),
+                    "result": message.get("result"),
+                    "error": message.get("error"),
+                }
+
+
+def _run_async_in_thread(coroutine):
+    result: dict[str, Any] = {}
+    error: list[BaseException] = []
+
+    def _runner() -> None:
+        try:
+            result["value"] = asyncio.run(coroutine)
+        except BaseException as exc:
+            error.append(exc)
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+
+    if error:
+        raise error[0]
+    return result["value"]
+
+
 def assert_ws_success(response: dict[str, Any], message: str) -> dict[str, Any]:
     """Return the websocket result payload or raise a helpful assertion."""
     if response.get("success"):
@@ -201,7 +284,7 @@ def assert_ws_success(response: dict[str, Any], message: str) -> dict[str, Any]:
     raise AssertionError(f"{message} [{code}] {error_message}")
 
 
-def ensure_test_mode_enabled(page, settings) -> dict[str, Any]:
+def ensure_test_mode_enabled(page, settings, access_token: str | None = None) -> dict[str, Any]:
     """Skip the test cleanly when Home Assistant test mode is disabled."""
     import pytest
 
@@ -209,6 +292,7 @@ def ensure_test_mode_enabled(page, settings) -> dict[str, Any]:
         page,
         settings,
         {"type": "whispeer/test/get_state"},
+        access_token=access_token,
     )
     if not response.get("success"):
         error = response.get("error") or {}
@@ -229,37 +313,44 @@ def ensure_test_mode_enabled(page, settings) -> dict[str, Any]:
 
 
 def _create_authenticated_context(browser, settings):
-    storage_state_path = _ensure_authenticated_storage_state(browser, settings)
-    context = _new_context(browser, settings, storage_state=storage_state_path)
-    page = context.new_page()
-    _configure_page(page, settings)
-    page.goto(settings.base_url, wait_until="domcontentloaded")
-
-    if _is_login_required(page):
-        context.close()
-        if storage_state_path.exists():
-            storage_state_path.unlink()
-        storage_state_path = _ensure_authenticated_storage_state(browser, settings)
-        context = _new_context(browser, settings, storage_state=storage_state_path)
-    else:
-        page.close()
-
-    return context
-
-
-def _ensure_authenticated_storage_state(browser, settings) -> Path:
     storage_state_path = settings.storage_state_path
     storage_state_path.parent.mkdir(parents=True, exist_ok=True)
+    preserve_state = os.environ.get("WHISPEER_PRESERVE_STATE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
-    if storage_state_path.exists() and _storage_state_is_valid(
+    context = None
+    if preserve_state and storage_state_path.exists() and _storage_state_is_valid(
         browser,
         settings,
         storage_state_path,
     ):
-        return storage_state_path
+        context = _new_context(browser, settings, storage_state=storage_state_path)
+    else:
+        if storage_state_path.exists() and not preserve_state:
+            storage_state_path.unlink()
+        elif storage_state_path.exists():
+            storage_state_path.unlink()
+        context = _new_context(browser, settings)
 
-    _login_and_persist_storage_state(browser, settings, storage_state_path)
-    return storage_state_path
+    page = context.new_page()
+    _configure_page(page, settings)
+    page.goto(settings.base_url, wait_until="domcontentloaded")
+    _wait_for_auth_redirect(page, settings)
+
+    if _is_login_required(page):
+        _login_in_page(page, settings)
+        page.wait_for_timeout(1000)
+        if preserve_state:
+            try:
+                context.storage_state(path=str(storage_state_path), indexed_db=True)
+            except Exception:
+                pass
+    else:
+        page.get_by_role("button", name="Sidebar toggle").wait_for(
+            state="visible",
+            timeout=AUTH_STABILIZATION_TIMEOUT_MS,
+        )
+
+    return context, page
 
 
 def _storage_state_is_valid(browser, settings, storage_state_path: Path) -> bool:
@@ -268,6 +359,7 @@ def _storage_state_is_valid(browser, settings, storage_state_path: Path) -> bool
         page = context.new_page()
         _configure_page(page, settings)
         page.goto(settings.base_url, wait_until="domcontentloaded")
+        _wait_for_auth_redirect(page, settings)
         return not _is_login_required(page)
     except Exception:
         return False
@@ -275,39 +367,99 @@ def _storage_state_is_valid(browser, settings, storage_state_path: Path) -> bool
         context.close()
 
 
-def _login_and_persist_storage_state(browser, settings, storage_state_path: Path) -> None:
-    context = _new_context(browser, settings)
-    try:
-        page = context.new_page()
-        _configure_page(page, settings)
-        page.goto(settings.login_url, wait_until="domcontentloaded")
 
-        if not _is_login_required(page):
-            context.storage_state(path=str(storage_state_path))
-            return
 
-        username = page.locator('input[name="username"], input[type="text"]').first
-        password = page.locator('input[name="password"], input[type="password"]').first
+def _login_in_page(page, settings) -> None:
+    for attempt in range(2):
+        _submit_login(page, settings)
+        if _wait_for_auth_completion(page, timeout_ms=2000):
+            break
 
-        username.wait_for(state="visible", timeout=settings.timeout_ms)
-        username.fill(settings.username)
-        password.fill(settings.password)
-
-        try:
-            page.get_by_role("button", name=re.compile("log in", re.IGNORECASE)).click()
-        except Exception:
-            page.locator('button[type="submit"], input[type="submit"], ha-progress-button, mwc-button').first.click()
-
+        start_over = page.get_by_role("button", name=re.compile("start over", re.IGNORECASE))
+        if start_over.is_visible(timeout=1000):
+            start_over.click(timeout=settings.timeout_ms)
+            page.wait_for_timeout(500)
+    else:
         page.wait_for_function(
             """() => {
                 const path = window.location.pathname || "";
                 return !path.includes("/auth");
             }""",
-            timeout=settings.timeout_ms,
+            timeout=max(settings.timeout_ms, AUTH_STABILIZATION_TIMEOUT_MS),
         )
-        context.storage_state(path=str(storage_state_path))
-    finally:
-        context.close()
+
+    page.get_by_role("button", name="Sidebar toggle").wait_for(
+        state="visible",
+        timeout=AUTH_STABILIZATION_TIMEOUT_MS,
+    )
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=AUTH_STABILIZATION_TIMEOUT_MS)
+    except Exception:
+        pass
+    _stash_access_token(page, settings)
+
+
+def _submit_login(page, settings) -> None:
+    username = page.locator('input[name="username"], input[type="text"]').first
+    password = page.locator('input[name="password"], input[type="password"]').first
+
+    username.wait_for(state="visible", timeout=settings.timeout_ms)
+    username.fill(settings.username)
+    password.fill(settings.password)
+
+    try:
+        page.get_by_role("button", name=re.compile("log in", re.IGNORECASE)).click()
+    except Exception:
+        page.locator('button[type="submit"], input[type="submit"], ha-progress-button, mwc-button').first.click()
+
+
+def _wait_for_auth_completion(page, timeout_ms: int) -> bool:
+    try:
+        page.wait_for_function(
+            """() => {
+                const path = window.location.pathname || "";
+                return !path.includes("/auth");
+            }""",
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _stash_access_token(page, settings) -> None:
+    page.wait_for_function(_access_token_script(), timeout=settings.timeout_ms)
+    token = page.evaluate(_access_token_script())
+    if token:
+        page.evaluate(
+            """(accessToken) => {
+                localStorage.setItem("whispeerAccessToken", accessToken);
+            }""",
+            token,
+        )
+
+
+def _wait_for_auth_redirect(page, settings) -> None:
+    try:
+        page.wait_for_function(
+            """() => {
+                const path = window.location.pathname || "";
+                if (path && path !== "/") {
+                    return true;
+                }
+                return Boolean(
+                    document.querySelector('input[name="username"], input[type="password"]')
+                );
+            }""",
+            timeout=AUTH_STABILIZATION_TIMEOUT_MS,
+        )
+    except Exception:
+        try:
+            page.wait_for_load_state("networkidle", timeout=min(settings.timeout_ms, 5000))
+        except Exception:
+            pass
+        page.wait_for_timeout(1500)
 
 
 def _new_context(browser, settings, storage_state: Path | None = None):
@@ -350,6 +502,13 @@ def _is_login_required(page) -> bool:
 
 def _access_token_script() -> str:
     return """() => {
+        try {
+            const persisted = localStorage.getItem("whispeerAccessToken");
+            if (persisted) {
+                return persisted;
+            }
+        } catch (_) {}
+
         if (typeof window.getHomeAssistantToken === "function") {
             const injected = window.getHomeAssistantToken();
             if (injected) {

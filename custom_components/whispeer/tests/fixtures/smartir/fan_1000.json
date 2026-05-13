@@ -1,0 +1,19 @@
+{
+  "manufacturer": "Whispeer",
+  "supportedModels": [
+    "Bench Fan 1000"
+  ],
+  "supportedController": "Broadlink",
+  "commandsEncoding": "Base64",
+  "speed": [
+    "low",
+    "medium",
+    "high"
+  ],
+  "commands": {
+    "off": "fan_off_1000",
+    "low": "fan_low_1000",
+    "medium": "fan_medium_1000",
+    "high": "fan_high_1000"
+  }
+}

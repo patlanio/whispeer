@@ -1,0 +1,685 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "core.restore_state",
+  "data": [
+    {
+      "state": {"entity_id":"conversation.home_assistant","state":"unknown","attributes":{"friendly_name":"Home Assistant","supported_features":1},"last_changed":"2026-05-13T00:09:17.019344+00:00","last_reported":"2026-05-13T00:09:17.019344+00:00","last_updated":"2026-05-13T00:09:17.019344+00:00","context":{"id":"01KRFAN5YVCYHVNR3ANA4SW3JH","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"event.backup_automatic_backup","state":"unknown","attributes":{"event_types":["completed","failed","in_progress"],"event_type":null,"friendly_name":"Backup Copia de seguridad automática"},"last_changed":"2026-05-13T00:09:17.189449+00:00","last_reported":"2026-05-13T00:09:17.189449+00:00","last_updated":"2026-05-13T00:09:17.189449+00:00","context":{"id":"01KRFAN645DDRDQS2KNH0N7ZRZ","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "last_event_type": null,
+        "last_event_attributes": null
+      },
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"person.whishome","state":"unknown","attributes":{"editable":true,"id":"whishome","device_trackers":[],"in_zones":[],"source":"person.whishome","user_id":"3a184616f3ac476f96edb61ac39a21d6","friendly_name":"whishome"},"last_changed":"2026-05-13T00:09:18.035017+00:00","last_reported":"2026-05-13T00:09:18.035017+00:00","last_updated":"2026-05-13T00:09:18.035017+00:00","context":{"id":"01KRFAN6YK9TFZNAKY3W22RC8J","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"tts.google_translate_en_com","state":"unknown","attributes":{"friendly_name":"Google Translate en com"},"last_changed":"2026-05-13T00:09:22.379157+00:00","last_reported":"2026-05-13T00:09:22.379157+00:00","last_updated":"2026-05-13T00:09:22.379157+00:00","context":{"id":"01KRFANB6B3F474P2E7H9934TY","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"infrared.rm4_pro_emisor_ir","state":"unknown","attributes":{"friendly_name":"RM4 Mini Emisor IR"},"last_changed":"2026-05-13T00:09:22.430379+00:00","last_reported":"2026-05-13T00:09:22.430379+00:00","last_updated":"2026-05-13T00:09:22.430379+00:00","context":{"id":"01KRFANB7YNBBHMFTJV1JNSCCH","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"remote.rm4_mini","state":"on","attributes":{"friendly_name":"RM4 Mini","supported_features":3},"last_changed":"2026-05-13T00:09:22.430766+00:00","last_reported":"2026-05-13T00:09:22.430766+00:00","last_updated":"2026-05-13T00:09:22.430766+00:00","context":{"id":"01KRFANB7Y1YR5M354DM33NYE7","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"radio_frequency.rm4_pro","state":"unknown","attributes":{"friendly_name":"RM4 Pro"},"last_changed":"2026-05-13T00:09:22.432787+00:00","last_reported":"2026-05-13T00:09:22.432787+00:00","last_updated":"2026-05-13T00:09:22.432787+00:00","context":{"id":"01KRFANB803YPS66BF9EBYJS8B","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"remote.rm4_pro","state":"on","attributes":{"friendly_name":"RM4 Pro","supported_features":3},"last_changed":"2026-05-13T00:09:22.433754+00:00","last_reported":"2026-05-13T00:09:22.433754+00:00","last_updated":"2026-05-13T00:09:22.433754+00:00","context":{"id":"01KRFANB8134RE7DNXKFYY4AFT","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"infrared.rm4_pro_emisor_ir_2","state":"unknown","attributes":{"friendly_name":"RM4 Pro Emisor IR"},"last_changed":"2026-05-13T00:09:22.433905+00:00","last_reported":"2026-05-13T00:09:22.433905+00:00","last_updated":"2026-05-13T00:09:22.433905+00:00","context":{"id":"01KRFANB81XSQG306JWYHKK9BD","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:09:23.271999+00:00"
+    },
+    {
+      "state": {"entity_id":"remote.rm4_pro_2","state":"on","attributes":{"friendly_name":"RM4 Pro","supported_features":3},"last_changed":"2026-05-11T06:05:33.265613+00:00","last_reported":"2026-05-11T06:05:33.265765+00:00","last_updated":"2026-05-11T06:05:33.265613+00:00","context":{"id":"01KRAT836H5T24P3QR0EPP5BRZ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:06:25.977981+00:00"
+    },
+    {
+      "state": {"entity_id":"select.clima_whispeer_clima_climate_fan_mode","state":"low","attributes":{"options":["low","mid","high","auto"],"friendly_name":"clima climate_fan_mode"},"last_changed":"2026-05-11T06:06:45.712128+00:00","last_reported":"2026-05-11T06:06:45.722461+00:00","last_updated":"2026-05-11T06:06:45.712128+00:00","context":{"id":"01KRATA9YGQTRWNCAC14J3657F","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:07:17.717466+00:00"
+    },
+    {
+      "state": {"entity_id":"number.clima_whispeer_clima_climate_temperature","state":"16.0","attributes":{"min":16.0,"max":30.0,"step":1.0,"mode":"box","friendly_name":"clima climate_temperature"},"last_changed":"2026-05-11T06:06:45.741223+00:00","last_reported":"2026-05-11T06:06:45.741724+00:00","last_updated":"2026-05-11T06:06:45.741223+00:00","context":{"id":"01KRATA9ZDR68R3HE62WBZM3DT","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:07:17.719334+00:00"
+    },
+    {
+      "state": {"entity_id":"climate.clima_whispeer_clima_climate","state":"off","attributes":{"hvac_modes":["off","heat","cool","fan_only"],"min_temp":16.0,"max_temp":30.0,"target_temp_step":1.0,"fan_modes":["low","mid","high","auto"],"current_temperature":null,"temperature":23.0,"fan_mode":"low","friendly_name":"clima","supported_features":9},"last_changed":"2026-05-11T06:06:45.759007+00:00","last_reported":"2026-05-11T06:06:54.639595+00:00","last_updated":"2026-05-11T06:06:54.639595+00:00","context":{"id":"01KRATAJNEG3VQ5SFGSWBNC6SJ","parent_id":null,"user_id":"3a184616f3ac476f96edb61ac39a21d6"}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:07:17.719878+00:00"
+    },
+    {
+      "state": {"entity_id":"button.player_whispeer_player_domain_btn_on","state":"unknown","attributes":{"friendly_name":"player on"},"last_changed":"2026-05-11T06:07:45.649371+00:00","last_reported":"2026-05-11T06:07:45.650953+00:00","last_updated":"2026-05-11T06:07:45.649371+00:00","context":{"id":"01KRATC4FH4Z4P0202TB5RQTDP","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.408824+00:00"
+    },
+    {
+      "state": {"entity_id":"button.player_whispeer_player_domain_btn_off","state":"unknown","attributes":{"friendly_name":"player off"},"last_changed":"2026-05-11T06:07:45.651498+00:00","last_reported":"2026-05-11T06:07:45.651581+00:00","last_updated":"2026-05-11T06:07:45.651498+00:00","context":{"id":"01KRATC4FKKQB69WCP4X4H805V","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.412509+00:00"
+    },
+    {
+      "state": {"entity_id":"button.player_whispeer_player_domain_btn_mute","state":"unknown","attributes":{"friendly_name":"player mute"},"last_changed":"2026-05-11T06:07:45.651774+00:00","last_reported":"2026-05-11T06:07:45.651844+00:00","last_updated":"2026-05-11T06:07:45.651774+00:00","context":{"id":"01KRATC4FK8AT1SF9H8E7P7QZX","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.412896+00:00"
+    },
+    {
+      "state": {"entity_id":"button.player_whispeer_player_domain_btn_volumeup","state":"unknown","attributes":{"friendly_name":"player volumeUp"},"last_changed":"2026-05-11T06:07:45.652042+00:00","last_reported":"2026-05-11T06:07:45.652138+00:00","last_updated":"2026-05-11T06:07:45.652042+00:00","context":{"id":"01KRATC4FMGV7KH8R6YVC03K8C","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.413291+00:00"
+    },
+    {
+      "state": {"entity_id":"button.player_whispeer_player_domain_btn_volumedown","state":"unknown","attributes":{"friendly_name":"player volumeDown"},"last_changed":"2026-05-11T06:07:45.652278+00:00","last_reported":"2026-05-11T06:07:45.652339+00:00","last_updated":"2026-05-11T06:07:45.652278+00:00","context":{"id":"01KRATC4FMV5J3Q738VJA7XC55","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.413607+00:00"
+    },
+    {
+      "state": {"entity_id":"button.player_whispeer_player_domain_btn_previouschannel","state":"unknown","attributes":{"friendly_name":"player previousChannel"},"last_changed":"2026-05-11T06:07:45.652519+00:00","last_reported":"2026-05-11T06:07:45.652580+00:00","last_updated":"2026-05-11T06:07:45.652519+00:00","context":{"id":"01KRATC4FMKJP8HE6C2MT4T9CC","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.413905+00:00"
+    },
+    {
+      "state": {"entity_id":"button.player_whispeer_player_domain_btn_nextchannel","state":"unknown","attributes":{"friendly_name":"player nextChannel"},"last_changed":"2026-05-11T06:07:45.652739+00:00","last_reported":"2026-05-11T06:07:45.652807+00:00","last_updated":"2026-05-11T06:07:45.652739+00:00","context":{"id":"01KRATC4FMR0NNZSMJ7TA14QQY","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.414238+00:00"
+    },
+    {
+      "state": {"entity_id":"select.player_whispeer_player_media_player_source","state":"EXT1","attributes":{"options":["EXT1","EXT2","VGA","HDMI","HDMI Side","AV Side","Channel 1","Channel 11"],"friendly_name":"player media_player_source"},"last_changed":"2026-05-11T06:07:45.654002+00:00","last_reported":"2026-05-11T06:07:45.654148+00:00","last_updated":"2026-05-11T06:07:45.654002+00:00","context":{"id":"01KRATC4FPZ3VHH77JE9Q7Z9NN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.415711+00:00"
+    },
+    {
+      "state": {"entity_id":"media_player.player_whispeer_player_media_player","state":"off","attributes":{"source_list":["EXT1","EXT2","VGA","HDMI","HDMI Side","AV Side","Channel 1","Channel 11"],"friendly_name":"player","supported_features":3512},"last_changed":"2026-05-11T06:07:45.667410+00:00","last_reported":"2026-05-11T06:07:45.667534+00:00","last_updated":"2026-05-11T06:07:45.667410+00:00","context":{"id":"01KRATC4G3AS1WP8XC14W5M2BH","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:08:09.425426+00:00"
+    },
+    {
+      "state": {"entity_id":"button.luz_whispeer_luz_domain_btn_brighten","state":"unknown","attributes":{"friendly_name":"luz brighten"},"last_changed":"2026-05-11T06:08:09.485649+00:00","last_reported":"2026-05-11T06:08:09.485649+00:00","last_updated":"2026-05-11T06:08:09.485649+00:00","context":{"id":"01KRATCVRDP4KJXGMJ2AZWA9ZP","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.415769+00:00"
+    },
+    {
+      "state": {"entity_id":"button.luz_whispeer_luz_domain_btn_dim","state":"unknown","attributes":{"friendly_name":"luz dim"},"last_changed":"2026-05-11T06:08:09.485792+00:00","last_reported":"2026-05-11T06:08:09.485792+00:00","last_updated":"2026-05-11T06:08:09.485792+00:00","context":{"id":"01KRATCVRDYWKAW5RSC0450XWN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.417600+00:00"
+    },
+    {
+      "state": {"entity_id":"button.luz_whispeer_luz_domain_btn_colder","state":"unknown","attributes":{"friendly_name":"luz colder"},"last_changed":"2026-05-11T06:08:09.485862+00:00","last_reported":"2026-05-11T06:08:09.485862+00:00","last_updated":"2026-05-11T06:08:09.485862+00:00","context":{"id":"01KRATCVRDK2S77EQTWMXX01W5","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.418054+00:00"
+    },
+    {
+      "state": {"entity_id":"button.luz_whispeer_luz_domain_btn_warmer","state":"unknown","attributes":{"friendly_name":"luz warmer"},"last_changed":"2026-05-11T06:08:09.485918+00:00","last_reported":"2026-05-11T06:08:09.485918+00:00","last_updated":"2026-05-11T06:08:09.485918+00:00","context":{"id":"01KRATCVRDDD1XNW2AHXM7KRDS","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.418333+00:00"
+    },
+    {
+      "state": {"entity_id":"button.luz_whispeer_luz_domain_btn_night","state":"unknown","attributes":{"friendly_name":"luz night"},"last_changed":"2026-05-11T06:08:09.485981+00:00","last_reported":"2026-05-11T06:08:09.485981+00:00","last_updated":"2026-05-11T06:08:09.485981+00:00","context":{"id":"01KRATCVRDAT0G6GYN329SDDMY","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.419774+00:00"
+    },
+    {
+      "state": {"entity_id":"light.luz_whispeer_luz_domain_light","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"luz","supported_features":0},"last_changed":"2026-05-11T06:08:09.486446+00:00","last_reported":"2026-05-11T06:08:09.486446+00:00","last_updated":"2026-05-11T06:08:09.486446+00:00","context":{"id":"01KRATCVREPP3MX4RC2A90N1DF","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.420248+00:00"
+    },
+    {
+      "state": {"entity_id":"select.fan_whispeer_fan_fan_speed","state":"lowest","attributes":{"options":["lowest","low","mediumLow","medium","mediumHigh","high"],"friendly_name":"fan fan_speed"},"last_changed":"2026-05-11T06:08:09.486768+00:00","last_reported":"2026-05-11T06:08:09.486768+00:00","last_updated":"2026-05-11T06:08:09.486768+00:00","context":{"id":"01KRATCVREENCQJ37AGZRQFNZG","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.404192+00:00"
+    },
+    {
+      "state": {"entity_id":"fan.fan_whispeer_fan_fan","state":"off","attributes":{"preset_modes":["lowest","low","mediumLow","medium","mediumHigh","high"],"preset_mode":null,"friendly_name":"fan","supported_features":56},"last_changed":"2026-05-11T06:08:09.487254+00:00","last_reported":"2026-05-11T06:08:09.487254+00:00","last_updated":"2026-05-11T06:08:09.487254+00:00","context":{"id":"01KRATCVRFA503T2WBDFVZCAKN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.407464+00:00"
+    },
+    {
+      "state": {"entity_id":"button.media_player_whispeer_media_player_domain_btn_on","state":"unknown","attributes":{"friendly_name":"media player on"},"last_changed":"2026-05-11T06:08:43.490848+00:00","last_reported":"2026-05-11T06:08:43.501437+00:00","last_updated":"2026-05-11T06:08:43.490848+00:00","context":{"id":"01KRATDWZ2GHRM6HZV600X0AFQ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.420741+00:00"
+    },
+    {
+      "state": {"entity_id":"button.media_player_whispeer_media_player_domain_btn_off","state":"unknown","attributes":{"friendly_name":"media player off"},"last_changed":"2026-05-11T06:08:43.503405+00:00","last_reported":"2026-05-11T06:08:43.504540+00:00","last_updated":"2026-05-11T06:08:43.503405+00:00","context":{"id":"01KRATDWZFBGPR449XQHRR8H0B","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.421123+00:00"
+    },
+    {
+      "state": {"entity_id":"button.media_player_whispeer_media_player_domain_btn_mute","state":"unknown","attributes":{"friendly_name":"media player mute"},"last_changed":"2026-05-11T06:08:43.505522+00:00","last_reported":"2026-05-11T06:08:43.505828+00:00","last_updated":"2026-05-11T06:08:43.505522+00:00","context":{"id":"01KRATDWZH3ADBDVM116DNCYGE","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.421395+00:00"
+    },
+    {
+      "state": {"entity_id":"button.media_player_whispeer_media_player_domain_btn_volumeup","state":"unknown","attributes":{"friendly_name":"media player volumeUp"},"last_changed":"2026-05-11T06:08:43.506781+00:00","last_reported":"2026-05-11T06:08:43.507064+00:00","last_updated":"2026-05-11T06:08:43.506781+00:00","context":{"id":"01KRATDWZJ5S7CR2HW0QZF66V5","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.429930+00:00"
+    },
+    {
+      "state": {"entity_id":"button.media_player_whispeer_media_player_domain_btn_volumedown","state":"unknown","attributes":{"friendly_name":"media player volumeDown"},"last_changed":"2026-05-11T06:08:43.514321+00:00","last_reported":"2026-05-11T06:08:43.515160+00:00","last_updated":"2026-05-11T06:08:43.514321+00:00","context":{"id":"01KRATDWZT0B2GAMQ8GJNBQY3J","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.430738+00:00"
+    },
+    {
+      "state": {"entity_id":"button.media_player_whispeer_media_player_domain_btn_previouschannel","state":"unknown","attributes":{"friendly_name":"media player previousChannel"},"last_changed":"2026-05-11T06:08:43.516254+00:00","last_reported":"2026-05-11T06:08:43.516845+00:00","last_updated":"2026-05-11T06:08:43.516254+00:00","context":{"id":"01KRATDWZWVEWJSVBYP23TPDQB","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.430997+00:00"
+    },
+    {
+      "state": {"entity_id":"button.media_player_whispeer_media_player_domain_btn_nextchannel","state":"unknown","attributes":{"friendly_name":"media player nextChannel"},"last_changed":"2026-05-11T06:08:43.528327+00:00","last_reported":"2026-05-11T06:08:43.529317+00:00","last_updated":"2026-05-11T06:08:43.528327+00:00","context":{"id":"01KRATDX08PJ2KBW28GV6N89PK","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.431279+00:00"
+    },
+    {
+      "state": {"entity_id":"select.media_player_whispeer_media_player_media_player_source","state":"EXT1","attributes":{"options":["EXT1","EXT2","VGA","HDMI","HDMI Side","AV Side","Channel 1","Channel 11"],"friendly_name":"media player media_player_source"},"last_changed":"2026-05-11T06:08:43.532224+00:00","last_reported":"2026-05-11T06:08:43.532402+00:00","last_updated":"2026-05-11T06:08:43.532224+00:00","context":{"id":"01KRATDX0CVNGHNRY27TVQTD5V","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.431580+00:00"
+    },
+    {
+      "state": {"entity_id":"media_player.media_player_whispeer_media_player_media_player","state":"off","attributes":{"source_list":["EXT1","EXT2","VGA","HDMI","HDMI Side","AV Side","Channel 1","Channel 11"],"friendly_name":"media player","supported_features":3512},"last_changed":"2026-05-11T06:08:43.536028+00:00","last_reported":"2026-05-11T06:08:43.536172+00:00","last_updated":"2026-05-11T06:08:43.536028+00:00","context":{"id":"01KRATDX0G7H8TAR3RZPDXRCTJ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:09:26.432014+00:00"
+    },
+    {
+      "state": {"entity_id":"switch.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_lampara","state":"off","attributes":{"friendly_name":"Ventilador de la cocina lampara"},"last_changed":"2026-05-11T06:12:54.735019+00:00","last_reported":"2026-05-11T06:12:54.738084+00:00","last_updated":"2026-05-11T06:12:54.735019+00:00","context":{"id":"01KRATNJAF6KBSYWFMBDER372F","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.719880+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_temporizadores_1h","state":"unknown","attributes":{"friendly_name":"Ventilador de la cocina temporizadores 1h"},"last_changed":"2026-05-11T06:12:54.758461+00:00","last_reported":"2026-05-11T06:12:54.758846+00:00","last_updated":"2026-05-11T06:12:54.758461+00:00","context":{"id":"01KRATNJB6JTVFC4SBQVC6YJX3","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.740490+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_temporizadores_2h","state":"unknown","attributes":{"friendly_name":"Ventilador de la cocina temporizadores 2h"},"last_changed":"2026-05-11T06:12:54.759284+00:00","last_reported":"2026-05-11T06:12:54.759402+00:00","last_updated":"2026-05-11T06:12:54.759284+00:00","context":{"id":"01KRATNJB74PCNX6S69BBWBSZZ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.747224+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_temporizadores_4h","state":"unknown","attributes":{"friendly_name":"Ventilador de la cocina temporizadores 4h"},"last_changed":"2026-05-11T06:12:54.759705+00:00","last_reported":"2026-05-11T06:12:54.759761+00:00","last_updated":"2026-05-11T06:12:54.759705+00:00","context":{"id":"01KRATNJB7ZY577W740K1GWBQH","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.755673+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_vientos_forward","state":"unknown","attributes":{"friendly_name":"Ventilador de la cocina vientos forward"},"last_changed":"2026-05-11T06:12:54.760014+00:00","last_reported":"2026-05-11T06:12:54.760092+00:00","last_updated":"2026-05-11T06:12:54.760014+00:00","context":{"id":"01KRATNJB8ZE7Q3NPZPS05828Q","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.764402+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_vientos_reversa","state":"unknown","attributes":{"friendly_name":"Ventilador de la cocina vientos reversa"},"last_changed":"2026-05-11T06:12:54.760318+00:00","last_reported":"2026-05-11T06:12:54.760378+00:00","last_updated":"2026-05-11T06:12:54.760318+00:00","context":{"id":"01KRATNJB84R5AFH0GD1SZGEXX","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.767476+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_vientos_onditas","state":"unknown","attributes":{"friendly_name":"Ventilador de la cocina vientos onditas"},"last_changed":"2026-05-11T06:12:54.760688+00:00","last_reported":"2026-05-11T06:12:54.760871+00:00","last_updated":"2026-05-11T06:12:54.760688+00:00","context":{"id":"01KRATNJB8SMEKT5CKCWG4GDQ6","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.769558+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_all_off","state":"unknown","attributes":{"friendly_name":"Ventilador de la cocina all off"},"last_changed":"2026-05-11T06:12:54.761252+00:00","last_reported":"2026-05-11T06:12:54.761357+00:00","last_updated":"2026-05-11T06:12:54.761252+00:00","context":{"id":"01KRATNJB9EXWA9V1D65P50033","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.772164+00:00"
+    },
+    {
+      "state": {"entity_id":"number.ventilador_de_la_cocina_whispeer_ventilador_de_la_cocina_velocidad_del_ventilador","state":"0.0","attributes":{"min":0.0,"max":6.0,"step":1.0,"mode":"slider","friendly_name":"Ventilador de la cocina velocidad del ventilador"},"last_changed":"2026-05-11T06:12:54.766973+00:00","last_reported":"2026-05-11T06:12:54.767104+00:00","last_updated":"2026-05-11T06:12:54.766973+00:00","context":{"id":"01KRATNJBEJPQKTP5YJANC3Z27","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.782330+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_sala_whispeer_ventilador_sala_temporizadores_1h","state":"unknown","attributes":{"friendly_name":"Ventilador Sala temporizadores 1h"},"last_changed":"2026-05-11T06:12:54.800290+00:00","last_reported":"2026-05-11T06:12:54.800389+00:00","last_updated":"2026-05-11T06:12:54.800290+00:00","context":{"id":"01KRATNJCGZP347R8G6KTVJ032","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.791258+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_sala_whispeer_ventilador_sala_temporizadores_2h","state":"unknown","attributes":{"friendly_name":"Ventilador Sala temporizadores 2h"},"last_changed":"2026-05-11T06:12:54.800585+00:00","last_reported":"2026-05-11T06:12:54.800801+00:00","last_updated":"2026-05-11T06:12:54.800585+00:00","context":{"id":"01KRATNJCG3WSYA9WSTGNMQWYS","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.792583+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_sala_whispeer_ventilador_sala_temporizadores_4h","state":"unknown","attributes":{"friendly_name":"Ventilador Sala temporizadores 4h"},"last_changed":"2026-05-11T06:12:54.801255+00:00","last_reported":"2026-05-11T06:12:54.801337+00:00","last_updated":"2026-05-11T06:12:54.801255+00:00","context":{"id":"01KRATNJCHAJRZM6X91GZCF0G8","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.796256+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_sala_whispeer_ventilador_sala_vientos_forward","state":"unknown","attributes":{"friendly_name":"Ventilador Sala vientos forward"},"last_changed":"2026-05-11T06:12:54.801624+00:00","last_reported":"2026-05-11T06:12:54.801727+00:00","last_updated":"2026-05-11T06:12:54.801624+00:00","context":{"id":"01KRATNJCHDK4X7NVM16XB1KXK","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.800778+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_sala_whispeer_ventilador_sala_vientos_onditas","state":"unknown","attributes":{"friendly_name":"Ventilador Sala vientos onditas"},"last_changed":"2026-05-11T06:12:54.802160+00:00","last_reported":"2026-05-11T06:12:54.802222+00:00","last_updated":"2026-05-11T06:12:54.802160+00:00","context":{"id":"01KRATNJCJ4Y9GKC3G96KC3HWV","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.804941+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_sala_whispeer_ventilador_sala_vientos_reversa","state":"unknown","attributes":{"friendly_name":"Ventilador Sala vientos reversa"},"last_changed":"2026-05-11T06:12:54.802391+00:00","last_reported":"2026-05-11T06:12:54.802444+00:00","last_updated":"2026-05-11T06:12:54.802391+00:00","context":{"id":"01KRATNJCJE5Z1SEXKH2NKK2ZA","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.807560+00:00"
+    },
+    {
+      "state": {"entity_id":"button.ventilador_sala_whispeer_ventilador_sala_apagar_todo","state":"unknown","attributes":{"friendly_name":"Ventilador Sala apagar todo"},"last_changed":"2026-05-11T06:12:54.802631+00:00","last_reported":"2026-05-11T06:12:54.802680+00:00","last_updated":"2026-05-11T06:12:54.802631+00:00","context":{"id":"01KRATNJCJX9Y3962SZV3YCDE9","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.809718+00:00"
+    },
+    {
+      "state": {"entity_id":"light.ventilador_sala_whispeer_ventilador_sala_lampara","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"Ventilador Sala lampara","supported_features":0},"last_changed":"2026-05-11T06:12:54.804244+00:00","last_reported":"2026-05-11T06:12:54.804366+00:00","last_updated":"2026-05-11T06:12:54.804244+00:00","context":{"id":"01KRATNJCMA3RR7EWSDY2KVZ8B","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.818463+00:00"
+    },
+    {
+      "state": {"entity_id":"number.ventilador_sala_whispeer_ventilador_sala_ventilador","state":"0.0","attributes":{"min":0.0,"max":6.0,"step":1.0,"mode":"slider","friendly_name":"Ventilador Sala ventilador"},"last_changed":"2026-05-11T06:12:54.804779+00:00","last_reported":"2026-05-11T06:12:54.804862+00:00","last_updated":"2026-05-11T06:12:54.804779+00:00","context":{"id":"01KRATNJCMB415XVWMMJRGGKNR","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.822312+00:00"
+    },
+    {
+      "state": {"entity_id":"button.generic_light_whispeer_generic_light_brillo_mas","state":"unknown","attributes":{"friendly_name":"generic_light brillo mas"},"last_changed":"2026-05-11T06:12:54.821473+00:00","last_reported":"2026-05-11T06:12:54.821552+00:00","last_updated":"2026-05-11T06:12:54.821473+00:00","context":{"id":"01KRATNJD5RHEPFEB2V4G4Y673","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.828220+00:00"
+    },
+    {
+      "state": {"entity_id":"button.generic_light_whispeer_generic_light_brillo_menos","state":"unknown","attributes":{"friendly_name":"generic_light brillo menos"},"last_changed":"2026-05-11T06:12:54.821739+00:00","last_reported":"2026-05-11T06:12:54.821786+00:00","last_updated":"2026-05-11T06:12:54.821739+00:00","context":{"id":"01KRATNJD5T7FXPWPBMG6A1MR0","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.829105+00:00"
+    },
+    {
+      "state": {"entity_id":"button.generic_light_whispeer_generic_light_opciones_run","state":"unknown","attributes":{"friendly_name":"generic_light opciones run"},"last_changed":"2026-05-11T06:12:54.822022+00:00","last_reported":"2026-05-11T06:12:54.822107+00:00","last_updated":"2026-05-11T06:12:54.822022+00:00","context":{"id":"01KRATNJD6RXEDPE2CGQKPEFBP","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.830071+00:00"
+    },
+    {
+      "state": {"entity_id":"button.generic_light_whispeer_generic_light_opciones_rgb","state":"unknown","attributes":{"friendly_name":"generic_light opciones rgb"},"last_changed":"2026-05-11T06:12:54.822343+00:00","last_reported":"2026-05-11T06:12:54.822390+00:00","last_updated":"2026-05-11T06:12:54.822343+00:00","context":{"id":"01KRATNJD6DZEQSAY8MR242WKT","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.831757+00:00"
+    },
+    {
+      "state": {"entity_id":"button.generic_light_whispeer_generic_light_opciones_lmp","state":"unknown","attributes":{"friendly_name":"generic_light opciones lmp"},"last_changed":"2026-05-11T06:12:54.822621+00:00","last_reported":"2026-05-11T06:12:54.822690+00:00","last_updated":"2026-05-11T06:12:54.822621+00:00","context":{"id":"01KRATNJD6T13WX7D0RK4B6VQM","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.832753+00:00"
+    },
+    {
+      "state": {"entity_id":"button.generic_light_whispeer_generic_light_timer_up","state":"unknown","attributes":{"friendly_name":"generic_light timer up"},"last_changed":"2026-05-11T06:12:54.822915+00:00","last_reported":"2026-05-11T06:12:54.822962+00:00","last_updated":"2026-05-11T06:12:54.822915+00:00","context":{"id":"01KRATNJD6GY383VGDFAWWMHX0","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.833440+00:00"
+    },
+    {
+      "state": {"entity_id":"button.generic_light_whispeer_generic_light_timer_down","state":"unknown","attributes":{"friendly_name":"generic_light timer down"},"last_changed":"2026-05-11T06:12:54.823103+00:00","last_reported":"2026-05-11T06:12:54.823142+00:00","last_updated":"2026-05-11T06:12:54.823103+00:00","context":{"id":"01KRATNJD74VGARBPXJM5S1T65","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.833494+00:00"
+    },
+    {
+      "state": {"entity_id":"light.generic_light_whispeer_generic_light_luz","state":"on","attributes":{"supported_color_modes":["onoff"],"color_mode":"onoff","friendly_name":"generic_light luz","supported_features":0},"last_changed":"2026-05-11T06:14:32.020406+00:00","last_reported":"2026-05-11T06:14:32.020406+00:00","last_updated":"2026-05-11T06:14:32.020406+00:00","context":{"id":"01KRATRH8MRKASZT9PX9D2N7EZ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.843982+00:00"
+    },
+    {
+      "state": {"entity_id":"select.generic_light_whispeer_generic_light_color","state":"azul","attributes":{"options":["rojo","verde","azul","salmon","esmeralda","azul oscuro","morado","naranja","celeste","rosa","amarillo","blanco"],"friendly_name":"generic_light color"},"last_changed":"2026-05-11T06:14:29.356440+00:00","last_reported":"2026-05-11T06:14:29.356440+00:00","last_updated":"2026-05-11T06:14:29.356440+00:00","context":{"id":"01KRATRENKED0H1WYE4FCBTZAA","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.848465+00:00"
+    },
+    {
+      "state": {"entity_id":"select.generic_light_whispeer_generic_light_tono","state":"calido","attributes":{"options":["calido","frio"],"friendly_name":"generic_light tono"},"last_changed":"2026-05-11T06:09:36.949992+00:00","last_reported":"2026-05-11T06:09:36.950059+00:00","last_updated":"2026-05-11T06:09:36.949992+00:00","context":{"id":"01KRATFH5NFVPXRJ192JMN03SQ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-11T06:12:46.447920+00:00"
+    },
+    {
+      "state": {"entity_id":"switch.ventilador_de_la_oficina_whispeer_ventilador_de_la_oficina_beep","state":"off","attributes":{"friendly_name":"Ventilador de la oficina beep"},"last_changed":"2026-05-11T06:12:54.844559+00:00","last_reported":"2026-05-11T06:12:54.844635+00:00","last_updated":"2026-05-11T06:12:54.844559+00:00","context":{"id":"01KRATNJDW8TE3H72YM9M5QX45","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.854550+00:00"
+    },
+    {
+      "state": {"entity_id":"light.ventilador_de_la_oficina_whispeer_ventilador_de_la_oficina_luz","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"Ventilador de la oficina luz","supported_features":0},"last_changed":"2026-05-11T06:12:54.844866+00:00","last_reported":"2026-05-11T06:12:54.844914+00:00","last_updated":"2026-05-11T06:12:54.844866+00:00","context":{"id":"01KRATNJDW1JPBVAPWWQ1F93E1","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.858068+00:00"
+    },
+    {
+      "state": {"entity_id":"number.ventilador_de_la_oficina_whispeer_ventilador_de_la_oficina_velocidad","state":"0.0","attributes":{"min":0.0,"max":6.0,"step":1.0,"mode":"slider","friendly_name":"Ventilador de la oficina velocidad"},"last_changed":"2026-05-11T06:12:54.845143+00:00","last_reported":"2026-05-11T06:12:54.845189+00:00","last_updated":"2026-05-11T06:12:54.845143+00:00","context":{"id":"01KRATNJDXCVZC2T315JFD9Z54","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.859418+00:00"
+    },
+    {
+      "state": {"entity_id":"switch.lg_sk1_whispeer_lg_sk1_power","state":"off","attributes":{"friendly_name":"LG SK1 power"},"last_changed":"2026-05-11T06:12:54.860976+00:00","last_reported":"2026-05-11T06:12:54.861037+00:00","last_updated":"2026-05-11T06:12:54.860976+00:00","context":{"id":"01KRATNJECYDGW4GYM1BTJMJP5","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.860390+00:00"
+    },
+    {
+      "state": {"entity_id":"switch.lg_sk1_whispeer_lg_sk1_drc","state":"off","attributes":{"friendly_name":"LG SK1 DRC"},"last_changed":"2026-05-11T06:12:54.861220+00:00","last_reported":"2026-05-11T06:12:54.861282+00:00","last_updated":"2026-05-11T06:12:54.861220+00:00","context":{"id":"01KRATNJEDS2N90X3CQE7KDCCN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.860536+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_volumne_up","state":"unknown","attributes":{"friendly_name":"LG SK1 volumne up"},"last_changed":"2026-05-11T06:12:54.861485+00:00","last_reported":"2026-05-11T06:12:54.861530+00:00","last_updated":"2026-05-11T06:12:54.861485+00:00","context":{"id":"01KRATNJED2HZKW7QK68XG0WZB","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.862204+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_volumne_down","state":"unknown","attributes":{"friendly_name":"LG SK1 volumne down"},"last_changed":"2026-05-11T06:12:54.861640+00:00","last_reported":"2026-05-11T06:12:54.861683+00:00","last_updated":"2026-05-11T06:12:54.861640+00:00","context":{"id":"01KRATNJEDQC7ZRM22R9B3QDGT","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.863118+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_source_optical","state":"unknown","attributes":{"friendly_name":"LG SK1 source optical"},"last_changed":"2026-05-11T06:12:54.861815+00:00","last_reported":"2026-05-11T06:12:54.861868+00:00","last_updated":"2026-05-11T06:12:54.861815+00:00","context":{"id":"01KRATNJED9DZEGBNQG8NP8B2A","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.864918+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_source_port_in","state":"unknown","attributes":{"friendly_name":"LG SK1 source port in"},"last_changed":"2026-05-11T06:12:54.861972+00:00","last_reported":"2026-05-11T06:12:54.862008+00:00","last_updated":"2026-05-11T06:12:54.861972+00:00","context":{"id":"01KRATNJED6TPCYT5PCZ5DYFRV","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.868154+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_source_bluetooth","state":"unknown","attributes":{"friendly_name":"LG SK1 source bluetooth"},"last_changed":"2026-05-11T06:12:54.862164+00:00","last_reported":"2026-05-11T06:12:54.862200+00:00","last_updated":"2026-05-11T06:12:54.862164+00:00","context":{"id":"01KRATNJEE8VYCKKGAZH06AAYN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.868900+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_mute","state":"unknown","attributes":{"friendly_name":"LG SK1 mute"},"last_changed":"2026-05-11T06:12:54.862319+00:00","last_reported":"2026-05-11T06:12:54.862352+00:00","last_updated":"2026-05-11T06:12:54.862319+00:00","context":{"id":"01KRATNJEESGWHEX6GGKB5N5P9","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.870378+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_standard","state":"unknown","attributes":{"friendly_name":"LG SK1 standard"},"last_changed":"2026-05-11T06:12:54.862471+00:00","last_reported":"2026-05-11T06:12:54.862511+00:00","last_updated":"2026-05-11T06:12:54.862471+00:00","context":{"id":"01KRATNJEE9J2948FM5V2PZA0Z","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.871777+00:00"
+    },
+    {
+      "state": {"entity_id":"button.lg_sk1_whispeer_lg_sk1_bass_blast","state":"unknown","attributes":{"friendly_name":"LG SK1 bass blast"},"last_changed":"2026-05-11T06:12:54.862648+00:00","last_reported":"2026-05-11T06:12:54.862684+00:00","last_updated":"2026-05-11T06:12:54.862648+00:00","context":{"id":"01KRATNJEEWXXAHYCPYHJ4WHVT","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.875996+00:00"
+    },
+    {
+      "state": {"entity_id":"select.aire_acondicionado_principal_whispeer_aire_acondicionado_principal_climate_fan_mode","state":"auto","attributes":{"options":["auto","low","mid","high","turbo"],"friendly_name":"Aire acondicionado principal  climate_fan_mode"},"last_changed":"2026-05-11T06:12:54.889490+00:00","last_reported":"2026-05-11T06:12:54.889622+00:00","last_updated":"2026-05-11T06:12:54.889490+00:00","context":{"id":"01KRATNJF959S25HSBHZ6YG7VJ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.878996+00:00"
+    },
+    {
+      "state": {"entity_id":"number.aire_acondicionado_principal_whispeer_aire_acondicionado_principal_climate_temperature","state":"16.0","attributes":{"min":16.0,"max":30.0,"step":1.0,"mode":"box","friendly_name":"Aire acondicionado principal  climate_temperature"},"last_changed":"2026-05-11T06:12:54.890082+00:00","last_reported":"2026-05-11T06:12:54.890167+00:00","last_updated":"2026-05-11T06:12:54.890082+00:00","context":{"id":"01KRATNJFAFRYBSKJJXDZABE18","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.880989+00:00"
+    },
+    {
+      "state": {"entity_id":"climate.aire_acondicionado_principal_whispeer_aire_acondicionado_principal_climate","state":"off","attributes":{"hvac_modes":["off","cool","heat","dry","fan_only","auto"],"min_temp":16.0,"max_temp":30.0,"target_temp_step":1.0,"fan_modes":["auto","low","mid","high","turbo"],"current_temperature":null,"temperature":16.0,"fan_mode":"auto","friendly_name":"Aire acondicionado principal ","supported_features":9},"last_changed":"2026-05-11T06:12:54.892264+00:00","last_reported":"2026-05-11T06:12:54.892366+00:00","last_updated":"2026-05-11T06:12:54.892264+00:00","context":{"id":"01KRATNJFC12XZWZK3Z1GZX0JX","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.888668+00:00"
+    },
+    {
+      "state": {"entity_id":"select.aire_acondicionado_de_la_oficina_whispeer_aire_acondicionado_de_la_oficina_climate_fan_mode","state":"auto","attributes":{"options":["auto","low","mid","high","turbo"],"friendly_name":"Aire acondicionado de la oficina climate_fan_mode"},"last_changed":"2026-05-11T06:12:54.911623+00:00","last_reported":"2026-05-11T06:12:54.911693+00:00","last_updated":"2026-05-11T06:12:54.911623+00:00","context":{"id":"01KRATNJFZ1RG4DPY0QXGYXJB6","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.888773+00:00"
+    },
+    {
+      "state": {"entity_id":"number.aire_acondicionado_de_la_oficina_whispeer_aire_acondicionado_de_la_oficina_climate_temperature","state":"16.0","attributes":{"min":16.0,"max":32.0,"step":1.0,"mode":"box","friendly_name":"Aire acondicionado de la oficina climate_temperature"},"last_changed":"2026-05-11T06:12:54.911913+00:00","last_reported":"2026-05-11T06:12:54.911955+00:00","last_updated":"2026-05-11T06:12:54.911913+00:00","context":{"id":"01KRATNJFZC05QHWQ1KFN3CABG","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.892788+00:00"
+    },
+    {
+      "state": {"entity_id":"climate.aire_acondicionado_de_la_oficina_whispeer_aire_acondicionado_de_la_oficina_climate","state":"off","attributes":{"hvac_modes":["off","cool","heat","dry","fan_only","auto"],"min_temp":16.0,"max_temp":32.0,"target_temp_step":1.0,"fan_modes":["auto","low","mid","high","turbo"],"current_temperature":null,"temperature":16.0,"fan_mode":"auto","friendly_name":"Aire acondicionado de la oficina","supported_features":9},"last_changed":"2026-05-11T06:12:54.912201+00:00","last_reported":"2026-05-11T06:12:54.912265+00:00","last_updated":"2026-05-11T06:12:54.912201+00:00","context":{"id":"01KRATNJG0EHTMA0XQSY4MH4YZ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.898090+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_domain_btn_on","state":"unknown","attributes":{"friendly_name":"Sala - Barra de sonido on"},"last_changed":"2026-05-11T06:12:54.935805+00:00","last_reported":"2026-05-11T06:12:54.935954+00:00","last_updated":"2026-05-11T06:12:54.935805+00:00","context":{"id":"01KRATNJGQVHHK1S40GNWYQMJ8","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.900304+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_domain_btn_off","state":"unknown","attributes":{"friendly_name":"Sala - Barra de sonido off"},"last_changed":"2026-05-11T06:12:54.936184+00:00","last_reported":"2026-05-11T06:12:54.936233+00:00","last_updated":"2026-05-11T06:12:54.936184+00:00","context":{"id":"01KRATNJGRCZZ0VFASKYVKHYRC","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.901009+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_domain_btn_mute","state":"unknown","attributes":{"friendly_name":"Sala - Barra de sonido mute"},"last_changed":"2026-05-11T06:12:54.936423+00:00","last_reported":"2026-05-11T06:12:54.936488+00:00","last_updated":"2026-05-11T06:12:54.936423+00:00","context":{"id":"01KRATNJGRRV0CR76HRZCSX6CN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.901496+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_domain_btn_volumeup","state":"unknown","attributes":{"friendly_name":"Sala - Barra de sonido volumeUp"},"last_changed":"2026-05-11T06:12:54.936959+00:00","last_reported":"2026-05-11T06:12:54.937200+00:00","last_updated":"2026-05-11T06:12:54.936959+00:00","context":{"id":"01KRATNJGRHX0W80QD65JCKJPB","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.901631+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_domain_btn_volumedown","state":"unknown","attributes":{"friendly_name":"Sala - Barra de sonido volumeDown"},"last_changed":"2026-05-11T06:12:54.937523+00:00","last_reported":"2026-05-11T06:12:54.937712+00:00","last_updated":"2026-05-11T06:12:54.937523+00:00","context":{"id":"01KRATNJGSKFHWTT6AKSSJZM0X","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.904364+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_domain_btn_previouschannel","state":"unknown","attributes":{"friendly_name":"Sala - Barra de sonido previousChannel"},"last_changed":"2026-05-11T06:12:54.938239+00:00","last_reported":"2026-05-11T06:12:54.938331+00:00","last_updated":"2026-05-11T06:12:54.938239+00:00","context":{"id":"01KRATNJGTEYD6PF9SC3FPFF69","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.905206+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_domain_btn_nextchannel","state":"unknown","attributes":{"friendly_name":"Sala - Barra de sonido nextChannel"},"last_changed":"2026-05-11T06:12:54.938779+00:00","last_reported":"2026-05-11T06:12:54.938869+00:00","last_updated":"2026-05-11T06:12:54.938779+00:00","context":{"id":"01KRATNJGT523361A0437AVF6E","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.905801+00:00"
+    },
+    {
+      "state": {"entity_id":"select.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_media_player_source","state":"optical","attributes":{"options":["optical","port_in","bluetooth"],"friendly_name":"Sala - Barra de sonido media_player_source"},"last_changed":"2026-05-11T06:12:54.939316+00:00","last_reported":"2026-05-11T06:12:54.939453+00:00","last_updated":"2026-05-11T06:12:54.939316+00:00","context":{"id":"01KRATNJGVS191DNR1RRKJQAB5","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.906535+00:00"
+    },
+    {
+      "state": {"entity_id":"media_player.sala_barra_de_sonido_whispeer_sala_barra_de_sonido_media_player","state":"off","attributes":{"source_list":["optical","port_in","bluetooth"],"friendly_name":"Sala - Barra de sonido","supported_features":3512},"last_changed":"2026-05-11T06:12:54.940356+00:00","last_reported":"2026-05-11T06:12:54.940427+00:00","last_updated":"2026-05-11T06:12:54.940356+00:00","context":{"id":"01KRATNJGWHS4E273ES1MVXZEE","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.917954+00:00"
+    },
+    {
+      "state": {"entity_id":"select.sala_ventilador_whispeer_sala_ventilador_fan_speed","state":"1","attributes":{"options":["1","2","3","4","5","6"],"friendly_name":"Sala - Ventilador fan_speed"},"last_changed":"2026-05-11T06:12:54.959635+00:00","last_reported":"2026-05-11T06:12:54.959717+00:00","last_updated":"2026-05-11T06:12:54.959635+00:00","context":{"id":"01KRATNJHFPFS8C1PC2151R6YQ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.921761+00:00"
+    },
+    {
+      "state": {"entity_id":"fan.sala_ventilador_whispeer_sala_ventilador_fan","state":"off","attributes":{"preset_modes":["1","2","3","4","5","6"],"preset_mode":null,"friendly_name":"Sala - Ventilador","supported_features":56},"last_changed":"2026-05-11T06:12:54.960220+00:00","last_reported":"2026-05-11T06:12:54.960305+00:00","last_updated":"2026-05-11T06:12:54.960220+00:00","context":{"id":"01KRATNJHGRXYA7B3M9QXY1DHF","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.922928+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_lampara_whispeer_sala_lampara_domain_btn_brighten","state":"unknown","attributes":{"friendly_name":"Sala - Lampara brighten"},"last_changed":"2026-05-11T06:12:54.989546+00:00","last_reported":"2026-05-11T06:12:54.989622+00:00","last_updated":"2026-05-11T06:12:54.989546+00:00","context":{"id":"01KRATNJJD36CVFSBZB6HQSVY7","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.924772+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_lampara_whispeer_sala_lampara_domain_btn_dim","state":"unknown","attributes":{"friendly_name":"Sala - Lampara dim"},"last_changed":"2026-05-11T06:12:54.989852+00:00","last_reported":"2026-05-11T06:12:54.989895+00:00","last_updated":"2026-05-11T06:12:54.989852+00:00","context":{"id":"01KRATNJJDSR6Y3XQNY7ZYF48Y","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.928847+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_lampara_whispeer_sala_lampara_domain_btn_colder","state":"unknown","attributes":{"friendly_name":"Sala - Lampara colder"},"last_changed":"2026-05-11T06:12:54.990061+00:00","last_reported":"2026-05-11T06:12:54.990097+00:00","last_updated":"2026-05-11T06:12:54.990061+00:00","context":{"id":"01KRATNJJEH1QW32VP0QTFFVA9","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.931254+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_lampara_whispeer_sala_lampara_domain_btn_warmer","state":"unknown","attributes":{"friendly_name":"Sala - Lampara warmer"},"last_changed":"2026-05-11T06:12:54.990220+00:00","last_reported":"2026-05-11T06:12:54.990257+00:00","last_updated":"2026-05-11T06:12:54.990220+00:00","context":{"id":"01KRATNJJEX1ZV081D80FYQJF0","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.931350+00:00"
+    },
+    {
+      "state": {"entity_id":"button.sala_lampara_whispeer_sala_lampara_domain_btn_night","state":"unknown","attributes":{"friendly_name":"Sala - Lampara night"},"last_changed":"2026-05-11T06:12:54.990353+00:00","last_reported":"2026-05-11T06:12:54.990398+00:00","last_updated":"2026-05-11T06:12:54.990353+00:00","context":{"id":"01KRATNJJEQAD9SH00QK27VHRE","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.933507+00:00"
+    },
+    {
+      "state": {"entity_id":"light.sala_lampara_whispeer_sala_lampara_domain_light","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"Sala - Lampara","supported_features":0},"last_changed":"2026-05-11T06:12:54.990663+00:00","last_reported":"2026-05-11T06:12:54.990705+00:00","last_updated":"2026-05-11T06:12:54.990663+00:00","context":{"id":"01KRATNJJEBHYFPFSWDY3SBFB1","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.937970+00:00"
+    },
+    {
+      "state": {"entity_id":"select.cocina_ventilador_whispeer_cocina_ventilador_fan_speed","state":"1","attributes":{"options":["1","2","3","4","5","6"],"friendly_name":"Cocina - Ventilador fan_speed"},"last_changed":"2026-05-11T06:12:55.011897+00:00","last_reported":"2026-05-11T06:12:55.011959+00:00","last_updated":"2026-05-11T06:12:55.011897+00:00","context":{"id":"01KRATNJK3B98MHN2QDJPDKQ61","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.939794+00:00"
+    },
+    {
+      "state": {"entity_id":"fan.cocina_ventilador_whispeer_cocina_ventilador_fan","state":"off","attributes":{"preset_modes":["1","2","3","4","5","6"],"preset_mode":null,"friendly_name":"Cocina - Ventilador","supported_features":56},"last_changed":"2026-05-11T06:12:55.012177+00:00","last_reported":"2026-05-11T06:12:55.012219+00:00","last_updated":"2026-05-11T06:12:55.012177+00:00","context":{"id":"01KRATNJK4H0JR73QTPX2W16Z3","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.940235+00:00"
+    },
+    {
+      "state": {"entity_id":"button.cocina_lampara_whispeer_cocina_lampara_domain_btn_brighten","state":"unknown","attributes":{"friendly_name":"Cocina - Lampara brighten"},"last_changed":"2026-05-11T06:12:55.028879+00:00","last_reported":"2026-05-11T06:12:55.028936+00:00","last_updated":"2026-05-11T06:12:55.028879+00:00","context":{"id":"01KRATNJKMKCF7BBKHGCA3R5NN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.942414+00:00"
+    },
+    {
+      "state": {"entity_id":"button.cocina_lampara_whispeer_cocina_lampara_domain_btn_dim","state":"unknown","attributes":{"friendly_name":"Cocina - Lampara dim"},"last_changed":"2026-05-11T06:12:55.029060+00:00","last_reported":"2026-05-11T06:12:55.029096+00:00","last_updated":"2026-05-11T06:12:55.029060+00:00","context":{"id":"01KRATNJKNJ1G04M3JXZV5GFJE","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.944128+00:00"
+    },
+    {
+      "state": {"entity_id":"button.cocina_lampara_whispeer_cocina_lampara_domain_btn_colder","state":"unknown","attributes":{"friendly_name":"Cocina - Lampara colder"},"last_changed":"2026-05-11T06:12:55.029189+00:00","last_reported":"2026-05-11T06:12:55.029221+00:00","last_updated":"2026-05-11T06:12:55.029189+00:00","context":{"id":"01KRATNJKN79X94TKSWHBE7YKE","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.944223+00:00"
+    },
+    {
+      "state": {"entity_id":"button.cocina_lampara_whispeer_cocina_lampara_domain_btn_warmer","state":"unknown","attributes":{"friendly_name":"Cocina - Lampara warmer"},"last_changed":"2026-05-11T06:12:55.029305+00:00","last_reported":"2026-05-11T06:12:55.029337+00:00","last_updated":"2026-05-11T06:12:55.029305+00:00","context":{"id":"01KRATNJKNV69F5VP5Q5PPTRAD","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.946395+00:00"
+    },
+    {
+      "state": {"entity_id":"button.cocina_lampara_whispeer_cocina_lampara_domain_btn_night","state":"unknown","attributes":{"friendly_name":"Cocina - Lampara night"},"last_changed":"2026-05-11T06:12:55.029521+00:00","last_reported":"2026-05-11T06:12:55.029554+00:00","last_updated":"2026-05-11T06:12:55.029521+00:00","context":{"id":"01KRATNJKN3S97CER6H9QG30N7","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.947872+00:00"
+    },
+    {
+      "state": {"entity_id":"light.cocina_lampara_whispeer_cocina_lampara_domain_light","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"Cocina - Lampara","supported_features":0},"last_changed":"2026-05-11T06:12:55.029735+00:00","last_reported":"2026-05-11T06:12:55.029782+00:00","last_updated":"2026-05-11T06:12:55.029735+00:00","context":{"id":"01KRATNJKNW61WHSBBF4AAMC6N","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.951663+00:00"
+    },
+    {
+      "state": {"entity_id":"select.habitacion_principal_ventilador_whispeer_habitacion_principal_ventilador_fan_speed","state":"1","attributes":{"options":["1","2","3","4","5","6"],"friendly_name":"Habitacion principal - Ventilador fan_speed"},"last_changed":"2026-05-11T06:12:55.054805+00:00","last_reported":"2026-05-11T06:12:55.054885+00:00","last_updated":"2026-05-11T06:12:55.054805+00:00","context":{"id":"01KRATNJME4AHJZ9EFEM7Y4BW8","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.951804+00:00"
+    },
+    {
+      "state": {"entity_id":"fan.habitacion_principal_ventilador_whispeer_habitacion_principal_ventilador_fan","state":"off","attributes":{"preset_modes":["1","2","3","4","5","6"],"preset_mode":null,"friendly_name":"Habitacion principal - Ventilador","supported_features":56},"last_changed":"2026-05-11T06:12:55.055166+00:00","last_reported":"2026-05-11T06:12:55.055217+00:00","last_updated":"2026-05-11T06:12:55.055166+00:00","context":{"id":"01KRATNJMFHTA3RQMXT8ERYW3J","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.956989+00:00"
+    },
+    {
+      "state": {"entity_id":"button.habitacion_principal_lampara_whispeer_habitacion_principal_lampara_domain_btn_brighten","state":"unknown","attributes":{"friendly_name":"Habitacion principal - Lampara brighten"},"last_changed":"2026-05-11T06:12:55.073055+00:00","last_reported":"2026-05-11T06:12:55.073115+00:00","last_updated":"2026-05-11T06:12:55.073055+00:00","context":{"id":"01KRATNJN1QH0Q6TTDPZ0P8SNF","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.959136+00:00"
+    },
+    {
+      "state": {"entity_id":"button.habitacion_principal_lampara_whispeer_habitacion_principal_lampara_domain_btn_dim","state":"unknown","attributes":{"friendly_name":"Habitacion principal - Lampara dim"},"last_changed":"2026-05-11T06:12:55.073226+00:00","last_reported":"2026-05-11T06:12:55.073259+00:00","last_updated":"2026-05-11T06:12:55.073226+00:00","context":{"id":"01KRATNJN1R0HHF972GZECVZSA","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.960770+00:00"
+    },
+    {
+      "state": {"entity_id":"button.habitacion_principal_lampara_whispeer_habitacion_principal_lampara_domain_btn_colder","state":"unknown","attributes":{"friendly_name":"Habitacion principal - Lampara colder"},"last_changed":"2026-05-11T06:12:55.073413+00:00","last_reported":"2026-05-11T06:12:55.073447+00:00","last_updated":"2026-05-11T06:12:55.073413+00:00","context":{"id":"01KRATNJN1XVZ64HRS56FWP2H3","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.961973+00:00"
+    },
+    {
+      "state": {"entity_id":"button.habitacion_principal_lampara_whispeer_habitacion_principal_lampara_domain_btn_warmer","state":"unknown","attributes":{"friendly_name":"Habitacion principal - Lampara warmer"},"last_changed":"2026-05-11T06:12:55.073529+00:00","last_reported":"2026-05-11T06:12:55.073558+00:00","last_updated":"2026-05-11T06:12:55.073529+00:00","context":{"id":"01KRATNJN1KMHBCGKY3AWBA6BE","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.962149+00:00"
+    },
+    {
+      "state": {"entity_id":"button.habitacion_principal_lampara_whispeer_habitacion_principal_lampara_domain_btn_night","state":"unknown","attributes":{"friendly_name":"Habitacion principal - Lampara night"},"last_changed":"2026-05-11T06:12:55.073636+00:00","last_reported":"2026-05-11T06:12:55.073664+00:00","last_updated":"2026-05-11T06:12:55.073636+00:00","context":{"id":"01KRATNJN1Z1SVJ64F03YC2DPC","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.962472+00:00"
+    },
+    {
+      "state": {"entity_id":"light.habitacion_principal_lampara_whispeer_habitacion_principal_lampara_domain_light","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"Habitacion principal - Lampara","supported_features":0},"last_changed":"2026-05-11T06:12:55.073864+00:00","last_reported":"2026-05-11T06:12:55.073905+00:00","last_updated":"2026-05-11T06:12:55.073864+00:00","context":{"id":"01KRATNJN13V464F7G7MZJC5W0","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.963179+00:00"
+    },
+    {
+      "state": {"entity_id":"select.oficina_ventilador_whispeer_oficina_ventilador_fan_speed","state":"1","attributes":{"options":["1","2","3","4","5","6"],"friendly_name":"Oficina - Ventilador fan_speed"},"last_changed":"2026-05-11T06:12:55.092025+00:00","last_reported":"2026-05-11T06:12:55.092090+00:00","last_updated":"2026-05-11T06:12:55.092025+00:00","context":{"id":"01KRATNJNMZ3Q971WZ80WXY8PK","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.963318+00:00"
+    },
+    {
+      "state": {"entity_id":"fan.oficina_ventilador_whispeer_oficina_ventilador_fan","state":"off","attributes":{"preset_modes":["1","2","3","4","5","6"],"preset_mode":null,"friendly_name":"Oficina - Ventilador","supported_features":56},"last_changed":"2026-05-11T06:12:55.092311+00:00","last_reported":"2026-05-11T06:12:55.092368+00:00","last_updated":"2026-05-11T06:12:55.092311+00:00","context":{"id":"01KRATNJNMGVWTTAMWZA4MBJXA","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.967032+00:00"
+    },
+    {
+      "state": {"entity_id":"button.oficina_lampara_whispeer_oficina_lampara_domain_btn_brighten","state":"unknown","attributes":{"friendly_name":"Oficina - Lampara brighten"},"last_changed":"2026-05-11T06:12:55.108239+00:00","last_reported":"2026-05-11T06:12:55.108293+00:00","last_updated":"2026-05-11T06:12:55.108239+00:00","context":{"id":"01KRATNJP4YWC0KFT01EH7658S","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.967958+00:00"
+    },
+    {
+      "state": {"entity_id":"button.oficina_lampara_whispeer_oficina_lampara_domain_btn_dim","state":"unknown","attributes":{"friendly_name":"Oficina - Lampara dim"},"last_changed":"2026-05-11T06:12:55.108409+00:00","last_reported":"2026-05-11T06:12:55.108442+00:00","last_updated":"2026-05-11T06:12:55.108409+00:00","context":{"id":"01KRATNJP4PXX4WZ6BF1WRSW9V","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.968026+00:00"
+    },
+    {
+      "state": {"entity_id":"button.oficina_lampara_whispeer_oficina_lampara_domain_btn_colder","state":"unknown","attributes":{"friendly_name":"Oficina - Lampara colder"},"last_changed":"2026-05-11T06:12:55.108532+00:00","last_reported":"2026-05-11T06:12:55.108601+00:00","last_updated":"2026-05-11T06:12:55.108532+00:00","context":{"id":"01KRATNJP4P53WKZCYEQVFXCM5","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.968099+00:00"
+    },
+    {
+      "state": {"entity_id":"button.oficina_lampara_whispeer_oficina_lampara_domain_btn_warmer","state":"unknown","attributes":{"friendly_name":"Oficina - Lampara warmer"},"last_changed":"2026-05-11T06:12:55.108733+00:00","last_reported":"2026-05-11T06:12:55.108771+00:00","last_updated":"2026-05-11T06:12:55.108733+00:00","context":{"id":"01KRATNJP4C39G8VWAQWYMW2AG","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.968206+00:00"
+    },
+    {
+      "state": {"entity_id":"button.oficina_lampara_whispeer_oficina_lampara_domain_btn_night","state":"unknown","attributes":{"friendly_name":"Oficina - Lampara night"},"last_changed":"2026-05-11T06:12:55.108886+00:00","last_reported":"2026-05-11T06:12:55.108915+00:00","last_updated":"2026-05-11T06:12:55.108886+00:00","context":{"id":"01KRATNJP426RKEM1Z3KBNRYFK","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.969731+00:00"
+    },
+    {
+      "state": {"entity_id":"light.oficina_lampara_whispeer_oficina_lampara_domain_light","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"Oficina - Lampara","supported_features":0},"last_changed":"2026-05-11T06:12:55.109128+00:00","last_reported":"2026-05-11T06:12:55.109166+00:00","last_updated":"2026-05-11T06:12:55.109128+00:00","context":{"id":"01KRATNJP5XTYVNQP7FD18GYC7","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.970363+00:00"
+    },
+    {
+      "state": {"entity_id":"select.maximo_ventilador_whispeer_maximo_ventilador_fan_speed","state":"1","attributes":{"options":["1","2","3","4","5","6"],"friendly_name":"Maximo - Ventilador fan_speed"},"last_changed":"2026-05-11T06:12:55.128344+00:00","last_reported":"2026-05-11T06:12:55.128396+00:00","last_updated":"2026-05-11T06:12:55.128344+00:00","context":{"id":"01KRATNJPRMMGY2TAGPA71HZFJ","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.970466+00:00"
+    },
+    {
+      "state": {"entity_id":"fan.maximo_ventilador_whispeer_maximo_ventilador_fan","state":"off","attributes":{"preset_modes":["1","2","3","4","5","6"],"preset_mode":null,"friendly_name":"Maximo - Ventilador","supported_features":56},"last_changed":"2026-05-11T06:12:55.128668+00:00","last_reported":"2026-05-11T06:12:55.128719+00:00","last_updated":"2026-05-11T06:12:55.128668+00:00","context":{"id":"01KRATNJPRDWG6NSJ0ZJKEYQ50","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.972622+00:00"
+    },
+    {
+      "state": {"entity_id":"button.maximo_lampara_whispeer_maximo_lampara_domain_btn_brighten","state":"unknown","attributes":{"friendly_name":"Maximo - Lampara brighten"},"last_changed":"2026-05-11T06:12:55.152860+00:00","last_reported":"2026-05-11T06:12:55.152915+00:00","last_updated":"2026-05-11T06:12:55.152860+00:00","context":{"id":"01KRATNJQG88KP972W4MDHH5ZS","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.978128+00:00"
+    },
+    {
+      "state": {"entity_id":"button.maximo_lampara_whispeer_maximo_lampara_domain_btn_dim","state":"unknown","attributes":{"friendly_name":"Maximo - Lampara dim"},"last_changed":"2026-05-11T06:12:55.153018+00:00","last_reported":"2026-05-11T06:12:55.153057+00:00","last_updated":"2026-05-11T06:12:55.153018+00:00","context":{"id":"01KRATNJQH4AYKB9AA2EHNH0ZA","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.978694+00:00"
+    },
+    {
+      "state": {"entity_id":"button.maximo_lampara_whispeer_maximo_lampara_domain_btn_colder","state":"unknown","attributes":{"friendly_name":"Maximo - Lampara colder"},"last_changed":"2026-05-11T06:12:55.153229+00:00","last_reported":"2026-05-11T06:12:55.153276+00:00","last_updated":"2026-05-11T06:12:55.153229+00:00","context":{"id":"01KRATNJQHQ0RTZ1VHGRTJ75M6","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.981638+00:00"
+    },
+    {
+      "state": {"entity_id":"button.maximo_lampara_whispeer_maximo_lampara_domain_btn_warmer","state":"unknown","attributes":{"friendly_name":"Maximo - Lampara warmer"},"last_changed":"2026-05-11T06:12:55.153411+00:00","last_reported":"2026-05-11T06:12:55.153452+00:00","last_updated":"2026-05-11T06:12:55.153411+00:00","context":{"id":"01KRATNJQHC6YAW3A33MPVJJ0H","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.982100+00:00"
+    },
+    {
+      "state": {"entity_id":"button.maximo_lampara_whispeer_maximo_lampara_domain_btn_night","state":"unknown","attributes":{"friendly_name":"Maximo - Lampara night"},"last_changed":"2026-05-11T06:12:55.153553+00:00","last_reported":"2026-05-11T06:12:55.153600+00:00","last_updated":"2026-05-11T06:12:55.153553+00:00","context":{"id":"01KRATNJQHJ58ZET5P3VPP3327","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.989001+00:00"
+    },
+    {
+      "state": {"entity_id":"light.maximo_lampara_whispeer_maximo_lampara_domain_light","state":"off","attributes":{"supported_color_modes":["onoff"],"color_mode":null,"friendly_name":"Maximo - Lampara","supported_features":0},"last_changed":"2026-05-11T06:12:55.153820+00:00","last_reported":"2026-05-11T06:12:55.153876+00:00","last_updated":"2026-05-11T06:12:55.153820+00:00","context":{"id":"01KRATNJQHYQ4MJR4F3B09XA5D","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-05-13T00:07:42.991711+00:00"
+    }
+  ]
+}

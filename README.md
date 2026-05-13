@@ -60,8 +60,25 @@ custom_components/whispeer/translations/nb.json
 
 - HACS summary card: [info.md](info.md)
 - Panel architecture notes: [custom_components/whispeer/panel/README.md](custom_components/whispeer/panel/README.md)
+- Test workflow notes: [custom_components/whispeer/tests/README.md](custom_components/whispeer/tests/README.md)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Report issues: [GitHub Issues][issues]
+
+## Development Test Flow
+
+The repository test entrypoint is now a single command:
+
+```bash
+make test
+```
+
+That command runs the backend pytest suite first, then recreates the `hass-test` runtime and executes the websocket integration plus the one-window, one-tab Playwright flow against `http://localhost:8126`.
+
+Useful debug targets still exist when you need to isolate a layer:
+
+- `make fastest` for backend-only pytest
+- `make e2e_master` for the full websocket + browser flow against `hass-test`
+- `make e2e_master_dev` for the same browser flow against `hass-dev`
 
 ## Known Limitations
 

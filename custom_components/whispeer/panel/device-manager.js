@@ -1106,7 +1106,7 @@ class DeviceManager extends Component {
 
   _onDomainChange(preserveSelection = false) {
     const domain = this._getCurrentDomain();
-    const isDomainManaged = domain === 'climate';
+    const isDomainManaged = domain !== 'default';
     const deviceType = this._getCurrentDeviceType();
 
     const fastLearnBtn = document.getElementById('fastLearnBtn');
@@ -1369,7 +1369,9 @@ class DeviceManager extends Component {
     interfaceSelect.innerHTML = '<option value="">⏳ Loading interfaces...</option>';
     interfaceSelect.disabled = true;
 
-    const interfaceDeviceType = isDomainManaged || domain !== 'default' ? 'ir' : deviceType;
+    const interfaceDeviceType = deviceType === 'ble'
+      ? 'ble'
+      : (isDomainManaged || domain !== 'default' ? 'ir' : deviceType);
 
     try {
       const interfaces = await DataManager.loadInterfaces(interfaceDeviceType);
@@ -3205,6 +3207,24 @@ const colspan = this._blePickMode ? 7 : 8;
     this._climateLearningCell = cellKey;
     const domainSection = document.getElementById('domainSection');
     if (domainSection) this._renderDomainSection(domainSection, 'fan');
+
+    if (deviceInfo.type === 'ble') {
+      this.openBleScannerModal(true, (code) => {
+        cd.commands = cd.commands || {};
+        if (cellKey === '__off__') {
+          cd.commands.off = code;
+        } else if (cellKey === '__speed__') {
+          cd.commands.speed = code;
+        } else {
+          const speedName = cellKey.replace(/^__speed_/, '').replace(/__$/, '');
+          cd.commands.speeds = cd.commands.speeds || {};
+          cd.commands.speeds[speedName] = code;
+        }
+        const section = document.getElementById('domainSection');
+        if (section) this._renderDomainSection(section, 'fan');
+      });
+      return;
+    }
 
     const spinner = this._startCellSpinner(cellKey);
     const fakeInput = { value: '' };

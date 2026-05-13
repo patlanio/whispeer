@@ -3,15 +3,54 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+
+_TRUTHY = {"1", "true", "yes", "on"}
 
 PACKAGE_PARENT = Path(__file__).resolve().parents[2]
 if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
 from whispeer.tests.runtime import build_test_settings
+
+
+@dataclass
+class WhispeerRSpecSession:
+    settings: object
+    context: object
+    page: object
+    access_token: str
+    panel: object
+    other_devices: object
+    call_ws: object
+    created_devices: dict[str, dict] = field(default_factory=dict)
+
+
+def _truthy(value: object) -> bool:
+    if value is None:
+        return False
+    return str(value).strip().lower() in _TRUTHY
+
+
+def _live_report_enabled(config: pytest.Config) -> bool:
+    option_value = config.getoption("whispeer_live_report")
+    if option_value is not None:
+        return _truthy(option_value)
+    return _truthy(os.environ.get("WHISPEER_LIVE_REPORT"))
+
+
+def _preserve_state_enabled() -> bool:
+    return _truthy(os.environ.get("WHISPEER_PRESERVE_STATE"))
+
+
+def _report_title(item: pytest.Item) -> str:
+    marker = item.get_closest_marker("whispeer_title")
+    if marker and marker.args:
+        return str(marker.args[0])
+    return item.nodeid
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -91,6 +130,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         dest="whispeer_timeout_ms",
         help="Default timeout in milliseconds for long-running test actions.",
     )
+    group.addoption(
+        "--whispeer-live-report",
+        action="store",
+        dest="whispeer_live_report",
+        help="Print RUN/PASS/FAIL lines as pytest advances through the suite.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -101,8 +146,78 @@ def pytest_configure(config: pytest.Config) -> None:
         "ble: Bluetooth-focused scenarios",
         "rf_fast: fast-learning RF scenarios",
         "slow: long-running scenarios",
+        "whispeer_title(title): human-friendly title for live pytest reporting",
+        "whispeer_case(case_id): stable case id for range-based one-pass execution",
     ):
         config.addinivalue_line("markers", marker)
+
+
+def _case_id(item: pytest.Item) -> str:
+    marker = item.get_closest_marker("whispeer_case")
+    if marker and marker.args:
+        return str(marker.args[0])
+    return item.nodeid
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    start_at = (os.environ.get("WHISPEER_E2E_START_AT") or "").strip()
+    stop_after = (os.environ.get("WHISPEER_E2E_STOP_AFTER") or "").strip()
+    if not start_at and not stop_after:
+        return
+
+    case_ids = [_case_id(item) for item in items]
+    if start_at and start_at not in case_ids:
+        raise pytest.UsageError(f"Unknown WHISPEER_E2E_START_AT case id: {start_at}")
+    if stop_after and stop_after not in case_ids:
+        raise pytest.UsageError(f"Unknown WHISPEER_E2E_STOP_AFTER case id: {stop_after}")
+
+    selected: list[pytest.Item] = []
+    started = not start_at
+    for item in items:
+        current_case_id = _case_id(item)
+        if not started:
+            if current_case_id != start_at:
+                continue
+            started = True
+        selected.append(item)
+        if stop_after and current_case_id == stop_after:
+            break
+
+    deselected = [item for item in items if item not in selected]
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+    items[:] = selected
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    if not _live_report_enabled(item.config):
+        return
+    reporter = item.config.pluginmanager.getplugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_line(f"[ RUN ] {_report_title(item)}")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[object]):
+    outcome = yield
+    report = outcome.get_result()
+
+    if not _live_report_enabled(item.config):
+        return
+    if report.when != "call":
+        return
+
+    reporter = item.config.pluginmanager.getplugin("terminalreporter")
+    if reporter is None:
+        return
+
+    title = _report_title(item)
+    if report.passed:
+        reporter.write_line(f"[ PASS ] {title}")
+    elif report.failed:
+        reporter.write_line(f"[ FAIL ] {title}")
+    elif report.skipped:
+        reporter.write_line(f"[ SKIP ] {title}")
 
 
 @pytest.fixture(scope="session")
@@ -166,30 +281,25 @@ def whispeer_panel_page(whispeer_browser, whispeer_test_settings):
     context.close()
 
 
-@pytest.fixture()
-def whispeer_test_harness(whispeer_authenticated_page, whispeer_test_settings):
+@pytest.fixture(scope="session")
+def whispeer_rspec_session(whispeer_browser, whispeer_test_settings):
     from whispeer.tests.browser_support import (
         assert_ws_success,
         call_ha_ws_command,
         ensure_test_mode_enabled,
+        get_access_token,
+        open_authenticated_page,
     )
+    from whispeer.tests.pages import HomeAssistantOtherDevicesPage, WhispeerPage
 
-    page = whispeer_authenticated_page
+    context, page = open_authenticated_page(whispeer_browser, whispeer_test_settings)
     settings = whispeer_test_settings
 
-    ensure_test_mode_enabled(page, settings)
-    assert_ws_success(
-        call_ha_ws_command(
-            page,
-            settings,
-            {
-                "type": "whispeer/test/reset",
-                "clear_config": True,
-                "clear_learning_sessions": True,
-            },
-        ),
-        "Failed to reset the Whispeer test harness before the test.",
-    )
+    page.set_default_timeout(settings.timeout_ms)
+    page.set_default_navigation_timeout(settings.timeout_ms)
+    access_token = get_access_token(page, settings)
+    ensure_test_mode_enabled(page, settings, access_token=access_token)
+    context.set_extra_http_headers({"Authorization": f"Bearer {access_token}"})
 
     def _call(command_type: str, **payload):
         return assert_ws_success(
@@ -197,22 +307,95 @@ def whispeer_test_harness(whispeer_authenticated_page, whispeer_test_settings):
                 page,
                 settings,
                 {"type": command_type, **payload},
+                access_token=access_token,
+            ),
+            f"Whispeer websocket command '{command_type}' failed.",
+        )
+
+    preserve_state = _preserve_state_enabled()
+    if not preserve_state:
+        _call(
+            "whispeer/test/reset",
+            clear_config=True,
+            clear_learning_sessions=True,
+        )
+
+    panel = WhispeerPage(page, settings)
+    other_devices = HomeAssistantOtherDevicesPage(page, settings)
+
+    yield WhispeerRSpecSession(
+        settings=settings,
+        context=context,
+        page=page,
+        access_token=access_token,
+        panel=panel,
+        other_devices=other_devices,
+        call_ws=_call,
+    )
+
+    if not preserve_state:
+        _call(
+            "whispeer/test/reset",
+            clear_config=True,
+            clear_learning_sessions=True,
+        )
+    context.close()
+
+
+@pytest.fixture()
+def whispeer_test_harness(whispeer_rspec_session):
+    from whispeer.tests.browser_support import (
+        assert_ws_success,
+        call_ha_ws_command,
+        ensure_test_mode_enabled,
+    )
+
+    page = whispeer_rspec_session.page
+    settings = whispeer_rspec_session.settings
+    access_token = whispeer_rspec_session.access_token
+    preserve_state = _preserve_state_enabled()
+
+    ensure_test_mode_enabled(page, settings, access_token=access_token)
+    if not preserve_state:
+        assert_ws_success(
+            call_ha_ws_command(
+                page,
+                settings,
+                {
+                    "type": "whispeer/test/reset",
+                    "clear_config": True,
+                    "clear_learning_sessions": True,
+                },
+                access_token=access_token,
+            ),
+            "Failed to reset the Whispeer test harness before the test.",
+        )
+
+    def _call(command_type: str, **payload):
+        return assert_ws_success(
+            call_ha_ws_command(
+                page,
+                settings,
+                {"type": command_type, **payload},
+                access_token=access_token,
             ),
             f"Whispeer websocket command '{command_type}' failed.",
         )
 
     yield _call
 
-    assert_ws_success(
-        call_ha_ws_command(
-            page,
-            settings,
-            {
-                "type": "whispeer/test/reset",
-                "clear_config": True,
-                "clear_learning_sessions": True,
-            },
-        ),
-        "Failed to reset the Whispeer test harness after the test.",
-    )
+    if not preserve_state:
+        assert_ws_success(
+            call_ha_ws_command(
+                page,
+                settings,
+                {
+                    "type": "whispeer/test/reset",
+                    "clear_config": True,
+                    "clear_learning_sessions": True,
+                },
+                access_token=access_token,
+            ),
+            "Failed to reset the Whispeer test harness after the test.",
+        )
 

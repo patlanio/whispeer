@@ -15,7 +15,7 @@ The current suite is backend-focused and covers:
 The current integration slice also includes:
 
 - websocket integration tests for `whispeer/test/get_state`, `whispeer/test/configure`, and `whispeer/test/reset`
-- Playwright coverage for the Whispeer panel, including modal smoke, real device creation, RF fast-learn flows, default-domain add-command coverage for every supported command type, and SmartIR community-code imports for `climate`, `fan`, `media_player`, and `light`
+- a pytest-describe Playwright suite that runs the full Whispeer E2E flow in one shared Chromium session, one browser window, and one tab, with Page Objects for the Whispeer panel and Home Assistant `other-devices` view
 
 The integration exposes test-only websocket hooks when `WHISPEER_TEST_MODE=1` is set in the Home Assistant runtime.
 
@@ -40,55 +40,41 @@ Current override groups supported by `whispeer/test/configure`:
 
 ## How to run the current tests
 
-Run these commands from `custom_components/whispeer`.
-
-Create the virtual environment:
+Run the full repository test flow from the repository root:
 
 ```bash
-python3 -m venv .venv-tests
+make test
 ```
 
-Install the minimum test dependencies:
+That single command does the following in order:
+
+- runs the backend-only pytest layer
+- recreates `hass-test`
+- waits for Home Assistant on `http://localhost:8126`
+- runs websocket integration plus the one-window, one-tab Playwright suite
+
+For debugging, these narrower entrypoints are still available from the repository root:
 
 ```bash
-.venv-tests/bin/python -m pip install pytest pytest-cov
+make fastest
+make e2e_master
+make e2e_master_dev
 ```
 
-Install the browser-driven test dependencies when you want websocket integration and E2E coverage:
+If you want to run the Python commands directly instead of `make`, create the repository virtual environment and install dependencies first:
 
 ```bash
-.venv-tests/bin/python -m pip install playwright
-.venv-tests/bin/python -m playwright install chromium
+python3 -m venv .venv-whispeer
+.venv-whispeer/bin/python -m pip install -r requirements_dev.txt -r requirements_test.txt
+.venv-whispeer/bin/python -m playwright install chromium
 ```
 
-Run the current suite:
+Run only a slice of the RSpec-style suite:
 
 ```bash
-.venv-tests/bin/python -m pytest tests
-```
-
-Run the websocket integration tests:
-
-```bash
-WHISPEER_TEST_MODE=1 .venv-tests/bin/python -m pytest tests/test_websocket_integration.py -m integration
-```
-
-Run the headed Playwright smoke test and slow the browser down so the flow is easy to watch:
-
-```bash
-WHISPEER_TEST_MODE=1 .venv-tests/bin/python -m pytest tests/test_e2e_panel.py -m e2e --whispeer-headed --whispeer-slowmo-ms 250
-```
-
-Run only the RF fast-learn browser scenario:
-
-```bash
-WHISPEER_TEST_MODE=1 .venv-tests/bin/python -m pytest tests/test_e2e_panel.py -m rf_fast --whispeer-headed --whispeer-slowmo-ms 250
-```
-
-Run the expanded browser suite with the current runtime defaults:
-
-```bash
-WHISPEER_BASE_URL=http://localhost:8125 WHISPEER_WS_URL=ws://localhost:8125/api/websocket .venv-tests/bin/python -m pytest tests/test_e2e_panel.py -m e2e -vv -rs
+WHISPEER_E2E_START_AT=device_creation.default.ir \
+WHISPEER_E2E_STOP_AFTER=other_devices.shows_expected_controls \
+.venv-tests/bin/python -m pytest tests/test_whispeer_rspec.py -s -vv
 ```
 
 ## Notes
@@ -97,18 +83,23 @@ WHISPEER_BASE_URL=http://localhost:8125 WHISPEER_WS_URL=ws://localhost:8125/api/
 - The current unit tests do not require a full Home Assistant runtime.
 - `WHISPEER_TEST_MODE=1` is only needed when running websocket or end-to-end tests against a real Home Assistant instance.
 - The current runtime defaults assume `homeassistant-dev` on `http://localhost:8125`; override them with the pytest options or env vars below if your dev instance changes.
-- The Playwright flow persists a browser storage state file at `--whispeer-storage-state` so the first login can be reused across runs.
-- The integration and E2E tests reuse Playwright as the websocket transport so there is no second websocket client dependency to maintain.
+- The Playwright flow persists a browser storage state file at `--whispeer-storage-state` so the first login can be reused across runs, and the RSpec E2E suite reuses a single page for the full browser flow.
+- The integration tests use token-based websocket calls and the browser flow reuses a single Playwright page for the full run.
 - Browser tests run headless by default. Use `--whispeer-headed` when you want to watch the run locally.
+- `WHISPEER_SLOWMO_MS` slows each browser action; `WHISPEER_STEP_DELAY_MS` adds a pause between checklist items so the run is easier to follow.
+- `WHISPEER_PRESERVE_STATE=1` disables the automatic test-harness reset before and after a test. This is useful when running the master checklist against `hass-dev` and you want to inspect the created devices afterward.
+- The current E2E source of truth is `e2e_checklist.py`, and the executable suite lives in `tests/test_whispeer_rspec.py` using `pytest-describe` plus Page Objects under `tests/pages/`.
 - On Linux without `DISPLAY` or `WAYLAND_DISPLAY`, a requested headed run falls back to headless automatically so the suite still runs in remote shells and CI.
 - If websocket or E2E tests suddenly start skipping with `Enable WHISPEER_TEST_MODE=1 in the Home Assistant runtime`, inspect the container with `docker exec homeassistant-dev sh -lc 'printenv | grep ^WHISPEER_TEST_MODE='`.
-- The expanded E2E panel flow now creates two default-domain devices, one IR and one RF at `433.92`, and exercises `button`, `light`, `switch`, `numeric`, `group`, and `options` learn flows using deterministic Broadlink mocks.
-- The SmartIR import scenario is mocked at the browser network layer so the `community code 1000` coverage stays deterministic and does not depend on GitHub availability.
+- The current RSpec-style flow creates one default IR device, one default RF device at `433.92`, four SmartIR community devices from local `1000` fixtures, and two BLE devices learned through the scanner UI.
+- SmartIR imports are mocked at the browser network layer from committed local `1000` fixtures, so the coverage stays deterministic and does not depend on GitHub availability.
 
-Example for future integration or E2E runs:
+Example for a focused browser slice:
 
 ```bash
-WHISPEER_TEST_MODE=1 .venv-tests/bin/python -m pytest tests -m integration
+WHISPEER_E2E_START_AT=device_creation.community.climate \
+WHISPEER_E2E_STOP_AFTER=other_devices.changes_values \
+make e2e_master
 ```
 
 ## Runtime configuration
@@ -126,5 +117,10 @@ Runtime configuration can be changed without editing tests by using pytest optio
 - `--whispeer-browser` or `WHISPEER_BROWSER`
 - `--whispeer-slowmo-ms` or `WHISPEER_SLOWMO_MS`
 - `--whispeer-timeout-ms` or `WHISPEER_TIMEOUT_MS`
+- `--whispeer-live-report` or `WHISPEER_LIVE_REPORT`
+- `WHISPEER_STEP_DELAY_MS`
+- `WHISPEER_E2E_START_AT`
+- `WHISPEER_E2E_STOP_AFTER`
+- `WHISPEER_PRESERVE_STATE`
 
 The next implementation slice should expand Playwright coverage further into BLE scanner scenarios and BLE command-management flows.

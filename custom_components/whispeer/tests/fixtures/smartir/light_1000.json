@@ -1,0 +1,27 @@
+{
+  "manufacturer": "Whispeer",
+  "supportedModels": [
+    "Bench Light 1000"
+  ],
+  "supportedController": "Broadlink",
+  "commandsEncoding": "Base64",
+  "brightness": [
+    25,
+    50,
+    100
+  ],
+  "colorTemperature": [
+    2700,
+    4000,
+    6500
+  ],
+  "commands": {
+    "on": "light_on_1000",
+    "off": "light_off_1000",
+    "brighten": "light_brighten_1000",
+    "dim": "light_dim_1000",
+    "colder": "light_colder_1000",
+    "warmer": "light_warmer_1000",
+    "night": "light_night_1000"
+  }
+}
