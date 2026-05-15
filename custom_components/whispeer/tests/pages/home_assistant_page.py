@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from playwright._impl._errors import TimeoutError as PlaywrightTimeoutError
+
+from whispeer.tests.browser_support import wait_for_authenticated_shell
 
 
 class HomeAssistantOtherDevicesPage:
@@ -9,46 +12,80 @@ class HomeAssistantOtherDevicesPage:
         self.page = page
         self.settings = settings
 
-    def _ensure_authenticated_shell(self, shell_url: str) -> None:
-        from whispeer.tests.browser_support import _is_login_required, _login_in_page
+    def _first_existing_locator(self, *locators):
+        for locator in locators:
+            if locator.count() > 0:
+                return locator.first
+        return None
 
-        self.page.goto(shell_url, wait_until="domcontentloaded")
-        if _is_login_required(self.page):
-            _login_in_page(self.page, self.settings)
+    def _sidebar_toggle(self):
+        return self._first_existing_locator(
+            self.page.get_by_role("button", name=re.compile(r"sidebar|menu", re.IGNORECASE)),
+            self.page.locator("ha-menu-button"),
+        )
 
-    def open(self, url: str, access_token: str | None = None) -> None:
-        split = urlsplit(url)
-        target_path = split.path or "/home/other-devices"
+    def _sidebar_entry(self, *labels: str):
+        candidates = []
+        for label in labels:
+            pattern = re.compile(rf"^{re.escape(label)}$", re.IGNORECASE)
+            candidates.append(self.page.get_by_role("link", name=pattern))
+            candidates.append(self.page.get_by_text(pattern))
+        return self._first_existing_locator(*candidates)
 
-        if access_token:
-            query = dict(parse_qsl(split.query, keep_blank_values=True))
-            query["access_token"] = access_token
-            url = urlunsplit(
-                (split.scheme, split.netloc, split.path, urlencode(query), split.fragment)
+    def _open_sidebar_item(self, *labels: str) -> None:
+        entry = self._sidebar_entry(*labels)
+        if entry is None:
+            raise AssertionError(
+                f"Unable to find a Home Assistant sidebar entry matching: {', '.join(labels)}"
             )
 
-        shell_url = urlunsplit((split.scheme, split.netloc, "/home/overview", "", ""))
-        self._ensure_authenticated_shell(shell_url)
-        self.page.wait_for_function(
-            """() => {
-                const path = window.location.pathname || "";
-                return !path.includes("/auth") && !!document.body;
-            }""",
-            timeout=self.settings.timeout_ms,
+        try:
+            if not entry.is_visible(timeout=250):
+                toggle = self._sidebar_toggle()
+                if toggle is not None:
+                    toggle.click(timeout=self.settings.timeout_ms)
+                entry.wait_for(state="visible", timeout=self.settings.timeout_ms)
+        except Exception:
+            toggle = self._sidebar_toggle()
+            if toggle is not None:
+                toggle.click(timeout=self.settings.timeout_ms)
+            entry.wait_for(state="visible", timeout=self.settings.timeout_ms)
+
+        entry.click(timeout=self.settings.timeout_ms, force=True)
+
+    def _open_devices_tab(self) -> None:
+        current_path = self.page.evaluate("() => window.location.pathname || ''")
+        devices_link = self._first_existing_locator(
+            self.page.get_by_role("link", name=re.compile(r"^devices$|^dispositivos$", re.IGNORECASE)),
+            self.page.get_by_role("button", name=re.compile(r"^devices$|^dispositivos$", re.IGNORECASE)),
+            self.page.get_by_text(re.compile(r"^Devices$|^Dispositivos$", re.IGNORECASE)),
         )
+        if devices_link is None:
+            raise AssertionError("Unable to find the Devices navigation control in Home Assistant.")
+        devices_link.click(timeout=self.settings.timeout_ms, force=True)
         self.page.wait_for_function(
-            """(nextPath) => {
+            """(previousPath) => {
                 const currentPath = window.location.pathname || "";
-                if (currentPath === nextPath) {
-                    return true;
-                }
-                history.pushState(null, "", nextPath);
-                window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
-                return true;
+                return currentPath !== previousPath && /devices/i.test(currentPath);
             }""",
-            arg=target_path,
+            arg=current_path,
             timeout=self.settings.timeout_ms,
         )
+
+    def open(self) -> None:
+        if not (self.page.url or "").startswith(self.settings.base_url):
+            self.page.goto(self.settings.base_url, wait_until="domcontentloaded")
+
+        wait_for_authenticated_shell(self.page, self.settings)
+        self._open_sidebar_item("Overview", "Vista general")
+        try:
+            self.page.get_by_text(re.compile(r"^Areas$|^\u00c1reas$", re.IGNORECASE)).wait_for(
+                state="visible",
+                timeout=self.settings.timeout_ms,
+            )
+        except PlaywrightTimeoutError:
+            pass
+        self._open_devices_tab()
 
     def bring_to_front(self) -> None:
         self.page.bring_to_front()

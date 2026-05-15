@@ -76,9 +76,12 @@ That command runs the backend pytest suite first, then recreates the `hass-test`
 
 Useful debug targets still exist when you need to isolate a layer:
 
-- `make fastest` for backend-only pytest
-- `make e2e_master` for the full websocket + browser flow against `hass-test`
-- `make e2e_master_dev` for the same browser flow against `hass-dev`
+- `make test_backend` for backend-only pytest
+- `make test_frontend` for the full websocket + browser flow against `hass-test`
+- `make test_frontend -- --headless` for the same browser flow without opening Chromium
+- `make test_frontend_dev` for the same browser flow against `hass-dev`
+
+Because GNU Make treats `--headless` as a make option, pass it after `--` when you want the test targets to consume it.
 
 ## Known Limitations
 

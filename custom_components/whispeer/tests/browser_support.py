@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import platform
 import re
 import threading
+import time
 import warnings
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,12 @@ import aiohttp
 
 DEFAULT_VIEWPORT = {"width": 1600, "height": 1000}
 AUTH_STABILIZATION_TIMEOUT_MS = 7000
+WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_AUTH_STORAGE_PATH = WORKSPACE_ROOT / ".homeassistant-seed" / "base" / ".storage" / "auth"
+RUNTIME_AUTH_PATHS = {
+    8125: WORKSPACE_ROOT / ".homeassistant" / "dev" / ".storage" / "auth",
+    8126: WORKSPACE_ROOT / ".homeassistant" / "test" / ".storage" / "auth",
+}
 
 
 def launch_browser(playwright_api, settings):
@@ -35,17 +43,39 @@ def launch_browser(playwright_api, settings):
 
 
 def open_authenticated_page(browser, settings):
-    """Open an authenticated Home Assistant page using cached storage state."""
+    """Open an authenticated Home Assistant page without showing the login form."""
     return _create_authenticated_context(browser, settings)
 
 
 def open_panel_page(browser, settings):
-    """Open the Whispeer panel in an authenticated browser context."""
+    """Open the Whispeer panel in the Home Assistant shell."""
     context, page = open_authenticated_page(browser, settings)
-    token = get_access_token(page, settings)
-    page.goto(_with_query_param(settings.panel_url, "access_token", token), wait_until="domcontentloaded")
-    wait_for_panel_ready(page, settings)
+    from whispeer.tests.pages import WhispeerPage
+
+    WhispeerPage(page, settings).open("/whispeer")
     return context, page
+
+
+def wait_for_authenticated_shell(page, settings) -> None:
+    """Wait until the Home Assistant shell is ready without redirecting to auth."""
+    try:
+        page.wait_for_function(
+            """() => {
+                const path = window.location.pathname || "";
+                return !path.includes("/auth") && Boolean(document.body);
+            }""",
+            timeout=max(settings.timeout_ms, AUTH_STABILIZATION_TIMEOUT_MS),
+        )
+    except Exception:
+        try:
+            page.wait_for_load_state("networkidle", timeout=min(settings.timeout_ms, 5000))
+        except Exception:
+            pass
+
+    if _is_login_required(page):
+        raise AssertionError(
+            "Home Assistant redirected to the login form instead of using the seeded browser session."
+        )
 
 
 def wait_for_panel_ready(page, settings) -> None:
@@ -316,13 +346,9 @@ def _create_authenticated_context(browser, settings):
     storage_state_path = settings.storage_state_path
     storage_state_path.parent.mkdir(parents=True, exist_ok=True)
     preserve_state = os.environ.get("WHISPEER_PRESERVE_STATE", "0").strip().lower() in {"1", "true", "yes", "on"}
+    tokens = _issue_frontend_tokens(settings)
 
-    context = None
-    if preserve_state and storage_state_path.exists() and _storage_state_is_valid(
-        browser,
-        settings,
-        storage_state_path,
-    ):
+    if preserve_state and storage_state_path.exists():
         context = _new_context(browser, settings, storage_state=storage_state_path)
     else:
         if storage_state_path.exists() and not preserve_state:
@@ -331,135 +357,137 @@ def _create_authenticated_context(browser, settings):
             storage_state_path.unlink()
         context = _new_context(browser, settings)
 
+    context.add_init_script(script=_auth_bootstrap_script(tokens))
+    context.set_extra_http_headers({"Authorization": f"Bearer {tokens['access_token']}"})
+
     page = context.new_page()
     _configure_page(page, settings)
     page.goto(settings.base_url, wait_until="domcontentloaded")
-    _wait_for_auth_redirect(page, settings)
+    wait_for_authenticated_shell(page, settings)
 
-    if _is_login_required(page):
-        _login_in_page(page, settings)
-        page.wait_for_timeout(1000)
-        if preserve_state:
-            try:
-                context.storage_state(path=str(storage_state_path), indexed_db=True)
-            except Exception:
-                pass
-    else:
-        page.get_by_role("button", name="Sidebar toggle").wait_for(
-            state="visible",
-            timeout=AUTH_STABILIZATION_TIMEOUT_MS,
-        )
+    if preserve_state:
+        try:
+            context.storage_state(path=str(storage_state_path), indexed_db=True)
+        except Exception:
+            pass
 
     return context, page
 
 
-def _storage_state_is_valid(browser, settings, storage_state_path: Path) -> bool:
-    context = _new_context(browser, settings, storage_state=storage_state_path)
-    try:
-        page = context.new_page()
-        _configure_page(page, settings)
-        page.goto(settings.base_url, wait_until="domcontentloaded")
-        _wait_for_auth_redirect(page, settings)
-        return not _is_login_required(page)
-    except Exception:
-        return False
-    finally:
-        context.close()
+def _resolve_auth_storage_path(settings) -> Path:
+    explicit_path = os.environ.get("WHISPEER_AUTH_STORAGE_PATH")
+    if explicit_path:
+        return Path(explicit_path).expanduser()
+
+    runtime_path = RUNTIME_AUTH_PATHS.get(urlsplit(settings.base_url).port or 0)
+    if runtime_path is not None and runtime_path.exists():
+        return runtime_path
+    return DEFAULT_AUTH_STORAGE_PATH
 
 
+def _frontend_client_id(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/"
 
 
-def _login_in_page(page, settings) -> None:
-    for attempt in range(2):
-        _submit_login(page, settings)
-        if _wait_for_auth_completion(page, timeout_ms=2000):
-            break
+def _select_refresh_token(auth_payload: dict[str, Any], settings) -> dict[str, Any]:
+    username = settings.username
+    client_id = _frontend_client_id(settings.base_url)
+    credentials = auth_payload.get("data", {}).get("credentials", [])
+    refresh_tokens = auth_payload.get("data", {}).get("refresh_tokens", [])
 
-        start_over = page.get_by_role("button", name=re.compile("start over", re.IGNORECASE))
-        if start_over.is_visible(timeout=1000):
-            start_over.click(timeout=settings.timeout_ms)
-            page.wait_for_timeout(500)
-    else:
-        page.wait_for_function(
-            """() => {
-                const path = window.location.pathname || "";
-                return !path.includes("/auth");
-            }""",
-            timeout=max(settings.timeout_ms, AUTH_STABILIZATION_TIMEOUT_MS),
-        )
+    credential_ids = {
+        credential.get("id")
+        for credential in credentials
+        if credential.get("data", {}).get("username") == username
+    }
+    for token in refresh_tokens:
+        if token.get("token_type") != "normal":
+            continue
+        if token.get("credential_id") not in credential_ids:
+            continue
+        if token.get("client_id") != client_id:
+            continue
+        return token
 
-    page.get_by_role("button", name="Sidebar toggle").wait_for(
-        state="visible",
-        timeout=AUTH_STABILIZATION_TIMEOUT_MS,
+    raise AssertionError(
+        f"No seeded refresh token was found for user '{username}' and client id '{client_id}' in {_resolve_auth_storage_path(settings)}."
     )
 
-    try:
-        page.wait_for_load_state("networkidle", timeout=AUTH_STABILIZATION_TIMEOUT_MS)
-    except Exception:
-        pass
-    _stash_access_token(page, settings)
+
+async def _exchange_refresh_token_async(
+    base_url: str,
+    client_id: str,
+    refresh_token: str,
+    timeout_ms: int,
+) -> dict[str, Any]:
+    timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            f"{base_url}/auth/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+            },
+        ) as response:
+            if response.status >= 400:
+                body = await response.text()
+                raise AssertionError(
+                    f"Home Assistant rejected the seeded refresh token for '{client_id}' with HTTP {response.status}: {body}"
+                )
+            return await response.json()
 
 
-def _submit_login(page, settings) -> None:
-    username = page.locator('input[name="username"], input[type="text"]').first
-    password = page.locator('input[name="password"], input[type="password"]').first
+def _issue_frontend_tokens(settings) -> dict[str, Any]:
+    auth_storage_path = _resolve_auth_storage_path(settings)
+    if not auth_storage_path.exists():
+        raise AssertionError(f"Missing Home Assistant auth storage file: {auth_storage_path}")
 
-    username.wait_for(state="visible", timeout=settings.timeout_ms)
-    username.fill(settings.username)
-    password.fill(settings.password)
-
-    try:
-        page.get_by_role("button", name=re.compile("log in", re.IGNORECASE)).click()
-    except Exception:
-        page.locator('button[type="submit"], input[type="submit"], ha-progress-button, mwc-button').first.click()
-
-
-def _wait_for_auth_completion(page, timeout_ms: int) -> bool:
-    try:
-        page.wait_for_function(
-            """() => {
-                const path = window.location.pathname || "";
-                return !path.includes("/auth");
-            }""",
-            timeout=timeout_ms,
+    auth_payload = json.loads(auth_storage_path.read_text())
+    refresh_token_entry = _select_refresh_token(auth_payload, settings)
+    client_id = _frontend_client_id(settings.base_url)
+    token_payload = _run_async_in_thread(
+        _exchange_refresh_token_async(
+            settings.base_url,
+            client_id,
+            str(refresh_token_entry["token"]),
+            settings.timeout_ms,
         )
-        return True
-    except Exception:
-        return False
+    )
+
+    access_token = token_payload.get("access_token")
+    expires_in = int(token_payload.get("expires_in") or 0)
+    if not access_token or expires_in <= 0:
+        raise AssertionError("Home Assistant did not return a usable access token for the seeded browser session.")
+
+    return {
+        "access_token": str(access_token),
+        "expires": int(time.time() * 1000) + (expires_in * 1000),
+        "expires_in": expires_in,
+        "hassUrl": settings.base_url,
+        "refresh_token": str(refresh_token_entry["token"]),
+        "clientId": client_id,
+    }
 
 
-def _stash_access_token(page, settings) -> None:
-    page.wait_for_function(_access_token_script(), timeout=settings.timeout_ms)
-    token = page.evaluate(_access_token_script())
-    if token:
-        page.evaluate(
-            """(accessToken) => {
-                localStorage.setItem("whispeerAccessToken", accessToken);
-            }""",
-            token,
-        )
+def _auth_bootstrap_script(tokens: dict[str, Any]) -> str:
+    serialized = json.dumps(tokens)
+    return f"""
+        (() => {{
+            const tokens = {serialized};
 
+            window.__tokenCache = {{
+                tokens,
+                writeEnabled: true,
+            }};
 
-def _wait_for_auth_redirect(page, settings) -> None:
-    try:
-        page.wait_for_function(
-            """() => {
-                const path = window.location.pathname || "";
-                if (path && path !== "/") {
-                    return true;
-                }
-                return Boolean(
-                    document.querySelector('input[name="username"], input[type="password"]')
-                );
-            }""",
-            timeout=AUTH_STABILIZATION_TIMEOUT_MS,
-        )
-    except Exception:
-        try:
-            page.wait_for_load_state("networkidle", timeout=min(settings.timeout_ms, 5000))
-        except Exception:
-            pass
-        page.wait_for_timeout(1500)
+            try {{
+                window.localStorage.setItem("hassTokens", JSON.stringify(tokens));
+                window.localStorage.setItem("whispeerAccessToken", tokens.access_token);
+                window.localStorage.setItem("selectedLanguage", JSON.stringify("en"));
+            }} catch (_) {{}}
+        }})();
+    """
 
 
 def _new_context(browser, settings, storage_state: Path | None = None):

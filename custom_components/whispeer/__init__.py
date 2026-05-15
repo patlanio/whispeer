@@ -171,7 +171,7 @@ class WhispeerPanelView(HomeAssistantView):
                     try {{
                         const parentDoc = window.parent?.document;
                         if (!parentDoc) return;
-                        const title = 'Whispeer - Remote Control made simple';
+                        const title = 'Whispeer - Remote control made simple';
                         const classTargets = new Set(['main-title', 'toolbar-title']);
                         forEachElementDeep(parentDoc, (el) => {{
                             if (!el || !el.classList) return;
@@ -179,14 +179,14 @@ class WhispeerPanelView(HomeAssistantView):
                             if (!hasTargetClass) return;
                             const text = (el.textContent || '').trim();
                             if (!text) return;
-                            if (text.includes('Whispeer') || text.includes('Remote Control made simple')) {{
+                            if (text.includes('Whispeer') || text.includes('Remote control made simple')) {{
                                 el.textContent = title;
                             }}
                         }});
                     }} catch (_) {{}}
                 }}
 
-                document.title = 'Whispeer - Remote Control made simple';
+                document.title = 'Whispeer - Remote control made simple';
                 setMainTitleText();
                 setTimeout(setMainTitleText, 500);
                 setTimeout(setMainTitleText, 1500);
@@ -381,6 +381,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     test_harness = get_test_harness(hass)
     if test_harness.enabled:
         _LOGGER.info("Whispeer test mode enabled")
+
+        @callback
+        def _record_call_service_event(event) -> None:
+            data = event.data or {}
+            service_data = data.get("service_data") or {}
+            entity_ids = service_data.get("entity_id") or data.get("entity_id")
+            if isinstance(entity_ids, str):
+                normalized_entity_ids = [entity_ids]
+            elif isinstance(entity_ids, list):
+                normalized_entity_ids = [str(entity_id) for entity_id in entity_ids]
+            else:
+                normalized_entity_ids = []
+
+            test_harness.record(
+                "call_service",
+                "event",
+                domain=data.get("domain"),
+                service=data.get("service"),
+                entity_ids=normalized_entity_ids,
+                service_data=service_data,
+            )
+
+        entry.async_on_unload(hass.bus.async_listen("call_service", _record_call_service_event))
 
     session = async_get_clientsession(hass)
     client = WhispeerApiClient(session, hass)

@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from whispeer.tests.runtime import build_test_settings
 
 
+@pytest.mark.whispeer_title(
+    "Checks that 'build_test_settings' prioritizes explicit options over environment variables and sets correct values and types."
+)
 def test_build_test_settings_prefers_options_over_environment(tmp_path: Path) -> None:
     settings = build_test_settings(
         options={
@@ -37,6 +42,9 @@ def test_build_test_settings_prefers_options_over_environment(tmp_path: Path) ->
     assert settings.timeout_ms == 45000
 
 
+@pytest.mark.whispeer_title(
+    "Verifies that defaults are used when options and environment values are missing."
+)
 def test_build_test_settings_uses_defaults_when_values_missing() -> None:
     settings = build_test_settings(options={}, env={})
 

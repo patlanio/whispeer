@@ -33,6 +33,7 @@ WHISPEER_E2E_START_AT ?=
 WHISPEER_E2E_STOP_AFTER ?=
 WHISPEER_PRESERVE_STATE ?= 0
 PYTEST_ARGS ?=
+EFFECTIVE_WHISPEER_HEADED := $(if $(filter --headless,$(MAKECMDGOALS)),0,$(WHISPEER_HEADED))
 
 BROADLINK_RM4_MINI_IP ?= 192.168.1.7
 BROADLINK_RM4_PRO_IP ?= 192.168.1.8
@@ -45,18 +46,22 @@ BACKEND_MARK_EXPR := not integration and not e2e and not rf_fast
 FRONTEND_PYTEST_TARGETS := tests/test_websocket_integration.py tests/test_whispeer_rspec.py
 FRONTEND_MARK_EXPR := integration or e2e or rf_fast
 
-.PHONY: help install setup setup-dev setup-test setup_broadlink dev test fastest e2e_master e2e_master_dev \
+.PHONY: help install setup setup-dev setup-test setup_broadlink dev r test test_backend test_frontend test_frontend_dev --headless \
 	hass-dev hass-test wait-dev wait-test stop-dev stop-test refresh-seed \
 	clean-test-state
+
+--headless:
+	@:
 
 help:
 	@printf "Available targets:\n"
 	@printf "  make setup              Prepare seeded dev/test Home Assistant runtimes\n"
 	@printf "  make dev                Recreate and start the development Home Assistant\n"
+	@printf "  make r                  Alias for restarting the development Home Assistant\n"
 	@printf "  make test               Run the full backend + websocket + one-tab Playwright flow\n"
-	@printf "  make fastest            Run the backend-only pytest flow\n"
-	@printf "  make e2e_master         Run websocket integration + one-tab RSpec-style E2E against hass-test\n"
-	@printf "  make e2e_master_dev     Run websocket integration + one-tab RSpec-style E2E against hass-dev\n"
+	@printf "  make test_backend       Run the backend-only pytest flow\n"
+	@printf "  make test_frontend      Run websocket integration + one-tab RSpec-style E2E against hass-test\n"
+	@printf "  make test_frontend_dev  Run websocket integration + one-tab RSpec-style E2E against hass-dev\n"
 	@printf "  make setup_broadlink    Override Broadlink IPs in the dev runtime\n"
 	@printf "  make refresh-seed       Refresh the committed seed from $(DEV_CONTAINER)\n"
 
@@ -136,20 +141,23 @@ dev: install
 	$(MAKE) hass-dev
 	$(MAKE) wait-dev
 
+r: dev
+
 clean-test-state:
 	rm -f .pytest-cache/whispeer-storage-state.json
 
-fastest: install
-	$(PYTHON) -m pytest $(BACKEND_PYTEST_TARGETS) -m "$(BACKEND_MARK_EXPR)" -vv -rs $(PYTEST_ARGS)
+test_backend: install
+	WHISPEER_LIVE_REPORT=1 \
+	$(PYTHON) -m pytest $(BACKEND_PYTEST_TARGETS) -m "$(BACKEND_MARK_EXPR)" -q -s -rs $(PYTEST_ARGS)
 
-e2e_master: install
+test_frontend: install
 	$(MAKE) hass-test
 	$(MAKE) wait-test
 	WHISPEER_BASE_URL=http://localhost:$(TEST_PORT) \
 	WHISPEER_WS_URL=ws://localhost:$(TEST_PORT)/api/websocket \
 	WHISPEER_CONTAINER_NAME=$(TEST_CONTAINER) \
 	WHISPEER_BROWSER=$(WHISPEER_BROWSER) \
-	WHISPEER_HEADED=$(WHISPEER_HEADED) \
+	WHISPEER_HEADED=$(EFFECTIVE_WHISPEER_HEADED) \
 	WHISPEER_SLOWMO_MS=$(WHISPEER_SLOWMO_MS) \
 	WHISPEER_TIMEOUT_MS=$(WHISPEER_TIMEOUT_MS) \
 	WHISPEER_STEP_DELAY_MS=$(WHISPEER_STEP_DELAY_MS) \
@@ -157,16 +165,16 @@ e2e_master: install
 	WHISPEER_E2E_STOP_AFTER="$(WHISPEER_E2E_STOP_AFTER)" \
 	WHISPEER_PRESERVE_STATE=$(WHISPEER_PRESERVE_STATE) \
 	WHISPEER_LIVE_REPORT=1 \
-	$(PYTHON) -m pytest $(FRONTEND_PYTEST_TARGETS) -m "$(FRONTEND_MARK_EXPR)" -s -vv $(PYTEST_ARGS)
+	$(PYTHON) -m pytest $(FRONTEND_PYTEST_TARGETS) -m "$(FRONTEND_MARK_EXPR)" -q -s -rs $(PYTEST_ARGS)
 
-e2e_master_dev: install
+test_frontend_dev: install
 	$(MAKE) hass-dev
 	$(MAKE) wait-dev
 	WHISPEER_BASE_URL=http://localhost:$(DEV_PORT) \
 	WHISPEER_WS_URL=ws://localhost:$(DEV_PORT)/api/websocket \
 	WHISPEER_CONTAINER_NAME=$(DEV_CONTAINER) \
 	WHISPEER_BROWSER=$(WHISPEER_BROWSER) \
-	WHISPEER_HEADED=$(WHISPEER_HEADED) \
+	WHISPEER_HEADED=$(EFFECTIVE_WHISPEER_HEADED) \
 	WHISPEER_SLOWMO_MS=$(WHISPEER_SLOWMO_MS) \
 	WHISPEER_TIMEOUT_MS=$(WHISPEER_TIMEOUT_MS) \
 	WHISPEER_STEP_DELAY_MS=$(WHISPEER_STEP_DELAY_MS) \
@@ -174,7 +182,7 @@ e2e_master_dev: install
 	WHISPEER_E2E_STOP_AFTER="$(WHISPEER_E2E_STOP_AFTER)" \
 	WHISPEER_PRESERVE_STATE=1 \
 	WHISPEER_LIVE_REPORT=1 \
-	$(PYTHON) -m pytest $(FRONTEND_PYTEST_TARGETS) -m "$(FRONTEND_MARK_EXPR)" -s -vv $(PYTEST_ARGS)
+	$(PYTHON) -m pytest $(FRONTEND_PYTEST_TARGETS) -m "$(FRONTEND_MARK_EXPR)" -q -s -rs $(PYTEST_ARGS)
 
 test: install
 	@headless=0; \
@@ -182,11 +190,11 @@ test: install
 	  if [ "$$arg" = "--headless" ]; then headless=1; fi; \
 	done; \
 	if [ "$$headless" = "1" ]; then \
-	  $(MAKE) fastest PYTEST_ARGS="$(PYTEST_ARGS)" WHISPEER_HEADED=0; \
-	  $(MAKE) e2e_master PYTEST_ARGS="$(PYTEST_ARGS)" WHISPEER_PRESERVE_STATE=0 WHISPEER_HEADED=0; \
+	  $(MAKE) test_backend PYTEST_ARGS="$(PYTEST_ARGS)" WHISPEER_HEADED=0; \
+	  $(MAKE) test_frontend PYTEST_ARGS="$(PYTEST_ARGS)" WHISPEER_PRESERVE_STATE=0 WHISPEER_HEADED=0; \
 	else \
-	  $(MAKE) fastest PYTEST_ARGS="$(PYTEST_ARGS)"; \
-	  $(MAKE) e2e_master PYTEST_ARGS="$(PYTEST_ARGS)" WHISPEER_PRESERVE_STATE=0; \
+	  $(MAKE) test_backend PYTEST_ARGS="$(PYTEST_ARGS)"; \
+	  $(MAKE) test_frontend PYTEST_ARGS="$(PYTEST_ARGS)" WHISPEER_PRESERVE_STATE=0; \
 	fi
 
 refresh-seed:

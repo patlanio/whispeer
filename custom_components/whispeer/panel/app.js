@@ -175,7 +175,7 @@ class WhispeerApp {
       const result = await DataManager.clearWhispeerEntities();
       await this.deviceManager.loadDevices();
       const removed = Number(result?.removed_entities || 0);
-      Notification.success(`Whispeer entities rebuilt (${removed} removed)`);
+      Notification.success(`Whispeer entities cleared (${removed} removed)`);
     } catch (error) {
       Notification.error('Failed to clear Whispeer entities');
       console.error('Clear entities error:', error);

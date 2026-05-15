@@ -4,6 +4,9 @@ import pytest
 
 
 @pytest.mark.integration
+@pytest.mark.whispeer_title(
+    "Asserts the WebSocket 'get_state' response contains expected fields (enabled, journal, learning sessions, interfaces)."
+)
 def test_test_state_reports_expected_shape(
     whispeer_test_harness,
 ) -> None:
@@ -18,6 +21,9 @@ def test_test_state_reports_expected_shape(
 
 
 @pytest.mark.integration
+@pytest.mark.whispeer_title(
+    "Tests that the 'configure' command applies settings (interfaces, send_command), that the journal increases, and that 'reset' clears queues and config."
+)
 def test_test_commands_configure_and_reset_round_trip(
     whispeer_test_harness,
 ) -> None:

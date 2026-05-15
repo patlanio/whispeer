@@ -9,6 +9,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION, DOMAIN, NAME, VERSION
+from .test_support import get_test_harness
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,6 +68,16 @@ class WhispeerBaseEntity(RestoreEntity):
 
     async def _async_send_code(self, code: str) -> None:
         """Send an IR / RF / BLE code through the configured emitter."""
+        if getattr(self, "hass", None) is not None and getattr(self, "entity_id", None):
+            get_test_harness(self.hass).record(
+                "call_service",
+                "event",
+                domain=str(self.entity_id).split(".", 1)[0],
+                entity_ids=[self.entity_id],
+                device_id=self._device_data["id"],
+                command_name=self._command_name,
+            )
+
         emitter = self._device_data.get("emitter") or {}
         device_type = self._device_data.get("type", "ir")
         await self._api.async_send_command(

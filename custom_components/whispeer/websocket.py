@@ -205,17 +205,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
             **cleanup,
         }
 
-        try:
-            await hass.config_entries.async_reload(entry_id)
-            result["reloaded"] = True
-        except Exception as reload_err:
-            _LOGGER.error(
-                "Failed to reload entry %s after clear_entities: %s",
-                entry_id,
-                reload_err,
-            )
-            result["reloaded"] = False
-
         connection.send_result(msg["id"], result)
 
     @websocket_api.websocket_command({
@@ -251,15 +240,6 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
 
         result = await coordinator.api.async_clear_devices()
         result.update(await _async_clear_whispeer_registry_entries(hass, entry_id))
-
-        try:
-            await hass.config_entries.async_reload(entry_id)
-            result["reloaded"] = True
-        except Exception as reload_err:
-            _LOGGER.error(
-                "Failed to reload entry %s after clear: %s", entry_id, reload_err
-            )
-            result["reloaded"] = False
 
         try:
             connection.send_result(msg["id"], result)
@@ -792,7 +772,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
             "domain_action_requested",
             device_id=msg["device_id"],
             domain=msg.get("domain"),
-            action=msg.get("action"),
+            requested_action=msg.get("action"),
         )
 
         entity_reg = er.async_get(hass)
@@ -934,7 +914,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                 "domain_action_completed",
                 device_id=device_id,
                 domain=domain,
-                action=action,
+                requested_action=action,
                 entity_id=entity_id,
                 success=True,
             )
@@ -949,7 +929,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
                 "domain_action_completed",
                 device_id=device_id,
                 domain=domain,
-                action=action,
+                requested_action=action,
                 entity_id=entity_id,
                 success=False,
                 error_message=str(exc),

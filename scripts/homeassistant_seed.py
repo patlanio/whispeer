@@ -35,16 +35,11 @@ CUSTOM_COMPONENTS_CONTAINER_PATH = Path("/workdir/custom_components")
 
 ROOT_FILE_WHITELIST = {
     ".HA_VERSION",
-    "automations.yaml",
     "configuration.yaml",
-    "scenes.yaml",
-    "scripts.yaml",
-    "secrets.yaml",
 }
 
 ROOT_DIR_WHITELIST = {
     ".storage",
-    "themes",
 }
 
 STORAGE_FILE_WHITELIST = {
@@ -53,9 +48,6 @@ STORAGE_FILE_WHITELIST = {
     "core.area_registry",
     "core.config",
     "core.config_entries",
-    "core.device_registry",
-    "core.entity_registry",
-    "core.restore_state",
     "core.uuid",
     "frontend.system_data",
     "http",
@@ -92,9 +84,6 @@ def curate_seed(target_dir: Path) -> None:
         allowed_dirs=ROOT_DIR_WHITELIST,
     )
 
-    themes_dir = target_dir / "themes"
-    themes_dir.mkdir(exist_ok=True)
-
     storage_dir = target_dir / ".storage"
     storage_dir.mkdir(exist_ok=True)
     _remove_unlisted_children(
@@ -102,15 +91,6 @@ def curate_seed(target_dir: Path) -> None:
         allowed_files=STORAGE_FILE_WHITELIST,
         allowed_dirs=set(),
     )
-
-    for filename, empty_content in (
-        ("automations.yaml", "[]\n"),
-        ("scenes.yaml", ""),
-        ("scripts.yaml", ""),
-    ):
-        file_path = target_dir / filename
-        if not file_path.exists():
-            file_path.write_text(empty_content)
 
 
 def _remove_volatile_files(target_dir: Path) -> None:

@@ -28,6 +28,9 @@ class DummySession:
 
 
 @pytest.mark.backend
+@pytest.mark.whispeer_title(
+    "Ensures 'WhispeerTestHarness' applies interface configuration and provides a 'send_command' override when configured."
+)
 def test_harness_configures_interfaces_and_send_override() -> None:
     harness = WhispeerTestHarness(enabled=True)
     state = harness.configure({
@@ -54,6 +57,9 @@ def test_harness_configures_interfaces_and_send_override() -> None:
 
 
 @pytest.mark.backend
+@pytest.mark.whispeer_title(
+    "Confirms the learn override queue is matched and consumed exactly once for a given device/interface."
+)
 def test_harness_consumes_matching_learn_override_once() -> None:
     harness = WhispeerTestHarness(enabled=True)
     harness.configure({
@@ -87,6 +93,9 @@ def test_harness_consumes_matching_learn_override_once() -> None:
 
 
 @pytest.mark.backend
+@pytest.mark.whispeer_title(
+    "Validates session override transition flow and resulting journal entries during a simulated learning session."
+)
 def test_harness_runs_default_session_override_transitions() -> None:
     harness = WhispeerTestHarness(enabled=True)
     session = DummySession("session-1", "rf", "remote.rm4_pro")

@@ -7,30 +7,69 @@ from pathlib import Path
 from playwright._impl._errors import Error as PlaywrightError
 from playwright._impl._errors import TimeoutError as PlaywrightTimeoutError
 
-from whispeer.tests.browser_support import wait_for_panel_ready
+from whispeer.tests.browser_support import wait_for_authenticated_shell, wait_for_panel_ready
 
 
 class WhispeerPage:
     SIDEBAR_VISIBILITY_TIMEOUT_MS = 4000
     IFRAME_RECOVERY_TIMEOUT_MS = 1000
-    PANEL_OPEN_TIMEOUT_MS = 7000
+    PANEL_OPEN_TIMEOUT_MS = 10000
 
     def __init__(self, page, settings) -> None:
         self.page = page
         self.settings = settings
-        self._access_token: str | None = None
 
-    def _is_direct_panel(self) -> bool:
-        return "/api/whispeer/panel" in (self.page.url or "")
+    def _first_existing_locator(self, *locators):
+        for locator in locators:
+            if locator.count() > 0:
+                return locator.first
+        return None
 
-    def _panel_url_with_token(self, access_token: str) -> str:
-        separator = "&" if "?" in self.settings.panel_url else "?"
-        return f"{self.settings.panel_url}{separator}access_token={access_token}"
+    def _sidebar_toggle(self):
+        return self._first_existing_locator(
+            self.page.get_by_role("button", name=re.compile(r"sidebar|menu", re.IGNORECASE)),
+            self.page.locator("ha-menu-button"),
+        )
+
+    def _sidebar_entry(self, panel_path: str, *labels: str):
+        candidates = [self.page.locator(f'a[href="{panel_path}"]')]
+        for label in labels:
+            pattern = re.compile(rf"^{re.escape(label)}$", re.IGNORECASE)
+            candidates.append(self.page.get_by_role("link", name=pattern))
+        return self._first_existing_locator(*candidates)
+
+    def _ensure_sidebar_item_visible(self, panel_path: str, *labels: str):
+        anchor = self.page.locator(f'a[href="{panel_path}"]').first
+        try:
+            anchor.wait_for(
+                state="attached",
+                timeout=max(self.SIDEBAR_VISIBILITY_TIMEOUT_MS, self.PANEL_OPEN_TIMEOUT_MS),
+            )
+        except PlaywrightError:
+            anchor = None
+
+        entry = anchor or self._sidebar_entry(panel_path, *labels)
+
+        if entry is None:
+            raise AssertionError(f"Unable to find the Home Assistant sidebar entry for '{panel_path}'.")
+
+        try:
+            if entry.is_visible(timeout=250):
+                return entry
+        except PlaywrightError:
+            pass
+
+        toggle = self._sidebar_toggle()
+        if toggle is not None:
+            try:
+                toggle.click(timeout=self.SIDEBAR_VISIBILITY_TIMEOUT_MS)
+            except PlaywrightError:
+                pass
+
+        entry.wait_for(state="visible", timeout=self.SIDEBAR_VISIBILITY_TIMEOUT_MS)
+        return entry
 
     def _frame(self):
-        if self._is_direct_panel():
-            return self.page
-
         timeout = max(self.settings.timeout_ms, self.PANEL_OPEN_TIMEOUT_MS)
         for _ in range(2):
             frame = self.page.frame(url=re.compile(r"/api/whispeer/panel"))
@@ -52,10 +91,6 @@ class WhispeerPage:
     def _wait_for_panel_frame(self, timeout_ms: int | None = None) -> bool:
         timeout = self.settings.timeout_ms if timeout_ms is None else timeout_ms
         try:
-            if self._is_direct_panel():
-                wait_for_panel_ready(self.page, self.settings)
-                return True
-
             self.page.locator("iframe").first.wait_for(
                 state="visible",
                 timeout=timeout,
@@ -65,34 +100,51 @@ class WhispeerPage:
         except (AssertionError, PlaywrightTimeoutError, PlaywrightError):
             return False
 
-    def _navigate_in_shell(self, path: str) -> None:
+    def wait_for_sidebar_entry(self, label: str = "Whispeer") -> None:
+        self._ensure_sidebar_item_visible("/whispeer", label)
+
+    def wait_for_shell_title(self, expected_title: str) -> None:
         self.page.wait_for_function(
-            """(nextPath) => {
-                const currentPath = window.location.pathname || "";
-                if (currentPath === nextPath) {
-                    return true;
-                }
-                history.pushState(null, "", nextPath);
-                window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
-                return true;
+            """(expected) => {
+                const targetClasses = new Set(["main-title", "toolbar-title"]);
+                const visit = (root) => {
+                    if (!root) {
+                        return false;
+                    }
+                    const elements = root.querySelectorAll ? root.querySelectorAll("*") : [];
+                    for (const element of elements) {
+                        if (element.shadowRoot && visit(element.shadowRoot)) {
+                            return true;
+                        }
+                        if (!element.classList) {
+                            continue;
+                        }
+                        const hasTargetClass = [...targetClasses].some((cls) => element.classList.contains(cls));
+                        if (!hasTargetClass) {
+                            continue;
+                        }
+                        if ((element.textContent || "").trim() === expected) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                return visit(document) || (document.title || "") === expected;
             }""",
-            arg=path,
-            timeout=self.settings.timeout_ms,
+            arg=expected_title,
+            timeout=max(self.settings.timeout_ms, self.PANEL_OPEN_TIMEOUT_MS),
         )
-
-    def open_direct(self, access_token: str) -> None:
-        self._access_token = access_token
-        panel_url = self._panel_url_with_token(access_token)
-        if self.page.url == panel_url and self._wait_for_panel_frame(self.IFRAME_RECOVERY_TIMEOUT_MS):
-            return
-
-        self.page.goto(panel_url, wait_until="domcontentloaded")
-        if not self._wait_for_panel_frame(max(self.settings.timeout_ms, self.PANEL_OPEN_TIMEOUT_MS)):
-            raise AssertionError("Unable to open the Whispeer panel directly in the current tab.")
 
     def open(self, panel_path: str) -> None:
         panel_timeout = max(self.settings.timeout_ms, self.PANEL_OPEN_TIMEOUT_MS)
+        panel_url = f"{self.settings.base_url.rstrip('/')}{panel_path}"
         for attempt in range(2):
+            if not (self.page.url or "").rstrip("/").endswith(panel_path):
+                self.page.goto(self.settings.base_url, wait_until="domcontentloaded")
+
+            wait_for_authenticated_shell(self.page, self.settings)
+
             if self.page.url.rstrip("/").endswith(panel_path) and self._wait_for_panel_frame(
                 self.IFRAME_RECOVERY_TIMEOUT_MS
             ):
@@ -103,34 +155,27 @@ class WhispeerPage:
                 if self._wait_for_panel_frame(panel_timeout):
                     return
 
-            whispeer_entry = self.page.locator(f'a[href="{panel_path}"]').first
-            if whispeer_entry.count() == 0:
-                self.page.goto(
-                    f"{self.settings.base_url}{panel_path}",
-                    wait_until="domcontentloaded",
-                )
-                if self._wait_for_panel_frame(panel_timeout):
-                    return
-                continue
-
-            if not whispeer_entry.is_visible(timeout=self.SIDEBAR_VISIBILITY_TIMEOUT_MS):
-                sidebar_toggle = self.page.get_by_role("button", name="Sidebar toggle")
-                if sidebar_toggle.is_visible(timeout=self.SIDEBAR_VISIBILITY_TIMEOUT_MS):
-                    sidebar_toggle.click(timeout=self.SIDEBAR_VISIBILITY_TIMEOUT_MS)
-                    whispeer_entry.wait_for(
-                        state="visible",
-                        timeout=self.SIDEBAR_VISIBILITY_TIMEOUT_MS,
-                    )
-
+            whispeer_entry = self._ensure_sidebar_item_visible(panel_path, "Whispeer")
             whispeer_entry.click(timeout=self.SIDEBAR_VISIBILITY_TIMEOUT_MS, force=True)
-            self.page.wait_for_function(
-                """(expectedPath) => (window.location.pathname || "") === expectedPath""",
-                arg=panel_path,
-                timeout=panel_timeout,
-            )
+            try:
+                self.page.wait_for_function(
+                    """(expectedPath) => {
+                        const currentPath = window.location.pathname || "";
+                        return currentPath === expectedPath || currentPath.endsWith(expectedPath);
+                    }""",
+                    arg=panel_path,
+                    timeout=panel_timeout,
+                )
+            except PlaywrightTimeoutError:
+                pass
             if self._wait_for_panel_frame(panel_timeout):
                 return
-            self.page.reload(wait_until="domcontentloaded")
+
+            self.page.goto(panel_url, wait_until="domcontentloaded")
+            if self._wait_for_panel_frame(panel_timeout):
+                return
+
+            self.page.goto(self.settings.base_url, wait_until="domcontentloaded")
 
         raise AssertionError("Unable to open the Whispeer panel inside the Home Assistant shell.")
 
@@ -139,6 +184,34 @@ class WhispeerPage:
 
     def wait_for_add_device_button(self) -> None:
         self._frame().get_by_test_id("open-add-device-modal").wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+
+    def assert_panel_header_controls(self) -> None:
+        frame = self._frame()
+        frame.locator(".brand-title").wait_for(state="visible", timeout=self.settings.timeout_ms)
+        frame.locator(".brand-logo").wait_for(state="visible", timeout=self.settings.timeout_ms)
+        frame.get_by_test_id("open-settings-modal").wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+        frame.get_by_test_id("open-add-device-modal").wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+
+    def assert_empty_state(self, title: str, message: str) -> None:
+        frame = self._frame()
+        frame.locator(".empty-state", has_text=title).wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+        frame.locator(".empty-state", has_text=message).wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+        frame.get_by_test_id("add-device-card").wait_for(
             state="visible",
             timeout=self.settings.timeout_ms,
         )
@@ -158,10 +231,7 @@ class WhispeerPage:
                 frame.get_by_test_id("cancel-device-button").click(force=True)
                 existing_modal.first.wait_for(state="hidden", timeout=self.settings.timeout_ms)
             except PlaywrightError:
-                if self._is_direct_panel() and self._access_token:
-                    self.open_direct(self._access_token)
-                else:
-                    self.open("/whispeer")
+                self.open("/whispeer")
         for attempt in range(2):
             frame = self._frame()
             try:
@@ -174,10 +244,29 @@ class WhispeerPage:
 
         raise AssertionError("Unable to open the add-device modal in the Whispeer panel.")
 
+    def open_settings_modal(self) -> "AdvancedModalPage":
+        modal = AdvancedModalPage(self, self.settings)
+        frame = self._frame()
+        frame.get_by_test_id("open-settings-modal").click()
+        modal.wait_open()
+        return modal
+
+    def open_device_modal(self, device_name: str) -> "DeviceModalPage":
+        modal = DeviceModalPage(self, self.settings)
+        for attempt in range(2):
+            try:
+                self.device_card(device_name).locator(".device-type-badge").click()
+                modal.wait_open()
+                return modal
+            except PlaywrightError as exc:
+                if attempt == 1 or "Frame was detached" not in str(exc):
+                    raise
+        raise AssertionError(f"Unable to open the edit modal for '{device_name}'.")
+
     def route_smartir_fixture_directory(self, fixture_dir: Path) -> None:
         fixtures: dict[str, dict] = {}
         for fixture_path in fixture_dir.glob("*_1000.json"):
-            domain = fixture_path.name.split("_", 1)[0]
+            domain = fixture_path.stem.rsplit("_", 1)[0]
             fixtures[domain] = json.loads(fixture_path.read_text())
 
         def _handler(route) -> None:
@@ -252,6 +341,108 @@ class WhispeerPage:
             """() => Array.from(document.querySelectorAll('.device-card .device-name span'))
                 .map((element) => (element.textContent || '').trim())
                 .filter(Boolean)"""
+        )
+
+    def reload_stored_codes(self) -> None:
+        self._frame().evaluate(
+            """async () => {
+                await window.deviceManager.loadAndRenderStoredCodes();
+            }"""
+        )
+
+    def assert_stored_codes_hidden(self) -> None:
+        hidden = self._frame().evaluate(
+            """() => {
+                return !document.querySelector('.stored-codes-divider')
+                    && !document.querySelector('.stored-codes-title')
+                    && !document.querySelector('.no-stored-codes')
+                    && document.querySelectorAll('.stored-device-card').length === 0;
+            }"""
+        )
+        assert hidden is True
+
+    def stored_code_groups(self) -> dict[str, list[str]]:
+        return self._frame().evaluate(
+            """() => {
+                const groups = {};
+                document.querySelectorAll('.stored-device-card').forEach((card) => {
+                    const deviceName = (card.querySelector('.device-name')?.textContent || '').trim();
+                    if (!deviceName) {
+                        return;
+                    }
+                    groups[deviceName] = Array.from(card.querySelectorAll('.stored-cmd-btn'))
+                        .map((button) => {
+                            const textOnly = Array.from(button.childNodes)
+                                .filter((node) => node.nodeType === Node.TEXT_NODE)
+                                .map((node) => node.textContent || '')
+                                .join('')
+                                .trim();
+                            return textOnly || (button.textContent || '').trim();
+                        })
+                        .filter(Boolean);
+                });
+                return groups;
+            }"""
+        )
+
+    def click_all_card_controls(self, device_name: str) -> int:
+        return self._frame().evaluate(
+            """async ({ deviceName, delayMs }) => {
+                const findCard = () => Array.from(document.querySelectorAll('.device-card'))
+                    .find((card) => {
+                        if (card.classList.contains('stored-device-card')) {
+                            return false;
+                        }
+                        const name = (card.querySelector('.device-name')?.textContent || '').trim();
+                        return name === deviceName;
+                    });
+
+                const buildRelativePath = (element, root) => {
+                    const parts = [];
+                    let current = element;
+
+                    while (current && current !== root) {
+                        const parent = current.parentElement;
+                        if (!parent) {
+                            return null;
+                        }
+                        const index = Array.from(parent.children).indexOf(current) + 1;
+                        parts.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);
+                        current = parent;
+                    }
+
+                    return parts.join(' > ');
+                };
+
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const initialCard = findCard();
+                if (!initialCard) {
+                    return 0;
+                }
+
+                const selectors = Array.from(
+                    initialCard.querySelectorAll('.device-commands button, .device-commands .command-toggle')
+                )
+                    .map((element) => buildRelativePath(element, initialCard))
+                    .filter(Boolean);
+
+                for (const selector of selectors) {
+                    const currentCard = findCard();
+                    if (!currentCard) {
+                        continue;
+                    }
+                    const target = currentCard.querySelector(selector);
+                    if (!(target instanceof HTMLElement)) {
+                        continue;
+                    }
+                    target.click();
+                    await sleep(delayMs);
+                }
+
+                await sleep(300);
+                return selectors.length;
+            }""",
+            {"deviceName": device_name, "delayMs": 150},
         )
 
     def wait_for_toast(self, expected_text: str) -> None:
@@ -391,26 +582,162 @@ class DeviceModalPage:
     def set_frequency(self, frequency: float) -> None:
         self.page.get_by_test_id("device-frequency-input").fill(str(frequency))
 
+    def wait_for_frequency_value(self, expected_frequency: float) -> None:
+        self.page.wait_for_function(
+            """(expectedFrequency) => {
+                const input = document.querySelector('[data-testid="device-frequency-input"]');
+                if (!input) {
+                    return false;
+                }
+                const parsed = Number.parseFloat(input.value || '');
+                return Number.isFinite(parsed) && Math.abs(parsed - expectedFrequency) < 0.01;
+            }""",
+            arg=expected_frequency,
+            timeout=self.settings.timeout_ms,
+        )
+
     def assert_frequency_visible(self, expected_visible: bool) -> None:
         assert self.page.get_by_test_id("device-frequency-input").is_visible() is expected_visible
 
     def assert_community_code_visible(self, expected_visible: bool) -> None:
         assert self.page.get_by_test_id("community-code-input").is_visible() is expected_visible
 
+    def _set_checkbox_values(self, field_name: str, selected_values: tuple[str, ...]) -> None:
+        selected = set(selected_values)
+        checkboxes = self.page.locator(f'input[name="{field_name}"]')
+        for index in range(checkboxes.count()):
+            checkbox = checkboxes.nth(index)
+            value = checkbox.get_attribute("value") or ""
+            if value in selected:
+                if not checkbox.is_checked():
+                    checkbox.check()
+                continue
+            if checkbox.is_checked():
+                checkbox.uncheck()
+
+    def set_climate_temperature_list(self, temperatures: tuple[int, ...]) -> None:
+        self.page.locator("#climateTempList").fill(
+            ", ".join(str(temperature) for temperature in temperatures)
+        )
+
+    def set_climate_modes(self, modes: tuple[str, ...]) -> None:
+        self._set_checkbox_values("climate_mode", modes)
+
+    def set_climate_fan_modes(self, fan_modes: tuple[str, ...]) -> None:
+        self._set_checkbox_values("climate_fan", fan_modes)
+
+    def generate_climate_table(self) -> None:
+        self.page.get_by_role("button", name="Generate table").click()
+        self.page.locator("#climateTableSection .climate-table").wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+
+    def assert_climate_table(
+        self,
+        *,
+        modes: tuple[str, ...],
+        fan_modes: tuple[str, ...],
+        temperatures: tuple[int, ...],
+    ) -> None:
+        self.page.wait_for_function(
+            """([expectedModes, expectedFanModes, expectedTemps]) => {
+                const modeHeaders = Array.from(document.querySelectorAll('th.climate-mode-header'))
+                    .map((element) => (element.textContent || '').trim());
+                const expectedFanHeaders = expectedModes.flatMap(() => expectedFanModes);
+                const fanHeaders = Array.from(document.querySelectorAll('th.climate-fan-header'))
+                    .map((element) => (element.textContent || '').trim());
+                const tempHeaders = Array.from(document.querySelectorAll('th.climate-temp-header'))
+                    .map((element) => Number.parseInt((element.textContent || '').replace(/\D+/g, ''), 10));
+                const cellCount = document.querySelectorAll('td.climate-cell[data-cell]').length;
+                return JSON.stringify(modeHeaders) === JSON.stringify(expectedModes)
+                    && JSON.stringify(fanHeaders) === JSON.stringify(expectedFanHeaders)
+                    && JSON.stringify(tempHeaders) === JSON.stringify(expectedTemps)
+                    && cellCount === expectedModes.length * expectedFanModes.length * expectedTemps.length;
+            }""",
+            arg=[list(modes), list(fan_modes), list(temperatures)],
+            timeout=self.settings.timeout_ms,
+        )
+
+    def start_climate_fast_learn(
+        self,
+        *,
+        mode: str,
+        fan_mode: str,
+        expected_codes_by_temperature: dict[int, str],
+    ) -> None:
+        self.page.locator(
+            f'button[title="Fast learn {mode} / {fan_mode}"]'
+        ).click()
+        self.page.wait_for_function(
+            """([expectedMode, expectedFanMode, expectedCodes]) => {
+                const table = window.deviceManager?._climateData?.table || {};
+                const fanTable = (table[expectedMode] || {})[expectedFanMode] || {};
+                return Object.entries(expectedCodes).every(([temp, code]) => fanTable[String(temp)] === code);
+            }""",
+            arg=[mode, fan_mode, {str(temp): code for temp, code in expected_codes_by_temperature.items()}],
+            timeout=self.settings.timeout_ms,
+        )
+
+    def learn_climate_cell(self, *, mode: str, fan_mode: str, temperature: int, expected_code: str) -> None:
+        self.page.locator(f'[data-cell="{mode}__{fan_mode}__{temperature}"]').click()
+        self.page.wait_for_function(
+            """([expectedMode, expectedFanMode, expectedTemp, expectedCode]) => {
+                const table = window.deviceManager?._climateData?.table || {};
+                return (((table[expectedMode] || {})[expectedFanMode] || {})[String(expectedTemp)] || '') === expectedCode;
+            }""",
+            arg=[mode, fan_mode, temperature, expected_code],
+            timeout=self.settings.timeout_ms,
+        )
+
+    def learn_climate_off(self, expected_code: str) -> None:
+        self.page.locator('[data-cell="__off__"]').click()
+        self.page.wait_for_function(
+            """(expectedCode) => {
+                const commands = window.deviceManager?._climateData?.commands || {};
+                return (commands.off || '') === expectedCode;
+            }""",
+            arg=expected_code,
+            timeout=self.settings.timeout_ms,
+        )
+
+    def assert_climate_mode_toggle(self, expected_label: str) -> None:
+        self.page.wait_for_function(
+            """(expectedLabel) => {
+                const toggle = document.querySelector('.climate-mode-toggle');
+                return Boolean(toggle) && ((toggle.textContent || '').trim() === expectedLabel);
+            }""",
+            arg=expected_label,
+            timeout=self.settings.timeout_ms,
+        )
+
+    def toggle_climate_mode(self) -> None:
+        self.page.locator('.climate-mode-toggle').click()
+
+    def click_climate_cell(self, *, mode: str, fan_mode: str, temperature: int) -> None:
+        self.page.locator(f'[data-cell="{mode}__{fan_mode}__{temperature}"]').click()
+
     def add_command_rows(self, target_count: int) -> None:
         while self.page.get_by_test_id("command-container").count() < target_count:
             expected_count = self.page.get_by_test_id("command-container").count() + 1
-            self.page.get_by_test_id("add-command-button").click()
-            self.page.wait_for_function(
-                """(expected) => {
-                    return document.querySelectorAll('[data-testid="command-container"]').length === expected;
-                }""",
-                arg=expected_count,
-                timeout=self.settings.timeout_ms,
+            self._retry_on_detached_frame(
+                lambda: self.page.get_by_test_id("add-command-button").click()
+            )
+            self._retry_on_detached_frame(
+                lambda: self.page.wait_for_function(
+                    """(expected) => {
+                        return document.querySelectorAll('[data-testid="command-container"]').length >= expected;
+                    }""",
+                    arg=expected_count,
+                    timeout=self.settings.timeout_ms,
+                )
             )
 
     def command_container(self, index: int):
         return self.page.get_by_test_id("command-container").nth(index)
+
+    def set_command_name(self, index: int, name: str) -> None:
+        self.command_container(index).get_by_test_id("command-name-input").fill(name)
 
     def configure_default_command(self, index: int, spec: dict[str, object]) -> None:
         container = self.command_container(index)
@@ -473,59 +800,59 @@ class DeviceModalPage:
             )
         )
 
+    def start_fast_learn_once(self, expected_code: str) -> None:
+        self.page.get_by_test_id("fast-learn-button").click()
+        self.page.get_by_test_id("fast-learn-stop-button").wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+        self.page.get_by_test_id("fast-learn-stop-button").click()
+        self.wait_for_code_value(expected_code)
+        self.page.wait_for_function(
+            """() => {
+                const button = document.getElementById('fastLearnBtn');
+                const stop = document.getElementById('fastLearnStopBtn');
+                if (!button || !stop) {
+                    return false;
+                }
+                return !button.disabled
+                    && (button.textContent || '').includes('Fast Learn')
+                    && window.getComputedStyle(stop).display === 'none';
+            }""",
+            timeout=self.settings.timeout_ms,
+        )
+
     def import_community_code(self, code: str, domain: str) -> None:
         self.page.get_by_test_id("community-code-input").fill(code)
         self.page.get_by_test_id("community-import-button").click()
-        try:
-            self.page.wait_for_function(
-                """([selectedDomain, expectedCode]) => {
-                    const data = window.deviceManager?._climateData;
-                    return Boolean(data)
-                        && data.source === 'smartir'
-                        && String(data._smartirNum || '') === expectedCode
-                        && (
-                            (selectedDomain === 'climate' && (
-                                Object.keys(data.commands || {}).length > 0 ||
-                                Object.keys(data.table || {}).length > 0
-                            ))
-                            || (
-                                selectedDomain === 'media_player' &&
-                                Object.keys(data.commands || {}).length > 0
-                            )
-                            || (
-                                selectedDomain !== 'climate' &&
-                                selectedDomain !== 'media_player' &&
-                                window.deviceManager?.tempCommands &&
-                                Object.keys(window.deviceManager.tempCommands).length > 0
-                            )
-                        );
-                }""",
-                arg=[domain, code],
-                timeout=self.settings.timeout_ms,
-            )
-        except PlaywrightTimeoutError:
-            if domain != "media_player":
-                raise
-            fixture_path = self.SMARTIR_FIXTURE_DIR / f"{domain}_{code}.json"
-            payload = json.loads(fixture_path.read_text())
-            self.page.evaluate(
-                """([smartirCode, smartirPayload]) => {
-                    const manager = window.deviceManager;
-                    const data = manager._getClimateData();
-                    data._smartirNum = smartirCode;
-                    data.source = 'smartir';
-                    manager._parseSmartIRMediaPlayer(data, smartirPayload);
-                    manager.tempCommands = manager._domainToGenericCommands('media_player', {
-                        domain: 'media_player',
-                        config: data.config,
-                        commands: data.commands,
-                    });
-                    manager.refreshCommandsList();
-                    const domainSection = document.getElementById('domainSection');
-                    if (domainSection) manager._renderDomainSection(domainSection, 'media_player');
-                }""",
-                [code, payload],
-            )
+        self.page.wait_for_function(
+            """([selectedDomain, expectedCode]) => {
+                const manager = window.deviceManager;
+                const data = manager?._climateData;
+                if (!data || data.source !== 'smartir' || String(data._smartirNum || '') !== expectedCode) {
+                    return false;
+                }
+                if (selectedDomain === 'climate') {
+                    return Object.keys(data.table || {}).length > 0;
+                }
+                if (selectedDomain === 'media_player') {
+                    return Object.keys(data.commands || {}).length > 0
+                        && Boolean(document.getElementById('mpTableSection'));
+                }
+                if (selectedDomain === 'fan') {
+                    return Object.keys(data.commands || {}).length > 0
+                        && Boolean(document.getElementById('fanTableSection'));
+                }
+                if (selectedDomain === 'light') {
+                    return Object.keys(data.commands || {}).length > 0
+                        && Boolean(document.getElementById('lightTableSection'));
+                }
+                return Boolean(manager?.tempCommands)
+                    && Object.keys(manager.tempCommands).length > 0;
+            }""",
+            arg=[domain, code],
+            timeout=self.settings.timeout_ms,
+        )
 
     def generate_fan_structure(self, speeds: tuple[str, ...]) -> None:
         self.page.wait_for_function(
@@ -561,6 +888,14 @@ class DeviceModalPage:
         scanner.wait_open()
         return scanner
 
+    def click_all_test_buttons(self) -> int:
+        buttons = self.page.locator(".command-inline-btn.test")
+        count = buttons.count()
+        for index in range(count):
+            buttons.nth(index).click()
+            self.page.wait_for_timeout(50)
+        return count
+
     def save(self) -> None:
         self.page.get_by_test_id("save-device-button").click()
 
@@ -576,10 +911,7 @@ class DeviceModalPage:
         except PlaywrightError as exc:
             if "Frame was detached" not in str(exc):
                 raise
-        if self.panel._is_direct_panel() and self.panel._access_token:
-            self.panel.open_direct(self.panel._access_token)
-        else:
-            self.panel.open("/whispeer")
+        self.panel.open("/whispeer")
         self.panel.wait_for_add_device_button()
 
 
@@ -610,3 +942,55 @@ class BleScannerModalPage:
         row = self.page.locator(f'tr.ble-adv-row[data-address="{address}"]')
         row.wait_for(state="visible", timeout=self.settings.timeout_ms)
         row.get_by_role("button", name="Use this").click()
+
+
+class AdvancedModalPage:
+    def __init__(self, panel: WhispeerPage, settings) -> None:
+        self.panel = panel
+        self.settings = settings
+
+    @property
+    def page(self):
+        return self.panel._frame()
+
+    def wait_open(self) -> None:
+        self.page.locator(".settings-modal").wait_for(
+            state="visible",
+            timeout=self.settings.timeout_ms,
+        )
+
+    def wait_closed(self) -> None:
+        frame = self.panel.page.frame(url=re.compile(r"/api/whispeer/panel"))
+        if frame is None:
+            return
+
+        try:
+            frame.locator(".settings-modal").wait_for(
+                state="hidden",
+                timeout=self.settings.timeout_ms,
+            )
+        except PlaywrightError as error:
+            if "Frame was detached" not in str(error):
+                raise
+
+    def export_devices(self, destination: Path) -> Path:
+        with self.panel.page.expect_download(timeout=self.settings.timeout_ms) as download_info:
+            self.page.locator(".settings-modal #advancedExportBtn").click()
+        download = download_info.value
+        download.save_as(str(destination))
+        return destination
+
+    def import_devices(self, file_path: Path) -> None:
+        self.page.locator('input[type="file"]').set_input_files(str(file_path))
+
+    def clear_entities(self) -> None:
+        self.page.locator(".settings-modal #advancedClearEntitiesBtn").click()
+        self.wait_closed()
+
+    def clear_devices(self) -> None:
+        self.page.locator(".settings-modal #advancedClearBtn").click()
+        self.wait_closed()
+
+    def close(self) -> None:
+        self.page.locator(".settings-modal .close-btn").click()
+        self.wait_closed()

@@ -5,8 +5,8 @@
   "data": {
     "items": [
       {
-        "id": "whishome",
-        "name": "whishome",
+        "id": "john",
+        "name": "John",
         "user_id": "3a184616f3ac476f96edb61ac39a21d6",
         "device_trackers": []
       }

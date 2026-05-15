@@ -56,9 +56,10 @@ That single command does the following in order:
 For debugging, these narrower entrypoints are still available from the repository root:
 
 ```bash
-make fastest
-make e2e_master
-make e2e_master_dev
+make test_backend
+make test_frontend
+make test_frontend -- --headless
+make test_frontend_dev
 ```
 
 If you want to run the Python commands directly instead of `make`, create the repository virtual environment and install dependencies first:
@@ -83,7 +84,8 @@ WHISPEER_E2E_STOP_AFTER=other_devices.shows_expected_controls \
 - The current unit tests do not require a full Home Assistant runtime.
 - `WHISPEER_TEST_MODE=1` is only needed when running websocket or end-to-end tests against a real Home Assistant instance.
 - The current runtime defaults assume `homeassistant-dev` on `http://localhost:8125`; override them with the pytest options or env vars below if your dev instance changes.
-- The Playwright flow persists a browser storage state file at `--whispeer-storage-state` so the first login can be reused across runs, and the RSpec E2E suite reuses a single page for the full browser flow.
+- The Playwright flow now injects a Home Assistant session token before the first navigation, so the visible login form is skipped and the suite starts already authenticated.
+- The browser flow always navigates through the Home Assistant shell by clicking the sidebar, Overview, Devices, and Whispeer routes instead of loading the panel iframe URL directly.
 - The integration tests use token-based websocket calls and the browser flow reuses a single Playwright page for the full run.
 - Browser tests run headless by default. Use `--whispeer-headed` when you want to watch the run locally.
 - `WHISPEER_SLOWMO_MS` slows each browser action; `WHISPEER_STEP_DELAY_MS` adds a pause between checklist items so the run is easier to follow.
@@ -99,7 +101,7 @@ Example for a focused browser slice:
 ```bash
 WHISPEER_E2E_START_AT=device_creation.community.climate \
 WHISPEER_E2E_STOP_AFTER=other_devices.changes_values \
-make e2e_master
+make test_frontend
 ```
 
 ## Runtime configuration

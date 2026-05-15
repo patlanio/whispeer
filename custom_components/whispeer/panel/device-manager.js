@@ -209,8 +209,7 @@ class DeviceManager extends Component {
     const cfg = device.config || {};
     const modes = cfg.modes || [];
     const fans = cfg.fan_modes || [];
-    const minT = parseInt(cfg.min_temp ?? 16);
-    const maxT = parseInt(cfg.max_temp ?? 30);
+    const temperatures = this._getClimateTemperatures(cfg, device.table || {});
 
     if (modes.includes(hvacRaw)) {
       st.mode = hvacRaw;
@@ -222,7 +221,10 @@ class DeviceManager extends Component {
 
     const temp = Number(attrs.temperature);
     if (!Number.isNaN(temp)) {
-      st.temp = Math.max(minT, Math.min(maxT, Math.round(temp)));
+      const supportedTemp = this._closestClimateTemperature(temperatures, Math.round(temp));
+      if (supportedTemp !== null) {
+        st.temp = supportedTemp;
+      }
     }
 
     this._climateUpdateCardUI(deviceId);
@@ -519,6 +521,11 @@ class DeviceManager extends Component {
 
     this._storedCodesFlat = codes.slice();
 
+    if (this._storedCodesFlat.length === 0) {
+      section.innerHTML = '';
+      return;
+    }
+
     const grouped = {};
     codes.forEach(c => {
       if (!grouped[c.device]) grouped[c.device] = [];
@@ -548,17 +555,13 @@ class DeviceManager extends Component {
       </div>`;
     }).join('');
 
-    const noCodesMsg = cardsHTML
-      ? ''
-      : '<p class="no-stored-codes">No stored codes found</p>';
-
     section.innerHTML = `
       <hr class="stored-codes-divider">
       <div class="stored-codes-header">
         <h3 class="stored-codes-title">Existing codes in Home Assistant</h3>
       </div>
       <div class="devices-grid">
-        ${cardsHTML}${noCodesMsg}
+        ${cardsHTML}
       </div>
     `;
   }
@@ -1193,6 +1196,78 @@ class DeviceManager extends Component {
     return String(str)
       .replace(/\\/g, '\\\\')
       .replace(/'/g, "\\'");
+  }
+
+  _normalizeClimateTemperatures(rawTemperatures) {
+    const values = Array.isArray(rawTemperatures)
+      ? rawTemperatures
+      : String(rawTemperatures || '').split(/[\s,]+/);
+
+    const normalized = [];
+    values.forEach(value => {
+      const numeric = Number.parseInt(String(value).trim(), 10);
+      if (Number.isNaN(numeric) || normalized.includes(numeric)) {
+        return;
+      }
+      normalized.push(numeric);
+    });
+
+    return normalized.sort((left, right) => left - right);
+  }
+
+  _getClimateTemperatures(config = {}, table = {}) {
+    const configured = this._normalizeClimateTemperatures(config.temperatures);
+    if (configured.length > 0) {
+      return configured;
+    }
+
+    const discovered = new Set();
+    Object.values(table || {}).forEach(fanMap => {
+      if (!fanMap || typeof fanMap !== 'object') {
+        return;
+      }
+      Object.values(fanMap).forEach(tempMap => {
+        if (!tempMap || typeof tempMap !== 'object') {
+          return;
+        }
+        Object.keys(tempMap).forEach(tempKey => {
+          const numeric = Number.parseInt(String(tempKey), 10);
+          if (!Number.isNaN(numeric)) {
+            discovered.add(numeric);
+          }
+        });
+      });
+    });
+
+    if (discovered.size > 0) {
+      return [...discovered].sort((left, right) => left - right);
+    }
+
+    const minTemp = Number.parseInt(config.min_temp ?? 16, 10);
+    const maxTemp = Number.parseInt(config.max_temp ?? minTemp, 10);
+    const start = Number.isNaN(minTemp) ? 16 : minTemp;
+    const end = Number.isNaN(maxTemp) ? start : maxTemp;
+
+    if (end < start) {
+      return [start];
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  }
+
+  _closestClimateTemperature(temperatures, rawTemperature) {
+    if (!Array.isArray(temperatures) || temperatures.length === 0) {
+      return null;
+    }
+
+    const numeric = Number(rawTemperature);
+    if (Number.isNaN(numeric)) {
+      return temperatures[0];
+    }
+
+    return temperatures.reduce((closest, current) => (
+      Math.abs(current - numeric) < Math.abs(closest - numeric) ? current : closest
+    ), temperatures[0]);
   }
 
   createInlineCommandForm(command = null, isExisting = false) {
@@ -3537,9 +3612,10 @@ const colspan = this._blePickMode ? 7 : 8;
     const cfg = cd.config || {};
 
     const allModes = ['cool', 'heat', 'dry', 'fan_only', 'auto'];
-    const allFanModes = ['auto', 'low', 'mid', 'high', 'turbo'];
+    const allFanModes = ['auto', 'low', 'mid', 'high', 'turbo', 'slow', 'fast'];
     const activeModes = cfg.modes || ['cool', 'heat', 'dry', 'fan_only'];
     const activeFans = cfg.fan_modes || ['auto', 'low', 'mid', 'high'];
+    const temperatureListValue = this._normalizeClimateTemperatures(cfg.temperatures).join(', ');
 
     const hasTable = cd.config && (cd.config.modes || []).length > 0;
 
@@ -3576,6 +3652,10 @@ const colspan = this._blePickMode ? 7 : 8;
                 <div class="input-group" style="flex:1">
                   <div class="input-group-prepend"><div class="input-group-text">Max temp</div></div>
                   <input type="number" id="climateMaxTemp" class="form-input" value="${cfg.max_temp ?? 30}" min="0" max="50" style="width:70px">
+                </div>
+                <div class="input-group" style="flex:2">
+                  <div class="input-group-prepend"><div class="input-group-text">Temperatures</div></div>
+                  <input type="text" id="climateTempList" class="form-input" value="${this._escapeAttr(temperatureListValue)}" placeholder="16, 24, 30">
                 </div>
               </div>
               <div class="climate-checkgroup">
@@ -3646,13 +3726,9 @@ const colspan = this._blePickMode ? 7 : 8;
     const cfg = cd.config || {};
     const modes = cfg.modes || [];
     const fans = cfg.fan_modes || [];
-    const minT = parseInt(cfg.min_temp ?? 16);
-    const maxT = parseInt(cfg.max_temp ?? 30);
+    const temps = this._getClimateTemperatures(cfg, cd.table || {});
 
-    if (modes.length === 0 || fans.length === 0) return '';
-
-    const temps = [];
-    for (let t = minT; t <= maxT; t++) temps.push(t);
+    if (modes.length === 0 || fans.length === 0 || temps.length === 0) return '';
 
     const isTestMode = !!this._climateTestMode;
     const toggleLabel = isTestMode ? 'test mode' : 'learn mode';
@@ -3924,10 +4000,12 @@ const colspan = this._blePickMode ? 7 : 8;
     if (communityInput) communityInput.value = num;
     if (numInput) numInput.value = num;
 
-    if (domain === 'climate') {
-      const domainSection = document.getElementById('domainSection');
-      if (domainSection) this._renderDomainSection(domainSection, domain);
-    } else {
+    const domainSection = document.getElementById('domainSection');
+    if (domainSection) {
+      this._renderDomainSection(domainSection, domain);
+    }
+
+    if (domain !== 'climate') {
       this.tempCommands = this._domainToGenericCommands(domain, {
         domain,
         config: cd.config,
@@ -3940,10 +4018,7 @@ const colspan = this._blePickMode ? 7 : 8;
   _parseSmartIRClimate(cd, json) {
     const modes = (json.operationModes || []).map(m => m.toLowerCase());
     const fans = (json.fanModes || []).map(f => f.toLowerCase());
-    const minTemp = json.minTemperature ?? 16;
-    const maxTemp = json.maxTemperature ?? 30;
-
-    cd.config = { min_temp: minTemp, max_temp: maxTemp, modes, fan_modes: fans };
+    const parsedTemperatures = [];
     cd.commands = { off: json.commands?.off || '' };
     cd.table = {};
 
@@ -3957,8 +4032,18 @@ const colspan = this._blePickMode ? 7 : 8;
         cd.table[mode][fan] = {};
         for (const [tempKey, code] of Object.entries(srcFan)) {
           cd.table[mode][fan][String(tempKey)] = code;
+          parsedTemperatures.push(tempKey);
         }
       }
+    }
+
+    const temperatures = this._normalizeClimateTemperatures(parsedTemperatures);
+    const minTemp = temperatures[0] ?? Number.parseInt(json.minTemperature ?? 16, 10);
+    const maxTemp = temperatures[temperatures.length - 1] ?? Number.parseInt(json.maxTemperature ?? 30, 10);
+
+    cd.config = { min_temp: minTemp, max_temp: maxTemp, modes, fan_modes: fans };
+    if (temperatures.length > 0) {
+      cd.config.temperatures = temperatures;
     }
   }
 
@@ -4035,26 +4120,52 @@ const colspan = this._blePickMode ? 7 : 8;
   }
 
   _generateClimateTable() {
-    const minTemp = parseInt(document.getElementById('climateMinTemp')?.value ?? 16);
-    const maxTemp = parseInt(document.getElementById('climateMaxTemp')?.value ?? 30);
+    const rawMinTemp = parseInt(document.getElementById('climateMinTemp')?.value ?? 16);
+    const rawMaxTemp = parseInt(document.getElementById('climateMaxTemp')?.value ?? 30);
+    const temperatureListInput = document.getElementById('climateTempList')?.value || '';
+    const customTemperatures = this._normalizeClimateTemperatures(temperatureListInput);
     const modes = [...document.querySelectorAll('input[name="climate_mode"]:checked')].map(cb => cb.value);
     const fans = [...document.querySelectorAll('input[name="climate_fan"]:checked')].map(cb => cb.value);
 
     if (modes.length === 0) { Notification.error('Select at least one mode'); return; }
     if (fans.length === 0) { Notification.error('Select at least one fan speed'); return; }
-    if (minTemp > maxTemp) { Notification.error('Min temp must be ≤ max temp'); return; }
+    if (temperatureListInput.trim() && customTemperatures.length === 0) {
+      Notification.error('Provide a comma-separated temperature list such as 16, 24, 30');
+      return;
+    }
+    if (customTemperatures.length === 0) {
+      if (Number.isNaN(rawMinTemp) || Number.isNaN(rawMaxTemp)) {
+        Notification.error('Min temp and max temp must be valid numbers');
+        return;
+      }
+      if (rawMinTemp > rawMaxTemp) { Notification.error('Min temp must be ≤ max temp'); return; }
+    }
+
+    const temperatures = customTemperatures.length > 0
+      ? customTemperatures
+      : Array.from({ length: rawMaxTemp - rawMinTemp + 1 }, (_, index) => rawMinTemp + index);
 
     const cd = this._getClimateData();
     cd.source = 'scratch';
-    cd.config = { min_temp: minTemp, max_temp: maxTemp, modes, fan_modes: fans };
-    cd.table = cd.table || {};
+    cd.config = {
+      min_temp: temperatures[0],
+      max_temp: temperatures[temperatures.length - 1],
+      modes,
+      fan_modes: fans,
+    };
+    if (customTemperatures.length > 0) {
+      cd.config.temperatures = temperatures;
+    }
+
+    const previousTable = cd.table || {};
+    cd.table = {};
 
     for (const mode of modes) {
-      cd.table[mode] = cd.table[mode] || {};
+      cd.table[mode] = {};
       for (const fan of fans) {
-        cd.table[mode][fan] = cd.table[mode][fan] || {};
-        for (let t = minTemp; t <= maxTemp; t++) {
-          cd.table[mode][fan][String(t)] = cd.table[mode][fan][String(t)] || '';
+        cd.table[mode][fan] = {};
+        for (const temp of temperatures) {
+          cd.table[mode][fan][String(temp)] = previousTable?.[mode]?.[fan]?.[String(temp)] || '';
         }
       }
     }
@@ -4142,19 +4253,18 @@ const colspan = this._blePickMode ? 7 : 8;
 
     const cd = this._getClimateData();
     const cfg = cd.config || {};
-    const minT = parseInt(cfg.min_temp ?? 16);
-    const maxT = parseInt(cfg.max_temp ?? 30);
+    const temperatures = this._getClimateTemperatures(cfg, cd.table || {});
 
     this._climateLearningGen++;
     const myFastGen = this._climateLearningGen;
     const pendingTemps = [];
-    for (let temp = minT; temp <= maxT; temp++) {
+    for (const temp of temperatures) {
       const existing = ((cd.table[mode] || {})[fan] || {})[String(temp)];
       if (!existing) pendingTemps.push(temp);
     }
 
     if (pendingTemps.length === 0) {
-      for (let temp = minT; temp <= maxT; temp++) {
+      for (const temp of temperatures) {
         pendingTemps.push(temp);
       }
     }
@@ -4438,11 +4548,7 @@ const colspan = this._blePickMode ? 7 : 8;
     const config = device.config || {};
     const modes = config.modes || [];
     const fans = config.fan_modes || [];
-    const minT = parseInt(config.min_temp ?? 16);
-    const maxT = parseInt(config.max_temp ?? 30);
-
-    const temps = [];
-    for (let t = minT; t <= maxT; t++) temps.push(t);
+    const temps = this._getClimateTemperatures(config, device.table || {});
 
     const offToggle = `
       <div class="command-toggle-full-width" data-climate-power="${this._escapeAttr(id)}">
@@ -4496,12 +4602,12 @@ const colspan = this._blePickMode ? 7 : 8;
       const cfg = device?.config || {};
       const modes = cfg.modes || [];
       const fans = cfg.fan_modes || [];
-      const minT = parseInt(cfg.min_temp ?? 16);
+      const temperatures = this._getClimateTemperatures(cfg, device?.table || {});
       this._climateCardState[deviceId] = {
         on: false,
         mode: modes[0] || null,
         fan: fans[0] || null,
-        temp: minT
+        temp: temperatures[0] ?? parseInt(cfg.min_temp ?? 16)
       };
     }
     return this._climateCardState[deviceId];
